@@ -1,6 +1,5 @@
 *
 */
 !.gitignore
-!/analysis_cosmo_combine/*.R
-!/mkdata/*.R
-
+!/analysis_cosmo_combine/*
+!/mkdata/*
