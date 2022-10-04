@@ -4,4 +4,4 @@
 !readme.md
 !.gitkeep
 !*.R
-!*/analysis_cosmo_combine
+!/analysis_cosmo_combine/
