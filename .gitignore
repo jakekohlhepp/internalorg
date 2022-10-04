@@ -1,5 +1,7 @@
 *
-*/
+!.gitattributes
 !.gitignore
-!/analysis_cosmo_combine/*
-!/mkdata/*
+!readme.md
+!.gitkeep
+!*.R
+!*/
