@@ -346,14 +346,80 @@ ggplot(data=org_both2[Source!="Initial"], aes(x=quality, y=task_spec, color=Sour
 
 ggsave("out/figures/03_02_salestax_reorg.png", width=12, heigh=8, units="in")
 
+jobs_both[, task_spec:=sum(focal_task*emp_tot)/tot_firm, by=c("location_id", "Source")]
+firms<-unique(jobs_both[, c("location_id","Source", "gamma","tot_firm", "complexity", "mc", "share", "price", "quality", "task_spec")])
+firms[, profit:=estim_sample$CSPOP[1]*share/(1-share)/exp(coef(res_store)[1])]
+attachit<-firms[Source=="Initial"]
+colnames(attachit)[-1]<-paste0(colnames(attachit)[-1], '_init')
+firms<-merge(firms, attachit, by="location_id")
+
+attachit<-data.table(xi_init=ny_objects$quals[estab]/exp(coef(res_store)[1]),location_id=estim_sample$location_id)
+firms<-merge(firms, attachit, by="location_id")
+firms[, emp_change:=tot_firm-tot_firm_init]
+firms[, mc_change:=mc-mc_init]
+firms[, comp_change:=complexity-complexity_init ]
+firms[, profit_change:=profit-profit_init]
+firms[, price_change:=price-price_init]
+firms[, spec_change:=task_spec-task_spec_init]
+
+firms<-merge(firms, estim_sample[, c("task_mix1","s_index", "location_id")], all.x=TRUE, by="location_id")
+wage_avg<-data.table()
+#### average wage prior to minimum wage
+for (estab in 1:nrow(estim_sample)){
+  piece<-sum(rowSums(ny_objects$bmats[[estab]])*wages)
+  piece<-c(piece,estim_sample[estab,]$location_id)
+  wage_avg<-rbind(wage_avg, t(piece))
+}
+colnames(wage_avg)<-c("wage_avg", "location_id")
+firms<-merge(firms, wage_avg, all.x=TRUE, by="location_id")
 
 
+init_share<-data.table()
+
+for (estab in 1:nrow(estim_sample)){
+  piece<-rowSums(ny_objects$bmats[[estab]])
+  piece<-c(piece,estim_sample[estab,]$location_id)
+  init_share<-rbind(init_share, t(piece))
+}
+colnames(init_share)<-c(paste0("share",1:5), "location_id")
+cols<-paste0("share",1:5)
+init_share[,(cols):= lapply(.SD, as.numeric), .SDcols=cols ]
+firms<-merge(firms, init_share, all.x=TRUE, by="location_id")
+cor(firms[,..cols])
 
 ggplot(firms[Source!="Reorganization"], aes(weight = tot_firm,linetype=Source, color=Source)) + geom_density(aes(x = rank(gamma)),size=1.2 )+
-  labs(x="Organization Cost Rank", y="Distribution of Labor")+
+  labs(x="Task-Specialization (Rank)", y="Distribution of Labor")+
   theme(legend.position="bottom")+
   scale_linetype_manual(values=c("solid","dashed"))
 ggsave("out/figures/03_02_sales_reallocate.png", width=12, heigh=8, units="in")
+
+
+
+firms[, rank_change:=rank(emp_change/tot_firm_init*100,ties="random"), by="Source"]
+setorder(firms, "Source","rank_change")
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100))+
+  geom_bar(stat="identity", fill="black")+xlab("Change in Employment (Rank)")+ylab("Change in Employment (%)")
+ggsave("out/figures/03_02_sales_firms_reallocate_1.png", width=12, heigh=8, units="in")
+
+firms[, rank_change:=rank(quality,ties="random"), by="Source"]
+setorder(firms, "Source","rank_change")
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100))+
+  geom_bar(stat="identity", fill="black")+xlab("Service Quality (Rank)")+ylab("Change in Employment (%)")
+ggsave("out/figures/03_02_sales_firms_reallocate_2.png", width=12, heigh=8, units="in")
+
+ggplot(data=firms[Source=="Reallocation"], aes(x=quality,y=complexity, size=3))+geom_point()+
+  ylab("Organization Complexity")+xlab("Service Quality ($ equivalent)")+
+  theme(legend.position="none")
+  ggsave("out/figures/03_02_sales_firms_reallocate_3.png", width=12, heigh=8, units="in")
+
+ggplot(firms[Source!="Reorganization"], aes(weight = tot_firm,linetype=Source, color=Source)) + geom_density(aes(x = rank(task_spec)),size=1.2 )+
+  labs(x="Task-Specialization (Rank)", y="Distribution of Labor")+
+  theme(legend.position="bottom")+
+  scale_linetype_manual(values=c("solid","dashed"))
+  ggsave("out/figures/03_02_sales_reallocate_4.png", width=12, heigh=8, units="in")
+  
+  
+  
 
 
 emp_wage<-jobs_both[, .(employment=sum(emp_tot)*estim_sample$weight[1], task_spec=sum(emp_tot*focal_task)/sum(emp_tot)), by=c("type", "Source")]
@@ -761,7 +827,17 @@ firms[, mc_change:=mc-mc_init]
 firms[, comp_change:=complexity-complexity_init ]
 firms[, profit_change:=profit-profit_init]
 firms[, price_change:=price-price_init]
-firms<-merge(firms, estim_sample[, c("task_mix1","s_index", "location_id")], all.x=TRUE, by="location_id")
+firms<-merge(firms, estim_sample[, c("task_mix1","task_mix2","task_mix3","s_index", "location_id")], all.x=TRUE, by="location_id")
+wage_avg<-data.table()
+#### average wage prior to minimum wage
+for (estab in 1:nrow(estim_sample)){
+  piece<-sum(rowSums(ny_objects$bmats[[estab]])*wages)
+  piece<-c(piece,estim_sample[estab,]$location_id)
+  wage_avg<-rbind(wage_avg, t(piece))
+}
+colnames(wage_avg)<-c("wage_avg", "location_id")
+firms<-merge(firms, wage_avg, all.x=TRUE, by="location_id")
+
 
 init_share<-data.table()
 
@@ -775,18 +851,41 @@ cols<-paste0("share",1:5)
 init_share[,(cols):= lapply(.SD, as.numeric), .SDcols=cols ]
 firms<-merge(firms, init_share, all.x=TRUE, by="location_id")
 cor(firms[,..cols])
+firms[, sign_change:=emp_change>=0]
 
 firms[, rank_change:=rank(emp_change/tot_firm_init,ties="random"), by="Source"]
 setorder(firms, "Source","rank_change")
-ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100 ))+geom_bar(stat="identity", fill="black")+xlab("Change in Employment (Rank)")+ylab("Change in Employment (%)")
-ggsave("out/figures/03_02_minwage_firms_reallocate_het.png", width=12, heigh=8, units="in")
-
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100))+
+  geom_bar(stat="identity", fill="black")+xlab("Change in Employment (Rank)")+ylab("Change in Employment (%)")
+ggsave("out/figures/03_02_minwage_firms_reallocate_1.png", width=12, heigh=8, units="in")
 
 firms[, rank_change:=rank(share1,ties="random"), by="Source"]
 setorder(firms, "Source","rank_change")
-ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100 ))+geom_bar(stat="identity", fill="black")+xlab("% Workforce Haircut Specialists (Rank)")+ylab("Change in Employment (%)")
-ggsave("out/figures/03_02_minwage_firms_reallocate_share1.png", width=12, heigh=8, units="in")
-  
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100 ))+
+  geom_bar(stat="identity", fill="black")+xlab("% Workforce Haircut Specialists (Rank)")+ylab("Change in Employment (%)")
+ggsave("out/figures/03_02_minwage_firms_reallocate_2.png", width=12, heigh=8, units="in")
+
+firms[, rank_change:=rank(share2,ties="random"), by="Source"]
+setorder(firms, "Source","rank_change")
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=share1 ))+
+  geom_bar(stat="identity", fill="black")+xlab("% Workforce Color Specialists (Rank)")+ylab("% Workforce Binding Workers")+
+ggsave("out/figures/03_02_minwage_firms_reallocate_3.png", width=12, heigh=8, units="in")
+firms[, rank_change:=rank(share2,ties="random"), by="Source"]
+setorder(firms, "Source","rank_change")
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change ))+
+  geom_bar(stat="identity", fill="black")+xlab("% Workforce Color Specialists (Rank)")+ylab("Change in Employment (%)")
+ggsave("out/figures/03_02_minwage_firms_reallocate_4.png", width=12, heigh=8, units="in")
+
+firms[, wage_avg:=as.numeric(wage_avg)]
+firms[, rank_change:=rank(wage_avg,ties="random"), by="Source"]
+setorder(firms, "Source","rank_change")
+
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100 ))+geom_bar(stat="identity", fill="black")+xlab("Firm Initial Average Hourly Wage (Rank)")+ylab("Change in Employment (%)")+ 
+  theme(legend.position="none")
+ggsave("out/figures/03_02_minwage_byinitialwage.png", width=12, heigh=8, units="in")
+
+
+
 ggplot(data=firms[Source=="Reallocation"], aes(x=share1, y=mc_change ))+geom_point(size=5)+
   xlab("Fraction of Workforce Haircut Specialists")+ylab("Change in Marginal Cost ($)")+ theme(legend.position="bottom")
 ggsave("out/figures/03_02_minwage_firms_mc.png", width=12, heigh=8, units="in")
@@ -811,6 +910,7 @@ ggplot(data=firms[Source=="Reallocation"], aes(x=share1, y=price_change))+geom_p
   xlab("Fraction of Workforce Haircut Specialists")+ylab("Change in Price ($)")+ theme(legend.position="bottom")
 ggsave("out/figures/03_02_minwage_firms_firms_price.png", width=12, heigh=8, units="in")
 
+
 ## get colocation of firms by task mix
 #forgraph_taskmix<-melt(init_share, id.vars="location_id" )
 #forgraph_taskmix<-merge(forgraph_taskmix, init_share[, c("location_id", "share1")], by="location_id")
@@ -818,8 +918,10 @@ ggsave("out/figures/03_02_minwage_firms_firms_price.png", width=12, heigh=8, uni
 #forgraph_taskmix<-merge(forgraph_taskmix,keyworker, by="type" )
 #ggplot(data=forgraph_taskmix[type %in% c(2,3)], aes(x=value,y=share1, shape=`Worker Type`, color=`Worker Type`))+geom_point(size=4)+
 #  ylab("Fraction of Workforce Haircut Specialists")+xlab("Fraction of Workforce Other Type")
-ggplot(data=init_share, aes(x=share3,y=share2, size=share1))+geom_point()+scale_size_continuous(range = c(2,15), breaks=seq(from=0.2, to=0.8, by=0.2))+
-  ylab("Fraction Color Specialists")+xlab("Fraction Blowdry Specialists")+labs(size = "Fraction Haircut Specialists")+ theme(legend.position="bottom")
+ggplot(data=init_share, aes(x=share3+share4+share5,y=share2, size=share1))+geom_point()+scale_size_continuous(range = c(2,15), breaks=seq(from=0.2, to=0.8, by=0.2))+
+  ylab("% Workforce Color Specialists")+xlab("% Workforce Blowdry, Admin, Misc.")+labs(size = "% Workforce Binding Worker Type")+ theme(legend.position="bottom")
+
+
 ggsave("out/figures/03_02_minwage_firms_initialshares.png", width=12, heigh=8, units="in")
 
 
@@ -843,6 +945,8 @@ emp_wage[, rep_text_cluster:=NULL]
 loss_gain_full<-copy(emp_wage)
 loss_gain_reorg<-copy(emp_wage)
 loss_gain_reloc<-copy(emp_wage)
+
+loss_gain_spillovers<-copy(emp_wage)
 
 cols<-c("Initial", "Reallocation", "Reorganization")
 emp_wage[ , (cols) := lapply(.SD, dollar, prefix="\\$"), .SDcols = cols]
@@ -890,7 +994,6 @@ kable(loss_gain_reorg, "latex", align="c", booktabs=TRUE,linesep = c(""), escape
   add_header_above(., c(" ", "Reorganization Change" = 3)) %>%
   cat(., file = "out/tables/03_02_minwage_reorg.tex")
 
-
 loss_gain_reloc[, emp_change:=(employment_Reallocation -employment_Initial)/employment_Initial]
 loss_gain_reloc[, wage_change:=(Reallocation -Initial)/Initial]
 loss_gain_reloc[, spec_change:=(task_spec_Reallocation   -task_spec_Initial )/task_spec_Initial ]
@@ -905,3 +1008,39 @@ kable(loss_gain_reloc, "latex", align="c", booktabs=TRUE,linesep = c(""), escape
 kable(loss_gain_reloc[c(1,2,3),-c(3)], "latex", align="c", booktabs=TRUE,linesep = c(""), escape = F) %>%
   add_header_above(., c(" ", "Reallocation Change" = 2)) %>%
   cat(., file = "out/tables/03_02_minwage_reloc_forpres.tex")
+
+
+## graph total spillovers
+unemployed_ppl<-copy(loss_gain_spillovers[round(employment_Initial-employment_Reorganization)>0])
+loss_gain_spillovers[, weight:=employment_Reorganization]
+unemployed_ppl[,weight:=employment_Initial-employment_Reorganization]
+unemployed_ppl[,Reorganization:=0]
+unemployed_ppl[,type:=paste(type,"- Unemployed")]
+
+loss_gain_spillovers<-rbind(loss_gain_spillovers,unemployed_ppl)
+loss_gain_spillovers<-loss_gain_spillovers[, c("type","weight", "Initial", "Reorganization" )]
+loss_gain_spillovers[, initialwage:=Initial]
+loss_gain_spillovers[, full_weight:=round(weight/sum(weight)*1000)]
+
+expand_helper<-unlist(sapply(1:length(loss_gain_spillovers$full_weight), function(x) rep(x,loss_gain_spillovers$full_weight[x])))
+loss_gain_spillovers<-loss_gain_spillovers[expand_helper,]
+
+
+
+setkey(loss_gain_spillovers,"initialwage", "Reorganization")
+loss_gain_spillovers[, ord_initialwage:=1:.N]
+loss_gain_spillovers[, l_pct:=(Reorganization-Initial)/Initial]
+loss_gain_spillovers[, l_dollar:=(Reorganization-Initial)]
+
+loss_gain_spillovers[, typelab:=c(rep("", floor(.N/2)),unique(type),rep("", .N-floor(.N/2)-1) ), by="type"]
+loss_gain_spillovers[typelab=="Nail/Spa/Eye/Misc.", typelab:="Nail/Misc."]
+loss_gain_spillovers[typelab=="Blowdry/Style/Treatment/Extension", typelab:="Blowdry/Etc."]
+ggplot(data=loss_gain_spillovers[type!="Haircut/Shave - Unemployed"], aes(x=ord_initialwage/10, y=l_dollar, label=typelab    ))+geom_line(size=1)+xlab("Initial Wage Percentile")+ylab("Wage Change ($)")+geom_text(size=5,hjust=0.4, vjust=-0.5)
+ggsave("out/figures/03_02_minwage_nonmonotone.png", width=12, heigh=8, units="in")
+
+
+#loss_gain_spillovers<-melt(loss_gain_spillovers,measure.vars = c("Initial", "Reorganization") )
+#loss_gain_spillovers[, variable:=ifelse(variable=="Initial", "Before", "After")]
+#ggplot(data=loss_gain_spillovers[!(type=="Haircut/Shave - Unemployed" & variable=="After")], aes(x=ord_initialwage/10, y=value, color=variable    ))+geom_line(size=1)+xlab("Initial Wage Percentile")+ylab("Wage ($)")
+
+
