@@ -6,6 +6,8 @@ library('data.table')
 library('fixest')
 library('binsreg')
 library('ggplot2')
+library('spatstat')
+
 library('stargazer')
 range_val<-function(x){
   return(range(x)[2]-range(x)[1])
@@ -34,7 +36,7 @@ firm_quarter[,return_rate:=return_count/cust_visits]
 firm_quarter[, rev_per:=revenue/tot_duration]
 # create residualized variables
 firm_quarter[, county_na:= .GRP, by=.(county, location_state)]
-firm_quarter[, r_rev_emp:=revenue/emps]
+firm_quarter[, rev_emp:=revenue/emps]
 
 firm_quarter[,r_sindex:=resid(feols(s_index~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
 firm_quarter[,r_price:=resid(feols(cust_price~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
@@ -73,6 +75,30 @@ ggsave("out/figures/00_01_firm_scatter_other.png", width=12, height =6, units="i
 ggplot(firm_quarter, aes(x=s_index)) +
   geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Organization Complexity")+ theme(legend.position = "none")
 ggsave("out/figures/00_01_sindex_hist.png", width=12, height=6, units="in")
+
+firm_quarter[, s_norm:=ifelse(round(s_index,9)==0,0,s_norm) ]
+
+ggplot(firm_quarter, aes(x=s_norm)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Normalized Organization Complexity")+ theme(legend.position = "none")
+ggsave("out/figures/00_01_snorm_hist.png", width=12, height=6, units="in")
+
+
+## regression
+
+## regs
+
+res2<-feols(s_norm~ 1 | quarter_year+location_id, data=firm_quarter)
+locs<-data.table(loc_fe=fixef(res2)$location_id, location_id=names(fixef(res2)$location_id))
+quarter<-data.table(quarter_fe=fixef(res2)$quarter_year, quarter_year=as.numeric(names(fixef(res2)$quarter_year)))
+firm_quarter<-merge(firm_quarter, locs, by="location_id", all.x=TRUE)
+firm_quarter<-merge(firm_quarter, quarter, by="quarter_year", all.x=TRUE)
+
+firmpart<-var(firm_quarter$loc_fe)
+quarterpart<-var(firm_quarter$quarter_fe)
+covpart<-2*cov(firm_quarter$loc_fe, firm_quarter$quarter_fe)
+residpart<-var(resid(res2))
+total<-var(firm_quarter$s_norm)
+
 
 get_midpoint <- Vectorize(function(cut_label) {
   mean(as.numeric(unlist(strsplit(gsub("\\(|\\)|\\[|\\]", "", as.character(cut_label)), ","))))
@@ -178,15 +204,18 @@ res0<-feols(revenue~s_index, data=firm_quarter)
 res1<-feols(revenue~s_index | quarter_year, data=firm_quarter)
 res2<-feols(revenue~s_index | quarter_year+county_na, data=firm_quarter)
 res3<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
+esttex(res0, res1,res2,res3, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year"),
+       cluster=firm_quarter$location_id, file="out/tables/00_01_reg_rev_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+
 
 res0<-feols(revenue~max_time, data=firm_quarter)
 res1<-feols(revenue~max_time | quarter_year, data=firm_quarter)
 res2<-feols(revenue~max_time | quarter_year+county_na, data=firm_quarter)
 res3<-feols(revenue~max_time+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
+esttex(res0, res1,res2,res3, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", max_time="Task Specialization", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year"),
+       cluster=firm_quarter$location_id, file="out/tables/00_01_reg_rev_spec.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
 
 
-esttex(res0, res1,res2,res3, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year"),
-       cluster=firm_quarter$location_id, file="out/tables/00_01_reg_rev_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
 
 
 res_rev<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
@@ -378,3 +407,9 @@ ggplot(tgc, aes(x=round_resid_s_index, y=r_return_rate)) +
   geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
   xlab("Residualized Organization Complexity") + ylab("Residualized % Repeat Visits")
 ggsave("out/figures/00_01_return_sindex_resid.png", width=12, heigh=6, units="in")
+
+
+#firm_quarter[location_state=="NY",.(emps=mean(emps)), by=quarter_year]->timeseries
+#
+#ggplot(firm_quarter[quarter_year>=2019.3 & location_state=="CA"], aes(x=quarter_year, y=s_index,color=location_id)) + 
+#  geom_line(size=1)+ theme(legend.position = "none")#
