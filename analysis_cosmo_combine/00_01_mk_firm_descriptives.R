@@ -51,13 +51,12 @@ firm_quarter[,r_rev_emp:=resid(feols(rev_emp~task_mix2+task_mix3+task_mix4+task_
 
 
 ### firm table
-firm_stats<-firm_quarter[,c("revenue", "cust_price","emps", "cust_count","service_types","avg_labor",
-                            "s_index","task_mix1","task_mix2", "task_mix3", "task_mix4", "task_mix5")]
+firm_stats<-firm_quarter[,c("revenue", "cust_price","emps", "cust_count","service_types","avg_labor","task_mix1","task_mix2", "task_mix3", "task_mix4", "task_mix5")]
 
 
 names(firm_stats)<-c("Revenue","Price","Employees", "Customers","Task Categories","Labor per. Customer", "Organization Complexity", 
                      "Share Haircut/Shave", "Share Color/Highlight/Wash", "Share Blowdry/Style/Treatment/Extensions",
-                     "Admininstrative","Nail/Spa/Eye/Misc."
+                     "Share Admininstrative","Share Nail/Spa/Eye/Misc."
 )
 stargazer(firm_stats, header=FALSE, type='text')
 stargazer(firm_stats, header=FALSE,digits=2, out='out/tables/00_01_firm_descriptives.tex',single.row = TRUE)
