@@ -40,7 +40,7 @@ data<-merge(data, countypop[,c("county", "CSPOP")], by="county")
 stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
 data[, location_zip:=as.numeric(zcta)]
 working<-merge(working,data[,c("CSPOP", "location_zip", "county")], by="location_zip", all.x=TRUE)
-stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and oen zip code not matched.
+stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
 
 #### data issue: negative time coded. drop observations
 stopifnot(nrow(working[duration<0])==5)
@@ -69,6 +69,14 @@ working[,return_count:=sum(cust_return), by=c("location_id", "quarter_year") ]
 working[, female_flag:=max(female_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
 working[, child_flag:=max(child_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
 working[, male_flag:=max(male_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
+
+## measures of within visit specialization and whether staff was requested.
+visit_data<-working[, .(services_invisit=.N,staff_invisit=uniqueN(staff_id), requested=sum(was_staff_requested),task_count=.N),by=c("location_id","customer_id", "date", "quarter_year")]
+visit_data[,multi_service:= services_invisit>1 ]
+visit_data[,multi_staff:= staff_invisit>1]
+visit_data<-visit_data[,.(multi_staff=sum(multi_staff), multi_service=sum(multi_service),requested=sum(requested)), by=c("location_id", "quarter_year")]
+
+
 
 ## get task proportion of each worker.
 stopifnot(nrow(working[is.na(price)])==0)
@@ -231,4 +239,8 @@ stopifnot(nrow(firm_quarter[(quarter_year %in% c(2019.2, 2019.3, 2019.4, 2020.1)
 #firm_quarter<-merge(firm_quarter, jobs, by=c("county", "quarter_year"),
 #                    all.x=TRUE)
 stopifnot(nrow(firm_quarter)==uniqueN(firm_quarter[,c("location_id", "quarter_year")]))
+
+### attach multi service and multi staff visit counts.
+firm_quarter<-merge(firm_quarter, visit_data, by=c("location_id", "quarter_year"),all.x=TRUE)
+
 saveRDS(firm_quarter,file="data/00_00_firm_quarter.rds")

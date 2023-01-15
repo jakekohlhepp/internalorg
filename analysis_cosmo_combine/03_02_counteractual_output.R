@@ -872,7 +872,7 @@ ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=share1 ))+
 ggsave("out/figures/03_02_minwage_firms_reallocate_3.png", width=12, heigh=8, units="in")
 firms[, rank_change:=rank(share2,ties="random"), by="Source"]
 setorder(firms, "Source","rank_change")
-ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change ))+
+ggplot(data=firms[Source=="Reallocation"], aes(x=rank_change,y=emp_change/tot_firm_init*100 ))+
   geom_bar(stat="identity", fill="black")+xlab("% Workforce Color Specialists (Rank)")+ylab("Change in Employment (%)")
 ggsave("out/figures/03_02_minwage_firms_reallocate_4.png", width=12, heigh=8, units="in")
 

@@ -14,7 +14,8 @@ range_val<-function(x){
 }
 rowMax <- function(data) apply(data,1, max, na.rm = TRUE)
 rowMin <- function(data) apply(data,1, min, na.rm = TRUE)
-theme_set(theme_bw(base_size=22))
+theme_set(theme_bw(base_size=22)+ theme( panel.grid.major = element_blank(),
+                                        panel.grid.minor = element_blank()))
 
 firm_quarter<-readRDS("data/00_00_firm_quarter.rds")
 
@@ -37,6 +38,8 @@ firm_quarter[, rev_per:=revenue/tot_duration]
 # create residualized variables
 firm_quarter[, county_na:= .GRP, by=.(county, location_state)]
 firm_quarter[, rev_emp:=revenue/emps]
+firm_quarter[, frac_mstaff:=multi_staff/multi_service]
+firm_quarter[, frac_mservice:=multi_service/cust_visits]
 
 firm_quarter[,r_sindex:=resid(feols(s_index~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
 firm_quarter[,r_price:=resid(feols(cust_price~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
@@ -48,13 +51,14 @@ firm_quarter[,r_emp:=resid(feols(emps~task_mix2+task_mix3+task_mix4+task_mix5| c
 firm_quarter[,r_return_rate:=resid(feols(return_rate~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
 firm_quarter[,r_rev_per:=resid(feols(rev_per~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
 firm_quarter[,r_rev_emp:=resid(feols(rev_emp~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
+firm_quarter[,r_frac_mstaff:=resid(feols(frac_mstaff~task_mix2+task_mix3+task_mix4+task_mix5| county_na+quarter_year, firm_quarter))]
 
 
 ### firm table
 firm_stats<-firm_quarter[,c("revenue", "cust_price","emps", "cust_count","service_types","avg_labor","task_mix1","task_mix2", "task_mix3", "task_mix4", "task_mix5")]
 
 
-names(firm_stats)<-c("Revenue","Price","Employees", "Customers","Task Categories","Labor per. Customer", "Organization Complexity", 
+names(firm_stats)<-c("Revenue","Price","Employees", "Customers","Task Categories","Labor per. Customer",
                      "Share Haircut/Shave", "Share Color/Highlight/Wash", "Share Blowdry/Style/Treatment/Extensions",
                      "Share Admininstrative","Share Nail/Spa/Eye/Misc."
 )
@@ -108,6 +112,8 @@ get_midpoint <- Vectorize(function(cut_label) {
 firm_quarter[,round_resid_s_index:=get_midpoint(cut(r_sindex,9, include.lowest=TRUE))]
 firm_quarter[,round_s_index:=get_midpoint(cut(s_index,9, include.lowest=TRUE))]
 
+firm_quarter[,round_mstaff:=get_midpoint(cut(frac_mstaff,9, include.lowest=TRUE))]
+firm_quarter[,round_r_frac_mstaff:=get_midpoint(cut(r_frac_mstaff,9, include.lowest=TRUE))]
 
 summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
                       conf.interval=.95, .drop=TRUE) {
@@ -166,6 +172,7 @@ ggsave("out/figures/00_01_revemp_sindex_resid.png", width=12, heigh=6, units="in
 
 
 
+
 ### revenue
 tgc <- summarySE(as.data.frame(firm_quarter), measurevar="revenue", groupvars=c("round_s_index"))
 ggplot(tgc, aes(x=round_s_index, y=revenue)) + 
@@ -186,8 +193,6 @@ ggplot(tgc, aes(x=round_resid_s_index, y=r_rev)) +
 ggsave("out/figures/00_01_rev_sindex_resid.png", width=12, heigh=6, units="in")
 
 
-
-
 tgc <- summarySE(as.data.frame(firm_quarter[county==36061,]), measurevar="revenue", groupvars=c("round_s_index"))
 ggplot(tgc, aes(x=round_s_index, y=revenue)) + 
   geom_errorbar(aes(ymin=revenue-se*qnorm(0.975), ymax=revenue+se*qnorm(0.975)), width=.02,size=1) +
@@ -203,7 +208,8 @@ res0<-feols(revenue~s_index, data=firm_quarter)
 res1<-feols(revenue~s_index | quarter_year, data=firm_quarter)
 res2<-feols(revenue~s_index | quarter_year+county_na, data=firm_quarter)
 res3<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
-esttex(res0, res1,res2,res3, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year"),
+res4<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na+emps, data=firm_quarter)
+esttex(res0, res1,res2,res3,res4, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year", emps="Firm Size"),
        cluster=firm_quarter$location_id, file="out/tables/00_01_reg_rev_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
 
 
@@ -412,3 +418,336 @@ ggsave("out/figures/00_01_return_sindex_resid.png", width=12, heigh=6, units="in
 #
 #ggplot(firm_quarter[quarter_year>=2019.3 & location_state=="CA"], aes(x=quarter_year, y=s_index,color=location_id)) + 
 #  geom_line(size=1)+ theme(legend.position = "none")#
+
+
+
+##### do graphs with within visit specialization
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="frac_mstaff", groupvars=c("round_s_index"))
+ggplot(tgc, aes(x=round_s_index, y=frac_mstaff)) + 
+  geom_errorbar(aes(ymin=frac_mstaff-se*qnorm(0.975), ymax=frac_mstaff+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Organization Complexity") + ylab("Within-Visit Specialization")
+
+ggsave("out/figures/00_01_mstaff_sindex_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_frac_mstaff", groupvars=c("round_resid_s_index"))
+ggplot(tgc, aes(x=round_resid_s_index, y=r_frac_mstaff)) + 
+  geom_errorbar(aes(ymin=r_frac_mstaff-se*qnorm(0.975), ymax=r_frac_mstaff+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Organization Complexity") + ylab("Within-Visit Specialization")
+
+ggsave("out/figures/00_01_mstaff_sindex_mean.png", width=12, heigh=6, units="in")
+
+# emps
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="emps", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=emps)) + 
+  geom_errorbar(aes(ymin=emps-se*qnorm(0.975), ymax=emps+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Employee Count")
+
+ggsave("out/figures/00_01_emps_mstaff_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[county==36061 & !is.na(frac_mstaff) & !is.na(s_index),]), measurevar="emps", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=emps)) + 
+  geom_errorbar(aes(ymin=emps-se*qnorm(0.975), ymax=emps+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Employee Count")
+
+ggsave("out/figures/00_01_emps_mstaff_mean_ny.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_emp", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_emp)) + 
+  geom_errorbar(aes(ymin=r_emp-se*qnorm(0.975), ymax=r_emp+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized Employee Count")
+
+ggsave("out/figures/00_01_emps_mstaff_resid.png", width=12, heigh=6, units="in")
+
+# price
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="cust_price", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=cust_price)) + 
+  geom_errorbar(aes(ymin=cust_price-se*qnorm(0.975), ymax=cust_price+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Price ($)")
+ggsave("out/figures/00_01_custrev_mstaff_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[county==36061 & !is.na(frac_mstaff) & !is.na(s_index),]), measurevar="cust_price", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=cust_price)) + 
+  geom_errorbar(aes(ymin=cust_price-se*qnorm(0.975), ymax=cust_price+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Price ($)")
+ggsave("out/figures/00_01_custrev_mstaff_mean_ny.png", width=12, heigh=6, units="in")
+
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_price", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_price)) + 
+  geom_errorbar(aes(ymin=r_price-se*qnorm(0.975), ymax=r_price+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized Price ($)")
+ggsave("out/figures/00_01_custrev_mstaff_resid.png", width=12, heigh=6, units="in")
+
+# return rate
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="return_rate", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=return_rate)) + 
+  geom_errorbar(aes(ymin=return_rate-se*qnorm(0.975), ymax=return_rate+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("% Repeat Visits")
+ggsave("out/figures/00_01_return_mstaff_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[county==36061 & !is.na(frac_mstaff) & !is.na(s_index),]), measurevar="return_rate", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=return_rate)) + 
+  geom_errorbar(aes(ymin=return_rate-se*qnorm(0.975), ymax=return_rate+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("% Repeat Visits")
+ggsave("out/figures/00_01_return_mstaff_mean_ny.png", width=12, heigh=6, units="in")
+
+
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_return_rate", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_return_rate)) + 
+  geom_errorbar(aes(ymin=r_return_rate-se*qnorm(0.975), ymax=r_return_rate+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized % Repeat Visits")
+ggsave("out/figures/00_01_return_mstaff_resid.png", width=12, heigh=6, units="in")
+
+# customers
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="cust_count", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=cust_count)) + 
+  geom_errorbar(aes(ymin=cust_count-se, ymax=cust_count+se), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Customer Count")
+
+ggsave("out/figures/00_01_cust_mstaff_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_cust", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_cust)) + 
+  geom_errorbar(aes(ymin=r_cust-se, ymax=r_cust+se), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized Customer Count")
+
+ggsave("out/figures/00_01_cust_mstaff_resid.png", width=12, heigh=6, units="in")
+
+
+
+# visits
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="cust_visits", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=cust_visits)) + 
+  geom_errorbar(aes(ymin=cust_visits-se*qnorm(0.975), ymax=cust_visits+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Share Within-Visit Specialization") + ylab("Customer Visits")
+
+ggsave("out/figures/00_01_visits_mstaff_mean.png", width=12, heigh=6, units="in")
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_cust", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_cust)) + 
+  geom_errorbar(aes(ymin=r_cust-se*qnorm(0.975), ymax=r_cust+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized Customer Visits")
+
+ggsave("out/figures/00_01_visits_mstaff_resid.png", width=12, heigh=6, units="in")
+
+### revenue
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="revenue", groupvars=c("round_mstaff"))
+ggplot(tgc, aes(x=round_mstaff, y=revenue)) + 
+  geom_errorbar(aes(ymin=revenue-se*qnorm(0.975), ymax=revenue+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Within-Visit Specialization") + ylab("Revenue ($)")
+
+ggsave("out/figures/00_01_rev_mstaff_mean.png", width=12, heigh=6, units="in")
+## resid revenue
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="r_rev", groupvars=c("round_r_frac_mstaff"))
+ggplot(tgc, aes(x=round_r_frac_mstaff, y=r_rev)) + 
+  geom_errorbar(aes(ymin=r_rev-se*qnorm(0.975), ymax=r_rev+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Within-Visit Specialization") + ylab("Residualized Revenue")
+
+ggsave("out/figures/00_01_rev_mstaff_resid.png", width=12, heigh=6, units="in")
+
+
+res0<-feols(s_index~frac_mstaff, data=firm_quarter)
+res1<-feols(s_index~frac_mstaff | quarter_year, data=firm_quarter)
+res2<-feols(s_index~frac_mstaff | quarter_year+county_na, data=firm_quarter)
+res3<-feols(s_index~frac_mstaff+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
+res4<-feols(s_index~task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
+esttex(res0, res1,res2,res3,res4, fitstat=~r2,se="cluster",dict=c(frac_mstaff = "Within-Visit Specialization", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year"),
+       cluster=firm_quarter$location_id, file="out/tables/00_01_reg_mstaff_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+
+cor(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index),c("frac_mstaff", "s_index")], method="kendall")
+ggplot(firm_quarter, aes(x=frac_mstaff)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Within-Visit Specialization")+ theme(legend.position = "none")
+ggsave("out/figures/00_01_mstaff_hist.png", width=12, height=6, units="in")
+ggplot(firm_quarter, aes(x=frac_mservice)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Share of Visits with 2+ Services")+ theme(legend.position = "none")
+ggsave("out/figures/00_01_mservice_hist.png", width=12, height=6, units="in")
+ggplot(firm_quarter, aes(x=emps)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Employees")+ theme(legend.position = "none")
+ggsave("out/figures/00_01_emps_hist.png", width=12, height=6, units="in")
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=frac_mservice)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Share of Visits with 2+ Services")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mservice_hist_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=frac_mservice)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Share of Visits with 2+ Services")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mservice_hist_byemps_part2.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=frac_mstaff)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Share Multi. Service w/ 2+ Employees")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mstaff_hist_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=frac_mstaff)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Share Multi. Service w/ 2+ Employees")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mstaff_hist_byemps_part2.png", width=12, height=8, units="in")
+
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=s_index)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_sindex_hist_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=s_index)) +
+  geom_histogram(color="black", fill="lightblue", size=1, bins = 40)+ ylab("Firm-Quarter Count") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_sindex_hist_byemps_part2.png", width=12, height=8, units="in")
+
+
+
+tgc <- summarySE(as.data.frame(firm_quarter[!is.na(frac_mstaff) & !is.na(s_index)]), measurevar="frac_mstaff", groupvars=c("round_emps"))
+ggplot(tgc, aes(x=round_emps, y=frac_mstaff)) + 
+  geom_errorbar(aes(ymin=round_emps-se*qnorm(0.975), ymax=round_emps+se*qnorm(0.975)), width=.02,size=1) +
+  geom_line(size=1) +
+  geom_point(shape=21, size=3, fill="white")+ theme_bw(base_size=22)+
+  xlab("Residualized Share Multi. Service w/ 2+ Emps.") + ylab("Residualized Revenue")
+
+
+### heterogeneity in sindex among firms with the same number of employees
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=s_index, y=revenue)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Revenue ($)") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_sindex_revenue_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=s_index, y=revenue)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Revenue ($)") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_sindex_revenue_byemps_part2.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=s_index, y=cust_price)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Price ($)") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_sindex_price_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=s_index, y=cust_price)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Price ($)") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_sindex_price_byemps_part2.png", width=12, height=8, units="in")
+
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=s_index, y=return_rate)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("% Repeat Visits") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_sindex_return_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:25], aes(x=s_index, y=return_rate)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("% Repeat Visits") + xlab("Organization Complexity")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_sindex_return_byemps_part2.png", width=12, height=8, units="in")
+
+
+
+### heterogeneity in mstaff among firms with the same number of employees
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=frac_mstaff, y=revenue)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Revenue ($)") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mstaff_revenue_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:29], aes(x=frac_mstaff, y=revenue)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Revenue ($)") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+ggsave("out/figures/00_01_mstaff_revenue_byemps_part2.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=frac_mstaff, y=cust_price)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Price ($)") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_mstaff_price_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:29], aes(x=frac_mstaff, y=cust_price)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("Price ($)") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_mstaff_price_byemps_part2.png", width=12, height=8, units="in")
+
+
+ggplot(firm_quarter[emps %in% 2:13], aes(x=frac_mstaff, y=return_rate)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("% Repeat Visits") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_mstaff_return_byemps_part1.png", width=12, height=8, units="in")
+
+ggplot(firm_quarter[emps %in% 14:29], aes(x=frac_mstaff, y=return_rate)) +
+  geom_point()+
+  geom_smooth(method=lm, se=FALSE)+ ylab("% Repeat Visits") + xlab("Share of Visits with 2+ Service")+ theme(legend.position = "none")+
+  scale_x_continuous(breaks=c(0,0.5,1))+
+  facet_wrap(~ emps) 
+
+ggsave("out/figures/00_01_mstaff_return_byemps_part2.png", width=12, height=8, units="in")
+
