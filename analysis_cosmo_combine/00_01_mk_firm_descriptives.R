@@ -209,7 +209,7 @@ res1<-feols(revenue~s_index | quarter_year, data=firm_quarter)
 res2<-feols(revenue~s_index | quarter_year+county_na, data=firm_quarter)
 res3<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na, data=firm_quarter)
 res4<-feols(revenue~s_index+task_mix2+task_mix3+task_mix4+task_mix5 | quarter_year+county_na+emps, data=firm_quarter)
-esttex(res0, res1,res2,res3,res4, fitstat=~r2,se="cluster",dict=c(revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year", emps="Firm Size"),
+esttex(res0, res1,res2,res3,res4,res5, fitstat=~r2,se="cluster",dict=c(req_rate="Staff Request Rate", revenue = "Revenue", s_index="Organization Complexity", sub_quarter="County Sub-Div." ,quarter_year="Quarter-Year", emps="Firm Size"),
        cluster=firm_quarter$location_id, file="out/tables/00_01_reg_rev_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
 
 
