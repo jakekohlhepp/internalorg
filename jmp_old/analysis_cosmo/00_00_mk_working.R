@@ -19,14 +19,32 @@ rowMax <- function(data) apply(data,1, max, na.rm = TRUE)
 rowMin <- function(data) apply(data,1, min, na.rm = TRUE)
 working<-data.table(readRDS("../mkdata/data/tasks_cosmo.rds"))
 
-## merge extension task with blowdry task.
-working[, clust:=ifelse(clust==3,4 ,clust)]
-working[, rep_text_cluster:=ifelse(clust==4,"Blowdry/Style/Treatment/Extension" ,rep_text_cluster)]
-working[, clust:=frank(clust, ties.method="dense")]
-keytask<-unique(working[, c("clust", "rep_text_cluster")])
-keytask[, task:=clust]
-keytask[, type:=clust]
-saveRDS(keytask, "data/00_00_keytask.rds")
+
+# grab just county pop.
+## variable list: "County code","County subdivision (2020)","County name","County subdivision / MCD name","Total population (2020 Census)","cousub20-to-county allocation factor"
+##countypop<-fread('../mkdata/raw/20220724_2020xwalk/geocorr2022_2220501850.csv')[-1,]
+##countypop[,CSPOP:=pop20]
+##countypop[,COUSUB:=cousub20 ]
+##countypop<-unique(countypop[,c("county", "COUSUB", "CSPOP")])
+#
+## attach county subdivisions.
+#data<-fread('../mkdata/raw/20220724_2020xwalk/geocorr2022_2220501717.csv')[-1,]
+#data[,COUSUB:=cousub20 ]
+#data<-merge(data,countypop,by=c("COUSUB","county"), all.x=TRUE)
+#data[,zcta:=as.numeric(zcta)]
+## variable list: "ZIP census tabulation area","County code","County subdivision (2020)","County name","County subdivision / MCD name","ZIP Code name","Total population (2020 Census)","zcta-to-cousub20 allocation factor"
+#data[, count:=uniqueN(COUSUB),by=zcta]
+## only map when more than 50 percent of zcta is within one subdiv.
+#data<-data[afact>0.50 | count==1]
+## should have uniqueness.
+#stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
+#data[, location_zip:=zcta]
+## using 
+#working<-merge(working,data[,c("CSPOP", "COUSUB", "location_zip", "county")], by="location_zip", all.x=TRUE)
+#
+#### make location variable business_id within county subdivision.
+#working[,bizsub_id:= .GRP, by=.(business_id,COUSUB)]
+
 
 ### map zip codes to county, get county pop as of 2020
 countypop<-fread('../mkdata/raw/20220727_countypop/geocorr2022_2220806816.csv')[-1]
@@ -40,7 +58,7 @@ data<-merge(data, countypop[,c("county", "CSPOP")], by="county")
 stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
 data[, location_zip:=as.numeric(zcta)]
 working<-merge(working,data[,c("CSPOP", "location_zip", "county")], by="location_zip", all.x=TRUE)
-stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
+stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and oen zip code not matched.
 
 #### data issue: negative time coded. drop observations
 stopifnot(nrow(working[duration<0])==5)
@@ -69,14 +87,6 @@ working[,return_count:=sum(cust_return), by=c("location_id", "quarter_year") ]
 working[, female_flag:=max(female_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
 working[, child_flag:=max(child_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
 working[, male_flag:=max(male_flag,na.rm=TRUE),by=c("location_id", "quarter_year") ]
-
-## measures of within visit specialization and whether staff was requested.
-visit_data<-working[, .(services_invisit=.N,staff_invisit=uniqueN(staff_id), requested=sum(was_staff_requested),task_count=.N),by=c("location_id","customer_id", "date", "quarter_year")]
-visit_data[,multi_service:= services_invisit>1 ]
-visit_data[,multi_staff:= staff_invisit>1]
-visit_data<-visit_data[,.(multi_staff=sum(multi_staff), multi_service=sum(multi_service),requested=sum(requested),task_count=sum(task_count) ), by=c("location_id", "quarter_year")]
-
-
 
 ## get task proportion of each worker.
 stopifnot(nrow(working[is.na(price)])==0)
@@ -121,7 +131,7 @@ firm_quarter<-staff_task[tot_duration>0, .(s_index=sum(mi_part)), by=c("location
                                                    names(staff_task)[grep("^min_jobvect", names(staff_task))],
                                                    names(staff_task)[grep("^rev_per_time", names(staff_task))]) ]
 ## compute entropy (maximum potential s_index)
-firm_quarter[,s_max:=-task_mix1*spec_log(task_mix1)-task_mix2*spec_log(task_mix2)-task_mix3*spec_log(task_mix3)-task_mix4*spec_log(task_mix4)-task_mix5*spec_log(task_mix5)]
+firm_quarter[,s_max:=-task_mix1*spec_log(task_mix1)-task_mix2*spec_log(task_mix2)-task_mix3*spec_log(task_mix3)-task_mix4*spec_log(task_mix4)-task_mix5*spec_log(task_mix5)-task_mix6*spec_log(task_mix6)]
 firm_quarter[,s_norm:=s_index/s_max]
 
 
@@ -172,11 +182,13 @@ firm_quarter[ , d_2:=distfun(task_mix2), by=c("quarter_year","county")]
 firm_quarter[ , d_3:=distfun(task_mix3), by=c("quarter_year","county")]
 firm_quarter[ , d_4:=distfun(task_mix4), by=c("quarter_year","county")]
 firm_quarter[ , d_5:=distfun(task_mix5), by=c("quarter_year","county")]
+firm_quarter[ , d_6:=distfun(task_mix6), by=c("quarter_year","county")]
 
 firm_quarter[ , s_2:=sum(task_mix2)-task_mix2, by=c("quarter_year", "county")]
 firm_quarter[ , s_3:=sum(task_mix3)-task_mix3, by=c("quarter_year", "county")]
 firm_quarter[ , s_4:=sum(task_mix4)-task_mix4, by=c("quarter_year", "county")]
 firm_quarter[ , s_5:=sum(task_mix5)-task_mix5, by=c("quarter_year", "county")]
+firm_quarter[ , s_6:=sum(task_mix6)-task_mix6, by=c("quarter_year", "county")]
 
 
 ### more product space instruments
@@ -239,8 +251,4 @@ stopifnot(nrow(firm_quarter[(quarter_year %in% c(2019.2, 2019.3, 2019.4, 2020.1)
 #firm_quarter<-merge(firm_quarter, jobs, by=c("county", "quarter_year"),
 #                    all.x=TRUE)
 stopifnot(nrow(firm_quarter)==uniqueN(firm_quarter[,c("location_id", "quarter_year")]))
-
-### attach multi service and multi staff visit counts.
-firm_quarter<-merge(firm_quarter, visit_data, by=c("location_id", "quarter_year"),all.x=TRUE)
-
 saveRDS(firm_quarter,file="data/00_00_firm_quarter.rds")

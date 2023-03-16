@@ -1,6 +1,8 @@
-*
-!.gitattributes
+#ignore all kind of files
+*.*
+#except folders
+!*/
+#except gitignore
 !.gitignore
-!readme.md
-!.gitkeep
+#except R files
 !*.R
