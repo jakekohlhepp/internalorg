@@ -6,4 +6,4 @@
 !.gitignore
 #except R files
 !*.R
-!README.md
+!*.md
