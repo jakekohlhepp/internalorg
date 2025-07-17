@@ -1,9 +1,13 @@
-#ignore all kind of files
-*.*
-#except folders
-!*/
-#except gitignore
-!.gitignore
-#except R files
-!*.R
-!*.md
+*.Rproj.user
+*.Rhistory
+*.RData
+*.Ruserdata
+*.csv
+*.tex
+*.png
+*.rds
+*.jpg
+jmp_old/
+analysis_final/old/
+mkdata/raw/
+analysis_final/out/

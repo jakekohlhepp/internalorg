@@ -9,5 +9,6 @@ library('stringr')
 
 cpi<-fread('mkdata/raw/20211015_cpi_uscity_average/CPIAUCSL.csv')
 cpi[, date:=parse_date_time(DATE, "ymd")]
+cpi[, month_year:=paste0(year(date),"-",month(date))]
 cpi[, DATE:=NULL]
 saveRDS(cpi, file="mkdata/data/cpi.rds")

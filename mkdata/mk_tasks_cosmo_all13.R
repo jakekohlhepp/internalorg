@@ -1,9 +1,33 @@
 ### create task data set.
 ## add new set of tasks from cosmotologist
+## use all 13 categories.
 
 library('data.table')
 library('lubridate')
 library('stringr')
+library("readxl")
+library("writexl")
+
+### taken from mk_cosmo_classify:
+cosmo_class<-data.table(read_excel('mkdata/raw/20220526_cosmo_classify/Upwork service desciptions - COMPLETE.xlsx'))
+cosmo_update<-data.table(read_excel('mkdata/raw/20220526_cosmo_classify/check_cosmo - COMPLETE (3).xlsx'))
+cosmo_class<-rbind(cosmo_class[!(raw_id%in% cosmo_update$raw_id)], cosmo_update)
+stopifnot(nrow(cosmo_class)==uniqueN(cosmo_class$raw_id))
+
+orig_vars<-copy(colnames(cosmo_class))
+cosmo_class[, `Service Description`:=ifelse(substring(`Service Description`,1,1)=="'",substring(`Service Description`,2),`Service Description`)]
+
+## just the main 13 categories
+setnames(cosmo_class, old=colnames(cosmo_class)[which(colnames(cosmo_class)=="Cut"):which(colnames(cosmo_class)=="Nail service")],
+         new=paste0("taskcat",1:length(colnames(cosmo_class)[which(colnames(cosmo_class)=="Cut"):which(colnames(cosmo_class)=="Nail service")])))
+for(var in colnames(cosmo_class)[str_detect(colnames(cosmo_class), "taskcat")]){
+  cosmo_class[,(var):=ifelse(is.na(get(var)), 0, get(var))]
+}
+cosmo_class[, count_cat:=rowSums(.SD), .SDcols=colnames(cosmo_class)[str_detect(colnames(cosmo_class), "taskcat")]]
+## nail.spa/other category/ 
+cosmo_class[ ,(paste0("taskcat",1+length(colnames(cosmo_class)[str_detect(colnames(cosmo_class), "taskcat")]))):= as.numeric(count_cat==0)]
+cosmo_class<-cosmo_class[,.SD,.SDcols=c("count_cat","Male","Female","Child","raw_id", "Service Description",colnames(cosmo_class)[str_detect(colnames(cosmo_class), "taskcat")]) ]
+
 
 tasks<-data.table(readRDS("C:/Users/jakek/blvd_dont_backup/data/compiled_trxns.rds"))
 tasks[,raword:=1:.N]
@@ -46,12 +70,14 @@ summary(tasks[, .SD, .SDcols=which(colnames(tasks) %like% "taskcat")])
 ## practically, first replace duration with total_app time when total_app_time is available.
 tasks[,app_service_count:=.N, by=app_id]
 tasks[!is.na(total_app_time), duration:=total_app_time]
-
+-----
 tasks[,avg_task1:=sum(duration*(count_cat==1 & taskcat1==1 & app_service_count==1))/sum((count_cat==1 & taskcat1==1 & app_service_count==1)),]
 tasks[,avg_task2:=sum(duration*(count_cat==1 & taskcat2==1 & app_service_count==1))/sum((count_cat==1 & taskcat2==1 & app_service_count==1)),]
 tasks[,avg_task3:=sum(duration*(count_cat==1 & taskcat3==1 & app_service_count==1))/sum((count_cat==1 & taskcat3==1 & app_service_count==1)),]
 tasks[,avg_task4:=sum(duration*(count_cat==1 & taskcat4==1 & app_service_count==1))/sum((count_cat==1 & taskcat4==1 & app_service_count==1)),]
 tasks[,avg_task5:=sum(duration*(count_cat==1 & taskcat5==1 & app_service_count==1))/sum((count_cat==1 & taskcat5==1 & app_service_count==1)),]
+
+
 tasks[,avg_task6:=sum(duration*(taskcat6==1 & app_service_count==1))/sum((taskcat6==1 & app_service_count==1)),]
 # then divide any multi category according to time_tot * (avg_task1)/(avg_task1+avg_task2+avg_task3)
 
