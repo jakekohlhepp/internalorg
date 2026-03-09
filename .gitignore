@@ -1,13 +1,47 @@
-*.Rproj.user
-*.Rhistory
-*.RData
-*.Ruserdata
-*.csv
-*.tex
-*.png
+# Data files (large, generated, or confidential)
 *.rds
-*.jpg
-jmp_old/
-analysis_final/old/
+*.csv
+*.xlsx
+*.fst
+*.qs
+*.parquet
 mkdata/raw/
-analysis_final/out/
+
+# R package management (renv lockfile IS tracked; library is not)
+renv/library/
+renv/staging/
+renv/cellar/
+renv/python/
+renv/sandbox/
+
+# R artifacts
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# Logs (generated at runtime)
+logs/
+
+# Results (generated at runtime)
+results/
+
+# PDFs (paper drafts, slides)
+*.pdf
+
+# Temporary files
+nul
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Machine-specific environment (contains local data paths)
+.Renviron
+.Rprofile
+
