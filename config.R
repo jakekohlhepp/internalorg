@@ -26,6 +26,12 @@ CONFIG <- list(
   # Override with env var raw_data_base for machine-specific locations.
   raw_data_path = Sys.getenv("JMP_RAW_DATA_PATH", unset = "mkdata/raw"),
   raw_data_base = Sys.getenv("raw_data_base"),
+  prep_output_dir = "mkdata/data",
+  qcew_cache_path = "mkdata/raw/20220427_qcew_code/qcew_county_cache_2014_2021_812112.rds",
+  qcew_force_refresh = FALSE,
+  qcew_years = 2014:2021,
+  qcew_quarters = 1:4,
+  qcew_industry_code = 812112,
   # ---------------------------------------------------------------------------
   # Geographic scope
   # ---------------------------------------------------------------------------
@@ -196,4 +202,68 @@ build_E_formula <- function(e_indices, include_s_index, config = CONFIG) {
 build_task_mix_sum <- function(config = CONFIG) {
   paste0("task_mix_", 2:config$n_task_types, collapse = "+")
 }
+get_project_root <- function(start_dir = getwd()) {
+  current_dir <- normalizePath(start_dir, winslash = "/", mustWork = FALSE)
+
+  repeat {
+    has_config <- file.exists(file.path(current_dir, "config.R"))
+    has_project <- file.exists(file.path(current_dir, "refactor_estimation.Rproj")) |
+      dir.exists(file.path(current_dir, ".git"))
+
+    if (has_config & has_project) {
+      return(current_dir)
+    }
+
+    parent_dir <- dirname(current_dir)
+    if (identical(parent_dir, current_dir)) {
+      stop("Could not locate project root from: ", start_dir)
+    }
+
+    current_dir <- parent_dir
+  }
+}
+
+project_path <- function(..., root_dir = get_project_root()) {
+  file.path(root_dir, ...)
+}
+
+ensure_directory <- function(path) {
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE)
+  }
+
+  return(invisible(path))
+}
+
+assert_required_files <- function(paths) {
+  missing_paths <- paths[!file.exists(paths)]
+
+  if (length(missing_paths) > 0) {
+    stop("Missing required file(s):\n  ", paste(missing_paths, collapse = "\n  "))
+  }
+
+  return(invisible(paths))
+}
+
+assert_required_columns <- function(dt, required_cols, object_name) {
+  missing_cols <- setdiff(required_cols, names(dt))
+
+  if (length(missing_cols) > 0) {
+    stop(object_name, " is missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  return(invisible(TRUE))
+}
+
+activate_project_renv <- function(root_dir = get_project_root()) {
+  activate_path <- file.path(root_dir, "renv", "activate.R")
+
+  if (!file.exists(activate_path)) {
+    return(invisible(FALSE))
+  }
+
+  source(activate_path, local = TRUE)
+  return(invisible(TRUE))
+}
+
 
