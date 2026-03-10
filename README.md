@@ -97,6 +97,32 @@ source("01_02_spatial_corr.R")      # Spatial patterns
 source("01_03_summary_stats_esample.R")  # Sample summary statistics
 ```
 
+## Identifying Worker Types
+
+Worker types are not directly observed in the data---they must be inferred from how workers allocate their time across tasks. The identification proceeds in three stages, implemented in `01_build_data.R` and `cluster.R`:
+
+### Stage 1: Skill Profiles
+
+For each worker in each firm-quarter, the code computes **Btilde**---the worker's normalized time allocation across the 5 task types (e.g., what fraction of a worker's time goes to haircuts vs. color vs. styling). Before clustering, raw durations are **Lidstone-smoothed** (adding a tuning parameter equal to the mean service duration) to regularize zero-duration cells, ensuring that a worker who happens not to perform a task in a given quarter is not treated as categorically unable to do so.
+
+### Stage 2: Within-Firm Clustering
+
+Workers within each firm-quarter are grouped using **complete-linkage hierarchical clustering** on the Euclidean distance between their Btilde vectors. The cut height is set per county at the minimum level that guarantees every firm has at most 5 worker types. This yields worker type labels that are consistent within a firm (e.g., "type 1" and "type 2" at Salon A) but not yet comparable across firms.
+
+### Stage 3: Across-Firm Type Matching
+
+To make types comparable across firms, the code selects a **reference firm** in each county---the largest firm (by employee count) that exhibits all 5 worker types. Every other firm's within-firm type labels are then mapped to the reference firm's labels by:
+
+1. Enumerating all possible permutations of the mapping from local types to the reference firm's 5 types.
+2. For each permutation, computing the **L1 distance on normalized log-ratios** of skill profiles across all pairwise worker-type comparisons.
+3. Selecting the permutation that minimizes this distance.
+
+This produces globally consistent worker type labels within each market: "type 1" at Salon A and "type 1" at Salon B reflect the same pattern of comparative advantage relative to the reference firm.
+
+### Validation
+
+The code includes checks on temporal consistency: among workers observed across multiple quarters, approximately 90% are classified as the same type in every quarter, providing evidence that the inferred types capture stable worker characteristics rather than transient variation.
+
 ## Numerical Methods
 
 The estimation relies on three core algorithms defined in `preamble.R`:
