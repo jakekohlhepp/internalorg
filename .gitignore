@@ -20,6 +20,9 @@ renv/sandbox/
 .Rproj.user
 *.Rproj
 
+# Documentation (internal notes, not for public repo)
+docs/
+
 # Logs (generated at runtime)
 logs/
 
