@@ -38,9 +38,8 @@ keytask[, task:=clust]
 keytask[, type:=clust]
 saveRDS(keytask, "mkdata/data/01_keytask.rds")
 
-#### data issue: drop 5 observations with negative time
-stopifnot(nrow(working[duration<0])==5)
-working<-working[duration>=0,]
+#### dall durations should be positive.
+stopifnot(nrow(working[duration<0])==0)
 
 ## impute 0 time as average among quarter cluster (2% are imputed.)
 nrow(working[duration==0,])/nrow(working)

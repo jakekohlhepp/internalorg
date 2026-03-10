@@ -1,134 +1,94 @@
-#' =============================================================================
-#' PREP 04: Create Consumer Expenditure Survey Outside Option Data
-#' =============================================================================
-#' Computes the fraction of consumers who do not get haircuts (outside option)
-#' from the Consumer Expenditure Survey (CEX) interview data.
-#'
-#' The CEX tracks household expenditures including salon services (SALONX).
-#' We compute the share of respondents with zero salon spending by PSU/quarter,
-#' which represents the "outside option" share in the demand model.
-#'
-#' Input:  mkdata/raw/20220711_cex/intrvw{YY}/ (for years 2013-2021)
-#'         - expn{YY}/xpb{YY}.csv (expenditure data)
-#'         - intrvw{YY}/fmli{YY}2-4.csv and fmli{YY+1}1.csv (interview data)
-#' Output: mkdata/data/cex_outside.rds
-#'
-#' Output Schema:
-#'   PSU: Primary Sampling Unit code
-#'   QYEAR: Quarter-year identifier (e.g., 20191 for 2019 Q1)
-#'   quarter_year: Numeric quarter-year (e.g., 2019.1)
-#'   nohc_count: Count of households with no haircut spending
-#'   count_sample: Total households in sample
-#'   max_expend: Maximum salon expenditure in sample
-#'   min_spend: Minimum (non-zero) salon expenditure
-#'
-#' Dependencies: None
-#' =============================================================================
+# =============================================================================
+# PREP 04: Create Consumer Expenditure Survey Outside Option Data
+# =============================================================================
+# Computes the fraction of consumers who do not get haircuts from the CEX
+# interview data and saves PSU-quarter aggregates for the outside option.
+# =============================================================================
 
 library('data.table')
 
-#' -----------------------------------------------------------------------------
-#' PROCESS CEX DATA FOR EACH YEAR (2013-2021)
-#' -----------------------------------------------------------------------------
+source('config.R')
 
-outside_option <- c()
+cex_expend_path <- function(y) {
+  project_path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('expn', y), paste0('xpb', y, '.csv'))
+}
 
-# Loop through years 2013-2021 (coded as 13-21 in CEX file naming)
+cex_income_path <- function(y, q) {
+  project_path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('intrvw', y), paste0('fmli', y, q, '.csv'))
+}
+
+required_inputs <- c()
 for (y in 13:21) {
+  required_inputs <- c(
+    required_inputs,
+    cex_expend_path(y),
+    cex_income_path(y, 2),
+    cex_income_path(y, 3),
+    cex_income_path(y, 4),
+    cex_income_path(y + 1, 1)
+  )
+}
+assert_required_files(required_inputs)
 
-  # Load expenditure data (xpb file contains personal care expenditures)
-  # SALONX is the salon/haircut expenditure variable
-  # Path pattern: mkdata/raw/20220711_cex/intrvw{YY}/expn{YY}/xpb{YY}.csv
-  expend <- fread(gsub('19', as.character(y), 'mkdata/raw/20220711_cex/intrvw19/expn19/xpb19.csv'))
+output_path <- project_path(CONFIG$prep_output_dir, 'cex_outside.rds')
+ensure_directory(dirname(output_path))
 
-  # Load interview data (fmli files contain household characteristics)
-  # Need Q2-Q4 of current year and Q1 of next year for full annual coverage
-  income2 <- fread(gsub('19', as.character(y), 'mkdata/raw/20220711_cex/intrvw19/intrvw19/fmli192.csv'))
-  income3 <- fread(gsub('19', as.character(y), 'mkdata/raw/20220711_cex/intrvw19/intrvw19/fmli193.csv'))
-  income4 <- fread(gsub('19', as.character(y), 'mkdata/raw/20220711_cex/intrvw19/intrvw19/fmli194.csv'))
+outside_option <- data.table()
 
-  # Q1 of next year (file naming: fmli{YY+1}1.csv)
-  income5 <- fread(paste0(
-    'mkdata/raw/20220711_cex/',
-    gsub('19', as.character(y), 'intrvw19/'),
-    gsub('19', as.character(y), 'intrvw19/'),
-    gsub('20', as.character(y + 1), 'fmli201.csv')
-  ))
+for (y in 13:21) {
+  expend <- fread(cex_expend_path(y))
+  assert_required_columns(expend, c('NEWID', 'QYEAR', 'SALONX', 'SALONX_'), paste0('expend_', y))
 
-  # Combine all interview quarters
+  income2 <- fread(cex_income_path(y, 2))
+  income3 <- fread(cex_income_path(y, 3))
+  income4 <- fread(cex_income_path(y, 4))
+  income5 <- fread(cex_income_path(y + 1, 1))
+
+  assert_required_columns(income2, c('NEWID', 'FSALARYM', 'PSU'), paste0('income_', y, '_2'))
+  assert_required_columns(income3, c('NEWID', 'FSALARYM', 'PSU'), paste0('income_', y, '_3'))
+  assert_required_columns(income4, c('NEWID', 'FSALARYM', 'PSU'), paste0('income_', y, '_4'))
+  assert_required_columns(income5, c('NEWID', 'FSALARYM', 'PSU'), paste0('income_', y + 1, '_1'))
+
   income <- rbind(income2, income3, income4, income5, fill = TRUE)
-
-  # Verify uniqueness by NEWID (household identifier)
   stopifnot(nrow(income) == uniqueN(income[, NEWID]))
 
-  # Merge expenditure and income data
-  # Keep: NEWID (household ID), QYEAR (quarter-year), SALONX (salon spending),
-  #       SALONX_ (imputation flag), FSALARYM (salary income), PSU (sampling unit)
   together <- merge(
-    expend[, c("NEWID", "QYEAR", "SALONX", "SALONX_")],
-    income[, c("NEWID", "FSALARYM", "PSU")],
-    by = "NEWID"
+    expend[, c('NEWID', 'QYEAR', 'SALONX', 'SALONX_')],
+    income[, c('NEWID', 'FSALARYM', 'PSU')],
+    by = 'NEWID'
   )
+  assert_required_columns(together, c('NEWID', 'QYEAR', 'SALONX', 'SALONX_', 'FSALARYM', 'PSU'), paste0('together_', y))
 
-  # Convert SALONX to numeric
   together[, SALONX := as.numeric(SALONX)]
+  stopifnot(all(together[is.na(SALONX), ]$SALONX_ == 'A'))
 
-  # Verify: all NA values in SALONX have imputation flag "A" (valid skip)
-  stopifnot(all(together[is.na(SALONX), ]$SALONX_ == "A"))
-
-  # Create "no haircut" indicator: TRUE if SALONX is NA (zero spending)
   together[, nohc := is.na(SALONX)]
 
-  # Aggregate by PSU and quarter
-  # Compute: count of no-haircut households, spending range, sample size
   outside_option <- rbind(
     outside_option,
     together[, .(
       nohc_count = sum(nohc),
-      max_expend = max(SALONX, na.rm = TRUE),
-      min_spend = min(SALONX, na.rm = TRUE),
+      max_expend = if (all(is.na(SALONX))) NA_real_ else max(SALONX, na.rm = TRUE),
+      min_spend = if (all(is.na(SALONX))) NA_real_ else min(SALONX, na.rm = TRUE),
       count_sample = .N
-    ), by = c("PSU", "QYEAR")],
+    ), by = c('PSU', 'QYEAR')],
     fill = TRUE
   )
 }
 
-# Add final year's aggregation (from last iteration)
-outside_option <- rbind(
-  outside_option,
-  together[, .(
-    nohc_count = sum(nohc),
-    max_expend = max(SALONX, na.rm = TRUE),
-    min_spend = min(SALONX, na.rm = TRUE),
-    count_sample = .N
-  ), by = c("PSU", "QYEAR")],
-  fill = TRUE
-)
+stopifnot(nrow(outside_option) == uniqueN(outside_option[, c('PSU', 'QYEAR')]))
 
-#' -----------------------------------------------------------------------------
-#' CREATE QUARTER-YEAR VARIABLE
-#' -----------------------------------------------------------------------------
-
-# Convert QYEAR (e.g., 20191) to quarter_year format (e.g., 2019.1)
-# QYEAR format: YYYYQ where Q is 1-4
 outside_option[, quarter_year := as.numeric(as.character(QYEAR / 10))]
-
-# Adjust for Q1 which spans two calendar years in CEX
-# If quarter decimal is 0.1, it's actually Q4 of previous year (adjust to X.4)
 outside_option[, quarter_year := ifelse(
   round(quarter_year - floor(quarter_year), 1) == 0.1,
   floor(quarter_year) - 1 + 0.4,
   quarter_year - 0.1
 )]
-
 outside_option[, quarter_year := as.numeric(as.character(quarter_year))]
+setorder(outside_option, PSU, QYEAR)
 
-#' -----------------------------------------------------------------------------
-#' SAVE OUTPUT
-#' -----------------------------------------------------------------------------
+saveRDS(outside_option, file = output_path)
 
-saveRDS(outside_option, file = "mkdata/data/cex_outside.rds")
-
-message("Saved mkdata/data/cex_outside.rds")
-message("  PSU-quarter observations: ", nrow(outside_option))
-message("  Years covered: ", paste(range(floor(outside_option$quarter_year)), collapse = "-"))
+message('Saved ', output_path)
+message('  PSU-quarter observations: ', nrow(outside_option))
+message('  Years covered: ', paste(range(floor(outside_option$quarter_year)), collapse = '-'))

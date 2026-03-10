@@ -37,7 +37,7 @@ get_log_dir <- function() {
 get_log_path <- function(script_name) {
   log_dir <- get_log_dir()
   # Convert script name to log name (replace .R with .log)
-  log_name <- sub("\\.R$", ".log", script_name)
+  log_name <- sub("\\.R$", ".log", basename(script_name))
   return(file.path(log_dir, log_name))
 }
 
@@ -299,15 +299,18 @@ run_with_logging <- function(script_name, dependencies = NULL, force = FALSE) {
   error_msg <- NULL
 
   tryCatch({
-    # Source the script in a new environment to avoid polluting global
-    source(script_name, local = new.env(parent = globalenv()))
-    success <- TRUE
-    log_message(paste("Completed", script_name, "successfully"))
+    withCallingHandlers({
+      # Source the script in a new environment to avoid polluting global
+      source(script_name, local = new.env(parent = globalenv()))
+      success <- TRUE
+      log_message(paste("Completed", script_name, "successfully"))
+    }, warning = function(w) {
+      log_message(paste("WARNING:", conditionMessage(w)), "WARN")
+      invokeRestart("muffleWarning")
+    })
   }, error = function(e) {
     error_msg <<- conditionMessage(e)
     log_message(paste("ERROR:", error_msg), "ERROR")
-  }, warning = function(w) {
-    log_message(paste("WARNING:", conditionMessage(w)), "WARN")
   })
 
   duration <- as.numeric(difftime(Sys.time(), start_time, units = "mins"))
@@ -327,9 +330,11 @@ run_with_logging <- function(script_name, dependencies = NULL, force = FALSE) {
 #' @param results Named list of results from run_with_logging calls
 #' @param pipeline_start POSIXct start time of pipeline
 #' @return Invisible NULL
-write_pipeline_summary <- function(results, pipeline_start) {
+write_pipeline_summary <- function(results, pipeline_start,
+                                   summary_name = "run_all.log",
+                                   title = "PIPELINE SUMMARY") {
   log_dir <- get_log_dir()
-  summary_path <- file.path(log_dir, "run_all.log")
+  summary_path <- file.path(log_dir, summary_name)
 
   end_time <- Sys.time()
   total_duration <- as.numeric(difftime(end_time, pipeline_start, units = "mins"))
@@ -341,7 +346,7 @@ write_pipeline_summary <- function(results, pipeline_start) {
   # Build summary
   lines <- c(
     strrep("=", 60),
-    "PIPELINE SUMMARY",
+    title,
     paste("Started:", format(pipeline_start, "%Y-%m-%d %H:%M:%S")),
     paste("Completed:", format(end_time, "%Y-%m-%d %H:%M:%S")),
     paste("Status:", overall_status),
@@ -370,3 +375,5 @@ write_pipeline_summary <- function(results, pipeline_start) {
 
   invisible(NULL)
 }
+
+

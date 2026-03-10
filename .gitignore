@@ -29,7 +29,9 @@ results/
 # PDFs (paper drafts, slides)
 *.pdf
 
-# Temporary files
+# Temporary / scratch files
+tmp_*
+temp_*
 nul
 *.tmp
 

@@ -101,6 +101,54 @@ classified[raw_id == 9900, `Service Description` := "Hair Extensions Install - B
 classified[, service_performed := `Service Description`]
 classified[, `Service Description` := NULL]  # Remove the original column
 
+## Incorporate approved review matches for newly observed service descriptions
+reviewed_match_path <- 'check2_truly_new_sorted_for_classification.csv'
+stopifnot(file.exists(reviewed_match_path))
+
+reviewed_matches <- fread(reviewed_match_path)
+reviewed_matches <- reviewed_matches[
+  approved %chin% c('closest_1', 'closest_2', 'alternative_1', 'alternative_2'),
+  .(
+    service_performed,
+    approved_raw_id = fcase(
+      approved == 'closest_1', as.integer(closest_1_raw_id),
+      approved == 'closest_2', as.integer(closest_2_raw_id),
+      approved == 'alternative_1', as.integer(alternative_1_raw_id),
+      approved == 'alternative_2', as.integer(alternative_2_raw_id),
+      default = NA_integer_
+    )
+  )
+]
+
+
+stopifnot(nrow(reviewed_matches) > 0)
+stopifnot(!anyNA(reviewed_matches$service_performed))
+stopifnot(!anyNA(reviewed_matches$approved_raw_id))
+stopifnot(!anyDuplicated(reviewed_matches$service_performed))
+
+reviewed_classified <- merge(
+  reviewed_matches[, .(reviewed_service_performed = service_performed, approved_raw_id)],
+  classified,
+  by.x = 'approved_raw_id',
+  by.y = 'raw_id',
+  all.x = TRUE,
+  sort = FALSE
+)
+
+stopifnot(nrow(reviewed_classified) == nrow(reviewed_matches))
+stopifnot(!anyNA(reviewed_classified$count_cat))
+
+setnames(reviewed_classified, 'approved_raw_id', 'raw_id')
+reviewed_classified[, service_performed := reviewed_service_performed]
+reviewed_classified[, reviewed_service_performed := NULL]
+reviewed_classified <- reviewed_classified[, .SD, .SDcols = colnames(classified)]
+
+classified <- rbind(
+  classified[!service_performed %chin% reviewed_classified$service_performed],
+  reviewed_classified,
+  use.names = TRUE
+)
+
 # Merge tasks with classified descriptions using service_performed as the key
 # all.x=TRUE keeps all rows from tasks even if no match in classified (left join)
 tasks <- merge(tasks, classified, by = "service_performed", all.x = TRUE)
@@ -140,6 +188,9 @@ stopifnot(nrow(tasks[is.na(service_performed)]) == 1)
 # Remove the one row with NA service_performed
 tasks <- tasks[!is.na(service_performed), ]
 
+# all tasks should be categorized
+stopifnot(nrow(tasks[is.na(taskcat1),])==0)
+
 #' -----------------------------------------------------------------------------
 #' ALLOCATE DURATION FOR MULTI-TASK SERVICES
 #' -----------------------------------------------------------------------------
@@ -147,27 +198,40 @@ tasks <- tasks[!is.na(service_performed), ]
 # Count number of services in each appointment
 tasks[, app_service_count := .N, by = app_id]
 
-# When total_app_time is available, use it instead of duration (more accurate)
-tasks[!is.na(total_app_time), duration := total_app_time]
+# two variables capture the total time in the appointment - total app time and total duration
+# duration is always available, but total_app_time is not.
+stopifnot(uniqueN(tasks[is.na(duration) ,"app_id"])==0)
+stopifnot(uniqueN(tasks[is.na(total_app_time) ,"app_id"])>0)
+# total_app_time has 5 negative times, duration has 0
+stopifnot(uniqueN(tasks[duration<0 ,"app_id"])==0)
+stopifnot(uniqueN(tasks[total_app_time<0 ,"app_id"])==5)
+stopifnot(uniqueN(tasks[is.na(duration) ,"app_id"])==0)
+# total_app_time is not unique within appointment, duration is the same
+tasks[,uniq_times:=uniqueN(duration), by="app_id"]
+stopifnot(uniqueN(tasks[uniq_times>1 ,"app_id"])==0)
+tasks[,uniq_times:=uniqueN(total_app_time), by="app_id"]
+stopifnot(uniqueN(tasks[total_app_time>1 ,"app_id"])>0)
+tasks[,uniq_times:=NULL,]
 
+# for these reasons use duration
 # Compute average duration for each task category using only:
 # - Single-category services (count_cat==1)
 # - The specific task category flag is 1 (e.g., taskcat1==1)
 # - Single-service appointments (app_service_count==1)
 # These averages will be used to allocate time for multi-category services
 tasks[, avg_task1 := sum(duration * (count_cat == 1 & taskcat1 == 1 & app_service_count == 1)) /
-                     sum((count_cat == 1 & taskcat1 == 1 & app_service_count == 1))]
+        sum((count_cat == 1 & taskcat1 == 1 & app_service_count == 1))]
 tasks[, avg_task2 := sum(duration * (count_cat == 1 & taskcat2 == 1 & app_service_count == 1)) /
-                     sum((count_cat == 1 & taskcat2 == 1 & app_service_count == 1))]
+        sum((count_cat == 1 & taskcat2 == 1 & app_service_count == 1))]
 tasks[, avg_task3 := sum(duration * (count_cat == 1 & taskcat3 == 1 & app_service_count == 1)) /
-                     sum((count_cat == 1 & taskcat3 == 1 & app_service_count == 1))]
+        sum((count_cat == 1 & taskcat3 == 1 & app_service_count == 1))]
 tasks[, avg_task4 := sum(duration * (count_cat == 1 & taskcat4 == 1 & app_service_count == 1)) /
-                     sum((count_cat == 1 & taskcat4 == 1 & app_service_count == 1))]
+        sum((count_cat == 1 & taskcat4 == 1 & app_service_count == 1))]
 tasks[, avg_task5 := sum(duration * (count_cat == 1 & taskcat5 == 1 & app_service_count == 1)) /
-                     sum((count_cat == 1 & taskcat5 == 1 & app_service_count == 1))]
+        sum((count_cat == 1 & taskcat5 == 1 & app_service_count == 1))]
 # Note: taskcat6 doesn't require count_cat==1 filter (different logic for miscellaneous category)
 tasks[, avg_task6 := sum(duration * (taskcat6 == 1 & app_service_count == 1)) /
-                     sum((taskcat6 == 1 & app_service_count == 1))]
+        sum((taskcat6 == 1 & app_service_count == 1))]
 
 # Reshape data from wide to long format:
 # - measure.vars=list(...) creates pairs of columns: taskcat1-6 (value1) and avg_task1-6 (value2)
@@ -180,13 +244,9 @@ tasks <- melt(tasks,
 # Keep only rows where the service belongs to that task category (value1==1)
 tasks <- tasks[value1 == 1, ]
 
-# For appointments missing total_app_time, assign them all the same helper_id (max value)
-# so they share duration proportionally
-tasks[is.na(total_app_time), helper_id := max(helper_id), by = c("app_id")]
-
 # Allocate duration to each task proportionally based on average task times
 # new_duration = total_duration * (avg_time_for_this_task / sum_of_avg_times_for_all_tasks_in_appointment)
-tasks[, new_duration := duration * value2 / sum(value2), by = c("helper_id")]
+tasks[, new_duration := duration * value2 / sum(value2), by = c("app_id")]
 
 # Replace duration with the newly computed allocated duration
 tasks[, duration := NULL]
