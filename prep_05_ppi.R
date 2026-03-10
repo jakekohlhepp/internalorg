@@ -1,58 +1,33 @@
-#' =============================================================================
-#' PREP 05: Create Producer Price Index Dataset
-#' =============================================================================
-#' Processes BLS Producer Price Index data for use in cost estimation.
-#' Extracts quarterly PPI values (using first month of each quarter).
-#'
-#' Input:  mkdata/raw/20231227_ppi_cost/file.csv
-#' Output: mkdata/data/ppi.rds
-#'
-#' Output Schema:
-#'   ppi_inputs: PPI value for inputs to personal services
-#'   quarter_year: Numeric quarter-year (e.g., 2019.1)
-#'
-#' Dependencies: None
-#' =============================================================================
+# =============================================================================
+# PREP 05: Create Producer Price Index Dataset
+# =============================================================================
+# Processes the BLS Producer Price Index input file into one quarterly series.
+# =============================================================================
 
 library('data.table')
 library('lubridate')
 
-#' -----------------------------------------------------------------------------
-#' LOAD AND PROCESS PPI DATA
-#' -----------------------------------------------------------------------------
+source('config.R')
 
-# Load PPI data from BLS
-# The file contains monthly PPI values
-ppi <- fread('mkdata/raw/20231227_ppi_cost/file.csv')
+ppi_input_path <- project_path('mkdata', 'raw', '20231227_ppi_cost', 'file.csv')
+output_path <- project_path(CONFIG$prep_output_dir, 'ppi.rds')
 
-# Rename the 'Value' column to 'ppi_inputs' for clarity
-setnames(ppi, "Value", "ppi_inputs")
+assert_required_files(ppi_input_path)
+ensure_directory(dirname(output_path))
 
-# Extract month number from Period column (format: "M01" for January, etc.)
-ppi[, month := as.numeric(gsub("M", "", Period))]
+ppi <- fread(ppi_input_path)
+assert_required_columns(ppi, c('Value', 'Period', 'Year'), 'ppi')
 
-# Compute quarter from month (1-3 = Q1, 4-6 = Q2, etc.)
+setnames(ppi, 'Value', 'ppi_inputs')
+ppi[, month := as.numeric(gsub('M', '', Period))]
 ppi[, quarter := quarter(month)]
-
-# Create quarter_year in decimal format (e.g., 2019.1 for 2019 Q1)
 ppi[, quarter_year := as.numeric(Year) + quarter / 10]
-
-# Identify first month of each quarter (for consistent quarterly value)
-ppi[, helper := frank(month), by = c("quarter_year")]
-
-# Keep only the first month of each quarter
-# This gives us one PPI observation per quarter
-ppi <- ppi[helper == 1, c("ppi_inputs", "quarter_year")]
-
-# Verify uniqueness: one observation per quarter
+ppi[, helper := frank(month), by = c('quarter_year')]
+ppi <- ppi[helper == 1, c('ppi_inputs', 'quarter_year')]
 stopifnot(nrow(ppi) == uniqueN(ppi))
 
-#' -----------------------------------------------------------------------------
-#' SAVE OUTPUT
-#' -----------------------------------------------------------------------------
+saveRDS(ppi, output_path)
 
-saveRDS(ppi, "mkdata/data/ppi.rds")
-
-message("Saved mkdata/data/ppi.rds")
-message("  Quarters: ", nrow(ppi))
-message("  Date range: ", min(ppi$quarter_year), " to ", max(ppi$quarter_year))
+message('Saved ', output_path)
+message('  Quarters: ', nrow(ppi))
+message('  Date range: ', min(ppi$quarter_year), ' to ', max(ppi$quarter_year))
