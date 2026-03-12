@@ -49,6 +49,7 @@ Thumbs.db
 
 # Machine-specific environment (contains local data paths)
 .Renviron
+.Renviron.R
 .Rprofile
 
 # Claude Code artifacts
