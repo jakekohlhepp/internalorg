@@ -7,21 +7,6 @@
 #' Input:  CONFIG$raw_data_path/compiled_trxns.rds (10GB+)
 #' Output: mkdata/data/00_tasks_cosmo.rds
 #'
-#' LOADING OPTIMIZATION NOTE:
-#' The raw file is 10GB+ and takes several minutes to load with readRDS().
-#' For faster loading, consider converting to one of these formats:
-#'
-#'   qs::qsave(data, "compiled_trxns.qs", preset = "fast")
-#'   # Then load with: tasks <- data.table(qs::qread("compiled_trxns.qs"))
-#'   # Speed improvement: 3-5x faster
-#'
-#'   fst::write_fst(data, "compiled_trxns.fst")
-#'   # Then load with: tasks <- data.table(fst::read_fst("compiled_trxns.fst"))
-#'   # Speed improvement: 5-10x faster
-#'
-#'   arrow::write_parquet(data, "compiled_trxns.parquet")
-#'   # Then load with: tasks <- data.table(arrow::read_parquet("compiled_trxns.parquet"))
-#'   # Speed improvement: 5-10x faster, with selective column loading
 #' =============================================================================
 
 # Load required packages:
