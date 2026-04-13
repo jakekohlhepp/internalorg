@@ -394,9 +394,6 @@ firm_quarter[, has_productdata:=!is.na(uniq_products) & uniq_products>0,]
 firm_quarter[, std_uniq_discounts:=uniq_discounts/sd(uniq_discounts, na.rm=TRUE)]
 firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
 
-## exclusions
-# there is one salon in KY which is an anomaly
-firm_quarter<-firm_quarter[location_id!='fb686b3a-a166-469b-88ea-3467a68e2f53',]
 # exclude partial quarter
 firm_quarter<-firm_quarter[quarter_year!=2021.3,]
 

@@ -22,10 +22,6 @@ ensure_directory("results/out/tables")
 
 full_unsmoothed <- readRDS(file.path(CONFIG$prep_output_dir, "01_staff_task_full.rds"))
 
-## exclusions
-# there is one salon in KY which is an anomaly
-full_unsmoothed <- full_unsmoothed[location_id != 'fb686b3a-a166-469b-88ea-3467a68e2f53', ]
-
 full_unsmoothed <- unique(full_unsmoothed[, .SD, .SDcols = c(colnames(full_unsmoothed)[grep("^task_mix", colnames(full_unsmoothed))], "s_index", "location_id", "county", "cust_count", "quarter_year", "emps", "cust_count", "revenue")])
 
 ## restrict to the three counties and quarters
