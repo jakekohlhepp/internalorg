@@ -652,6 +652,25 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   
 
 #' -----------------------------------------------------------------------------
+#' ADDITIONAL AUXILIARY MEASURES
+#' -----------------------------------------------------------------------------
+  res0<-feols(std_mistake~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res1<-feols(std_renter~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res2<-feols(std_tip~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+quarter_year,cluster=~location_id, data=firm_quarter[quarter_year>=year(as_date(first_tip))+quarter(as_date(first_tip))/10])
+  res3<-feols(has_productdata~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res4<-feols(has_renter~std_sindex|county,cluster=~location_id, data=firm_data)
+  res5<-feols(uses_tip~std_sindex|county,cluster=~location_id, data=firm_data)
+
+  etable(res0, res1,res2,res3,res4,res5, fitstat=~n+r2,keep="!Constant",dict=c(std_sindex="S-Index", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
+                                                                             task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
+                                                                             task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment",
+                        std_mistake="Misspellings", std_renter="Chair Renters", std_tip="Tip Percent",
+                        has_productdata="Has Product Data", has_renter="Has Chair Renter", uses_tip="Uses Tip Feature",
+                        county="County"),
+         file="results/out/tables/01_01_auxiliary_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+
+
+#' -----------------------------------------------------------------------------
 #' CUSTOMER UTILIZATION OF FEATURES
 #' -----------------------------------------------------------------------------
   res1<-feols(std_prebook~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter[quarter_year>=year(as_date(first_prebook))+quarter(as_date(first_prebook))/10])
