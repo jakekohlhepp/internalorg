@@ -43,6 +43,33 @@ ensure_directory("results/data")
 ensure_directory("results/out/tables")
 ensure_directory("results/out/figures")
 
+if (!nzchar(CONFIG$raw_data_base)) {
+  stop("CONFIG$raw_data_base must be set to run 01_01_stylized_facts.R")
+}
+
+task_data_path <- project_path(CONFIG$prep_output_dir, "00_tasks_cosmo.rds")
+county_pop_path <- project_path(CONFIG$prep_output_dir, "county_census_pop.rds")
+staff_task_full_path <- project_path(CONFIG$prep_output_dir, "01_staff_task_full.rds")
+chairrenter_path <- file.path(CONFIG$raw_data_base, "20201204_chair_renters/staff_renters.csv")
+tip_dir <- file.path(CONFIG$raw_data_base, "20200909_raw", "Marketing Intern Data")
+tip_header_path <- file.path(tip_dir, "x00.csv")
+tip_data2_path <- file.path(CONFIG$raw_data_base, "20201214_tip_more/bi_tip_lines_2017-2020.csv")
+tip_data3_path <- file.path(CONFIG$raw_data_base, "20210809_alldata_refresh_withzip/tip_amount_export.csv")
+product_data1_path <- file.path(CONFIG$raw_data_base, "20210809_alldata_refresh_withzip/product_sales_export.csv")
+product_data2_path <- file.path(CONFIG$raw_data_base, "2017_2020_product_sales/2017_2020_product_sales.csv")
+
+assert_required_files(c(
+  task_data_path,
+  county_pop_path,
+  staff_task_full_path,
+  chairrenter_path,
+  tip_header_path,
+  tip_data2_path,
+  tip_data3_path,
+  product_data1_path,
+  product_data2_path
+))
+
 showtext_auto()
 showtext_opts(dpi = 300)
 
@@ -61,7 +88,7 @@ spec_log <- function(x) ifelse(x == 0 | x == -Inf | is.nan(x), 0, log(x))
 #' LOAD AND PREPARE TASK DATA
 #' -----------------------------------------------------------------------------
 
-working <- data.table(readRDS(file.path(CONFIG$prep_output_dir, "00_tasks_cosmo.rds")))
+working <- data.table(readRDS(task_data_path))
 
 ## merge extension task with blowdry task
 working[, clust:=ifelse(clust==3,4 ,clust)]
@@ -106,7 +133,7 @@ working<-merge(working,data[,c("location_zip", "county")], by="location_zip", al
 stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
 
 ## get populations based on estimate for each year (except for census number in 2020)
-working<-merge(working, readRDS(file.path(CONFIG$prep_output_dir, "county_census_pop.rds")), by=c("county", "year"),all.x=TRUE)
+working<-merge(working, readRDS(county_pop_path), by=c("county", "year"),all.x=TRUE)
 
 
 
@@ -191,7 +218,7 @@ working[, mistake_count:=ifelse(is_mistake, service_performed,NA)]
 #' -----------------------------------------------------------------------------
 #' CHAIR RENTERS
 #' -----------------------------------------------------------------------------
-chairrenter <- fread(file.path(CONFIG$raw_data_base, "20201204_chair_renters/staff_renters.csv"))
+chairrenter <- fread(chairrenter_path)
 working<-merge(working,chairrenter, by=c("staff_id", "business_id"),all.x=TRUE)
 
 working[!is.na(chair_renter), count_chairrenter:=ifelse(chair_renter, staff_id,NA)]
@@ -205,18 +232,18 @@ working[is.na(chair_renter),count_chairrenter:=NA ]
 
 ## tips - earliest date tipping function is used
 
-tip_dir <- file.path(CONFIG$raw_data_base, "20200909_raw/Marketing Intern Data")
-top <- fread(file.path(tip_dir, "x00.csv"))
-files<-list.files(path=tip_dir, pattern = "*.csv")
-tip_data1 <- rbindlist(lapply(file.path(tip_dir, files[-1]), fread))
+top <- fread(tip_header_path)
+files <- list.files(path = tip_dir, pattern = "*.csv", full.names = TRUE)
+stopifnot(length(files) > 1)
+tip_data1 <- rbindlist(lapply(files[!grepl("x00\\.csv$", basename(files))], fread))
 names(tip_data1)<-names(top)
 tip_data1<-rbind(tip_data1, top)
 rm(top)
 # only 5 obs with tips - clearly some issue with this.
 
-tip_data2<-fread(file.path(CONFIG$raw_data_base, '20201214_tip_more/bi_tip_lines_2017-2020.csv'))
+tip_data2<-fread(tip_data2_path)
 
-tip_data3<-fread(file.path(CONFIG$raw_data_base, '20210809_alldata_refresh_withzip/tip_amount_export.csv'))
+tip_data3<-fread(tip_data3_path)
 
 setnames(tip_data3, "APPOINTMENT_ID", "app_id")
 setnames(tip_data2, "appointment_id", "app_id")
@@ -282,13 +309,12 @@ firm_quarter<-working[,.(cust_count=uniqueN(customer_id),pastrepeat_rate=uniqueN
 firm_quarter<-merge(firm_quarter, visit_data,by=c("location_id", "quarter_year"), all.x=TRUE)   
 
 ## add s-index.
-full_unsmoothed<-readRDS(file.path(CONFIG$prep_output_dir, "01_staff_task_full.rds"))
+full_unsmoothed<-readRDS(staff_task_full_path)
 full_unsmoothed<-unique(full_unsmoothed[,.SD, .SDcols=c(colnames(full_unsmoothed)[grep("^task_mix",colnames(full_unsmoothed))], "s_index", "location_id", "quarter_year", "county","location_zip")])
 # Keep only matched firm-quarters so stale pre-transition rows from legacy-import
 # histories do not survive through the merge when the task panel has been cleaned.
 firm_quarter<-merge(full_unsmoothed, firm_quarter, by=c("location_id", "quarter_year"))
 
-saveRDS(firm_quarter, "results/data/01_01_stylized_facts_data.rds")
 
 firm_quarter[, std_sindex:=s_index/sd(s_index, na.rm=TRUE)]
 firm_quarter[, std_uniq_desc:=uniq_desc/sd(uniq_desc, na.rm=TRUE)]
@@ -347,9 +373,9 @@ print(uniqueN(firm_quarter[locs_bizid==1,"business_id"])/uniqueN(firm_quarter[,"
 #' PRODUCT DATA AND DISCOUNT SOPHISTICATION
 #' -----------------------------------------------------------------------------
 
-product_data1<-fread(file.path(CONFIG$raw_data_base, '20210809_alldata_refresh_withzip/product_sales_export.csv'))
+product_data1<-fread(product_data1_path)
 
-product_data2<-fread(file.path(CONFIG$raw_data_base, '2017_2020_product_sales/2017_2020_product_sales.csv'))
+product_data2<-fread(product_data2_path)
 colnames(product_data1)<-str_to_lower(colnames(product_data1))
 product_data2[,date:=date(ymd_hms(report_at_date)) ]
 product_data1[,date:=date(ymd(report_at_date)) ]
@@ -373,6 +399,8 @@ firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
 firm_quarter<-firm_quarter[location_id!='fb686b3a-a166-469b-88ea-3467a68e2f53',]
 # exclude partial quarter
 firm_quarter<-firm_quarter[quarter_year!=2021.3,]
+
+saveRDS(firm_quarter, "results/data/01_01_stylized_facts_data.rds")
 
 firm_quarter[,s_max:=-task_mix_1*spec_log(task_mix_1)-task_mix_2*spec_log(task_mix_2)-task_mix_3*spec_log(task_mix_3)-task_mix_4*spec_log(task_mix_4)-task_mix_5*spec_log(task_mix_5)]
 

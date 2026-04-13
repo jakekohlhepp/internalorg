@@ -29,8 +29,10 @@ full_unsmoothed <- full_unsmoothed[location_id != 'fb686b3a-a166-469b-88ea-3467a
 full_unsmoothed <- unique(full_unsmoothed[, .SD, .SDcols = c(colnames(full_unsmoothed)[grep("^task_mix", colnames(full_unsmoothed))], "s_index", "location_id", "county", "cust_count", "quarter_year", "emps", "cust_count", "revenue")])
 
 ## restrict to the three counties and quarters
-quarter_list <- c(2018.1, 2018.2, 2018.3, 2018.4, 2019.1, 2019.2, 2019.3, 2019.4, 2020.1, 2020.4, 2021.1, 2021.2)
-full_unsmoothed <- full_unsmoothed[county %in% CONFIG$counties_padded & quarter_year %in% quarter_list, ]
+full_unsmoothed <- full_unsmoothed[
+  county %in% CONFIG$counties_padded &
+    quarter_year %in% CONFIG$estimation_quarters,
+]
 
 #' -----------------------------------------------------------------------------
 #' GENERATE SUMMARY STATISTICS TABLE
