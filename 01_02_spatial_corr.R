@@ -55,17 +55,13 @@ setnames(working_data, "location_zip", "ZCTA5CE10")
 working_data[, coverage := 1]
 
 #' -----------------------------------------------------------------------------
-#' MAP ZIP CODES TO COUNTY
+#' MAP ZIP CODES TO COUNTY (for shapefile geometries)
 #' -----------------------------------------------------------------------------
 
-countypop <- fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220806816.csv'))[-1]
-countypop[, CSPOP := pop20]
-stopifnot(uniqueN(countypop$county) == nrow(countypop))
 data <- fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220801561.csv'))[-1]
 data[, count := uniqueN(county), by = zcta]
-data <- data[afact > 0.50 | count == 1] # mapping only if more than 50 percent of zip is within county
+data <- data[afact > 0.50 | count == 1]  # mapping only if more than 50 percent of zip is within county
 stopifnot(uniqueN(data$zcta) == nrow(data))
-data <- merge(data, countypop[, c("county")], by = "county")
 data[, ZCTA5CE10 := as.character(zcta)]
 data[, county := as.character(as.integer(county))]
 

@@ -8,7 +8,7 @@
 ## we can treat firm-quarters as observations.
 ## update 20240424: add weights vector. this changes the clustering procedure but allows the entire process to be boostrapped.
 ## update 20240507: combine 01_01 and 01_02 into one program
-## also the progrma now starts with a 5 type firm
+## also the program now starts with a 5 type firm
 
 library('data.table')
 library('lubridate')
@@ -27,62 +27,16 @@ source('config.R')
 set.seed(588621)
 rowMax <- function(data) apply(data,1, max, na.rm = TRUE)
 rowMin <- function(data) apply(data,1, min, na.rm = TRUE)
-working<-data.table(readRDS("mkdata/data/00_tasks_cosmo.rds"))
+working <- data.table(readRDS("mkdata/data/00_tasks_cosmo.rds"))
 
-## merge extension task with blowdry task.
-working[, clust:=ifelse(clust==3,4 ,clust)]
-working[, rep_text_cluster:=ifelse(clust==4,"Blowdry/Style/Treatment/Extension" ,rep_text_cluster)]
-working[, clust:=frank(clust, ties.method="dense")]
-keytask<-unique(working[, c("clust", "rep_text_cluster")])
-keytask[, task:=clust]
-keytask[, type:=clust]
-saveRDS(keytask, "mkdata/data/01_keytask.rds")
+## verify upstream cleaning was applied
+stopifnot("county" %in% colnames(working))
+stopifnot("quarter_year" %in% colnames(working))
+stopifnot(nrow(working[duration == 0, ]) == 0)
 
-#### dall durations should be positive.
-stopifnot(nrow(working[duration<0])==0)
-
-## impute 0 time as average among quarter cluster (2% are imputed.)
-nrow(working[duration==0,])/nrow(working)
-working[, temp_dur:=ifelse(duration==0,NA,duration)]
-working[, quarter_year:=year(date)+quarter(date)/10]
-working[, year:=year(date)]
-working[, temp_mean_dur:=mean(temp_dur, na.rm=TRUE), by=c("quarter_year", "clust")]
-working[,duration:=ifelse(duration==0,temp_mean_dur,duration) ]
-working[, c("temp_dur", "temp_mean_dur"):=list(NULL, NULL)]
 setkey(working, location_id, customer_id, date, app_id)
-working[, first_visit:=min(date), by=c("location_id", "customer_id")]
-working[, last_visit:=max(date), by=c("location_id", "customer_id")]
-
-
-### map zip codes to county
-countypop<-fread('mkdata/raw/20220727_countypop/geocorr2022_2220806816.csv')[-1]
-countypop[,CSPOP:=pop20]
-stopifnot(uniqueN(countypop$county)==nrow(countypop))
-data<-fread('mkdata/raw/20220727_countypop/geocorr2022_2220801561.csv')[-1]
-data[, count:=uniqueN(county),by=zcta]
-data<-data[afact>0.50 | count==1] # mapping only if more than 50 percent of zip is within county.
-stopifnot(uniqueN(data$zcta)==nrow(data))
-data<-merge(data, countypop[,c("county")], by="county")
-stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
-data[, location_zip:=as.numeric(zcta)]
-working<-merge(working,data[,c("location_zip", "county")], by="location_zip", all.x=TRUE)
-stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
-
-### get populations based on estimate for each year (except for census number in 2020)
-working<-merge(working, readRDS("mkdata/data/county_census_pop.rds"), by=c("county", "year"),all.x=TRUE)
-
-
-
-### drop firm-quarters that have 0 price
-temp<-working[,.(rev=sum(price)),by=c("quarter_year", "location_id")]
-temp[, is_zero:=rev<=0]
-print(nrow(temp[is_zero==1]))
-temp[,rev:=NULL]
-working<-merge(working, temp, by=c("quarter_year", "location_id"), all.x=TRUE)
-working<-working[is_zero==0,]
-rm(temp)
-
-
+working[, first_visit := min(date), by = c("location_id", "customer_id")]
+working[, last_visit := max(date), by = c("location_id", "customer_id")]
 
 #### Step 0: Functions we need
 
