@@ -8,7 +8,6 @@
 #' Input:  mkdata/data/00_tasks_cosmo.rds
 #'         mkdata/data/01_staff_task_full.rds
 #' Output: results/data/01_01_stylized_facts_data.rds
-#'         results/data/01_00_keytask.rds
 #'         results/out/tables/01_01_*.tex
 #'         results/out/figures/01_01_*.png
 #' =============================================================================
@@ -48,7 +47,6 @@ if (!nzchar(CONFIG$raw_data_base)) {
 }
 
 task_data_path <- project_path(CONFIG$prep_output_dir, "00_tasks_cosmo.rds")
-county_pop_path <- project_path(CONFIG$prep_output_dir, "county_census_pop.rds")
 staff_task_full_path <- project_path(CONFIG$prep_output_dir, "01_staff_task_full.rds")
 chairrenter_path <- file.path(CONFIG$raw_data_base, "20201204_chair_renters/staff_renters.csv")
 tip_dir <- file.path(CONFIG$raw_data_base, "20200909_raw", "Marketing Intern Data")
@@ -60,7 +58,6 @@ product_data2_path <- file.path(CONFIG$raw_data_base, "2017_2020_product_sales/2
 
 assert_required_files(c(
   task_data_path,
-  county_pop_path,
   staff_task_full_path,
   chairrenter_path,
   tip_header_path,
@@ -90,61 +87,10 @@ spec_log <- function(x) ifelse(x == 0 | x == -Inf | is.nan(x), 0, log(x))
 
 working <- data.table(readRDS(task_data_path))
 
-## merge extension task with blowdry task
-working[, clust:=ifelse(clust==3,4 ,clust)]
-working[, rep_text_cluster:=ifelse(clust==4,"Blowdry/Style/Treatment/Extension" ,rep_text_cluster)]
-working[, clust:=frank(clust, ties.method="dense")]
-keytask<-unique(working[, c("clust", "rep_text_cluster")])
-keytask[, task:=clust]
-keytask[, type:=clust]
-saveRDS(keytask, "results/data/01_00_keytask.rds")
-
-#' -----------------------------------------------------------------------------
-#' CLEAN DURATION AND TIME VARIABLES
-#' -----------------------------------------------------------------------------
-
-## drop observations with negative time
-working <- working[duration >= 0, ]
-
-## impute 0 time as average among quarter cluster (1% are imputed)
-nrow(working[duration == 0, ]) / nrow(working)
-working[, temp_dur:=ifelse(duration==0,NA,duration)]
-working[, quarter_year:=year(date)+quarter(date)/10]
-working[, year:=year(date)]
-working[, temp_mean_dur:=mean(temp_dur, na.rm=TRUE), by=c("quarter_year", "clust")]
-working[,duration:=ifelse(duration==0,temp_mean_dur,duration) ]
-working[, c("temp_dur", "temp_mean_dur"):=list(NULL, NULL)]
-
-
-#' -----------------------------------------------------------------------------
-#' MAP ZIP CODES TO COUNTY
-#' -----------------------------------------------------------------------------
-countypop<-fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220806816.csv'))[-1]
-countypop[,CSPOP:=pop20]
-stopifnot(uniqueN(countypop$county)==nrow(countypop))
-data<-fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220801561.csv'))[-1]
-data[, count:=uniqueN(county),by=zcta]
-data<-data[afact>0.50 | count==1] # mapping only if more than 50 percent of zip is within county.
-stopifnot(uniqueN(data$zcta)==nrow(data))
-data<-merge(data, countypop[,c("county")], by="county")
-stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
-data[, location_zip:=as.numeric(zcta)]
-working<-merge(working,data[,c("location_zip", "county")], by="location_zip", all.x=TRUE)
-stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
-
-## get populations based on estimate for each year (except for census number in 2020)
-working<-merge(working, readRDS(county_pop_path), by=c("county", "year"),all.x=TRUE)
-
-
-
-## drop firm-quarters that have 0 price
-temp<-working[,.(rev=sum(price)),by=c("quarter_year", "location_id")]
-temp[, is_zero:=rev<=0]
-print(nrow(temp[is_zero==1]))
-temp[,rev:=NULL]
-working<-merge(working, temp, by=c("quarter_year", "location_id"), all.x=TRUE)
-working<-working[is_zero==0,]
-rm(temp)
+## verify upstream cleaning was applied
+stopifnot("county" %in% colnames(working))
+stopifnot("quarter_year" %in% colnames(working))
+stopifnot(nrow(working[duration == 0, ]) == 0)
 
 
 #' -----------------------------------------------------------------------------
