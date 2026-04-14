@@ -1,6 +1,19 @@
-### this script creates all sylized facts
-### this script also creates some non-task variables.
-library(qdapDictionaries)
+#' =============================================================================
+#' STEP 01_01: Stylized Facts and Non-Task Variables
+#' =============================================================================
+#' Creates stylized facts from task-level data: summary statistics, dispersion
+#' measures, productivity-specialization correlations, management practices,
+#' and additional non-task variables (tips, prebooking, chair renters, etc.).
+#'
+#' Input:  mkdata/data/00_tasks_cosmo.rds
+#'         mkdata/data/01_staff_task_full.rds
+#' Output: results/data/01_01_stylized_facts_data.rds
+#'         results/out/tables/01_01_*.tex
+#'         results/out/figures/01_01_*.png
+#' =============================================================================
+
+# Load required packages
+library('qdapDictionaries')
 library('data.table')
 library('lubridate')
 library('stringr')
@@ -20,80 +33,71 @@ library('kableExtra')
 library('fixest')
 library('pander')
 library('stargazer')
-library(showtext)
+library('showtext')
+
+# Load configuration
+source('config.R')
+
+ensure_directory("results/data")
+ensure_directory("results/out/tables")
+ensure_directory("results/out/figures")
+
+if (!nzchar(CONFIG$raw_data_base)) {
+  stop("CONFIG$raw_data_base must be set to run 01_01_stylized_facts.R")
+}
+
+task_data_path <- project_path(CONFIG$prep_output_dir, "00_tasks_cosmo.rds")
+staff_task_full_path <- project_path(CONFIG$prep_output_dir, "01_staff_task_full.rds")
+chairrenter_path <- file.path(CONFIG$raw_data_base, "20201204_chair_renters/staff_renters.csv")
+tip_dir <- file.path(CONFIG$raw_data_base, "20200909_raw", "Marketing Intern Data")
+tip_header_path <- file.path(tip_dir, "x00.csv")
+tip_data2_path <- file.path(CONFIG$raw_data_base, "20201214_tip_more/bi_tip_lines_2017-2020.csv")
+tip_data3_path <- file.path(CONFIG$raw_data_base, "20210809_alldata_refresh_withzip/tip_amount_export.csv")
+product_data1_path <- file.path(CONFIG$raw_data_base, "20210809_alldata_refresh_withzip/product_sales_export.csv")
+product_data2_path <- file.path(CONFIG$raw_data_base, "2017_2020_product_sales/2017_2020_product_sales.csv")
+
+assert_required_files(c(
+  task_data_path,
+  staff_task_full_path,
+  chairrenter_path,
+  tip_header_path,
+  tip_data2_path,
+  tip_data3_path,
+  product_data1_path,
+  product_data2_path
+))
 
 showtext_auto()
 showtext_opts(dpi = 300)
 
-my_style = style.df(depvar.title = "", fixef.title = "", 
+my_style = style.df(depvar.title = "", fixef.title = "",
                     fixef.suffix = " fixed effect", yesNo = "yes")
 setFixest_etable(style.df = my_style, postprocess.df = pandoc.table.return)
-
 
 is.word  <- Vectorize(function(x) x %in% GradyAugmented)
 
 set.seed(588621)
-rowMax <- function(data) apply(data,1, max, na.rm = TRUE)
-rowMin <- function(data) apply(data,1, min, na.rm = TRUE)
-spec_log<-function(x)  ifelse(x==0 | x==-Inf | is.nan(x),0,log(x))
+rowMax <- function(data) apply(data, 1, max, na.rm = TRUE)
+rowMin <- function(data) apply(data, 1, min, na.rm = TRUE)
+spec_log <- function(x) ifelse(x == 0 | x == -Inf | is.nan(x), 0, log(x))
 
-working<-data.table(readRDS("mkdata/data/tasks_cosmo.rds"))
+#' -----------------------------------------------------------------------------
+#' LOAD AND PREPARE TASK DATA
+#' -----------------------------------------------------------------------------
 
-## merge extension task with blowdry task.
-working[, clust:=ifelse(clust==3,4 ,clust)]
-working[, rep_text_cluster:=ifelse(clust==4,"Blowdry/Style/Treatment/Extension" ,rep_text_cluster)]
-working[, clust:=frank(clust, ties.method="dense")]
-keytask<-unique(working[, c("clust", "rep_text_cluster")])
-keytask[, task:=clust]
-keytask[, type:=clust]
-saveRDS(keytask, "analysis_final/data/01_00_keytask.rds")
+working <- data.table(readRDS(task_data_path))
 
-#### data issue: drop 5 observations with negative time
-stopifnot(nrow(working[duration<0])==5)
-working<-working[duration>=0,]
-
-## impute 0 time as average among quarter cluster (1% are imputed.)
-nrow(working[duration==0,])/nrow(working)
-working[, temp_dur:=ifelse(duration==0,NA,duration)]
-working[, quarter_year:=year(date)+quarter(date)/10]
-working[, year:=year(date)]
-working[, temp_mean_dur:=mean(temp_dur, na.rm=TRUE), by=c("quarter_year", "clust")]
-working[,duration:=ifelse(duration==0,temp_mean_dur,duration) ]
-working[, c("temp_dur", "temp_mean_dur"):=list(NULL, NULL)]
+## verify upstream cleaning was applied
+stopifnot("county" %in% colnames(working))
+stopifnot("quarter_year" %in% colnames(working))
+stopifnot(nrow(working[duration == 0, ]) == 0)
 
 
-### map zip codes to county
-countypop<-fread('mkdata/raw/20220727_countypop/geocorr2022_2220806816.csv')[-1]
-countypop[,CSPOP:=pop20]
-stopifnot(uniqueN(countypop$county)==nrow(countypop))
-data<-fread('mkdata/raw/20220727_countypop/geocorr2022_2220801561.csv')[-1]
-data[, count:=uniqueN(county),by=zcta]
-data<-data[afact>0.50 | count==1] # mapping only if more than 50 percent of zip is within county.
-stopifnot(uniqueN(data$zcta)==nrow(data))
-data<-merge(data, countypop[,c("county")], by="county")
-stopifnot(uniqueN(data[zcta %in% unique(working$location_zip) ]$zcta)==nrow(data[zcta %in% unique(working$location_zip) ]))
-data[, location_zip:=as.numeric(zcta)]
-working<-merge(working,data[,c("location_zip", "county")], by="location_zip", all.x=TRUE)
-stopifnot(uniqueN(working[is.na(county), location_id])==2)# one NA and one zip code not matched.
+#' -----------------------------------------------------------------------------
+#' VISIT-LEVEL SPECIALIZATION AND CUSTOMER BEHAVIOR
+#' -----------------------------------------------------------------------------
 
-### get populations based on estimate for each year (except for census number in 2020)
-working<-merge(working, readRDS("mkdata/data/county_census_pop.rds"), by=c("county", "year"),all.x=TRUE)
-
-
-
-### drop firm-quarters that have 0 price
-temp<-working[,.(rev=sum(price)),by=c("quarter_year", "location_id")]
-temp[, is_zero:=rev<=0]
-print(nrow(temp[is_zero==1]))
-temp[,rev:=NULL]
-working<-merge(working, temp, by=c("quarter_year", "location_id"), all.x=TRUE)
-working<-working[is_zero==0,]
-rm(temp)
-
-###
-
-
-## measures of within visit specialization and whether staff was requested.
+## measures of within visit specialization and whether staff was requested
 setkey(working, location_id, customer_id, date, app_id)
 visit_data<-working[, .(services_invisit=.N,staff_invisit=uniqueN(staff_id)),by=c("location_id","customer_id", "date", "quarter_year")]
 visit_data[,multi_service:= services_invisit>1 ]
@@ -124,7 +128,11 @@ working[, staffreq_date:=ifelse(was_staff_requested, date,NA) ]
 working[, is_multi:= uniqueN(location_id)>1,by=c("business_id")]
 
 
-## number of misspelling of 
+#' -----------------------------------------------------------------------------
+#' SERVICE DESCRIPTION TEXT ANALYSIS
+#' -----------------------------------------------------------------------------
+
+## number of misspellings
 service_text<-unique(working[,"service_performed"])
 service_text[, clean_text:=gsub("[^A-Za-z0-9 ]","",service_performed)]
 service_text[, clean_text:=str_to_lower(clean_text)][,clean_text:=gsub("'s","",clean_text)][,clean_text:=gsub('[[:punct:]]+',' ',clean_text)][,clean_text:=gsub('[[:digit:]]+', '', clean_text)]
@@ -153,8 +161,10 @@ working<-merge(working, service_text[,c("service_performed", "is_mistake")], by=
 working[, mistake_count:=ifelse(is_mistake, service_performed,NA)]
 
 
-## chair renters
-chairrenter <- fread("C:/Users/jakek/blvd_dont_backup/20201204_chair_renters/staff_renters.csv")
+#' -----------------------------------------------------------------------------
+#' CHAIR RENTERS
+#' -----------------------------------------------------------------------------
+chairrenter <- fread(chairrenter_path)
 working<-merge(working,chairrenter, by=c("staff_id", "business_id"),all.x=TRUE)
 
 working[!is.na(chair_renter), count_chairrenter:=ifelse(chair_renter, staff_id,NA)]
@@ -162,19 +172,24 @@ working[is.na(chair_renter),count_chairrenter:=NA ]
 
 
 
+#' -----------------------------------------------------------------------------
+#' TIPS DATA
+#' -----------------------------------------------------------------------------
+
 ## tips - earliest date tipping function is used
 
-top <- fread("C:/Users/jakek/blvd_dont_backup/20200909_raw/Marketing Intern Data/x00.csv")
-files<-list.files(path="C:/Users/jakek/blvd_dont_backup/20200909_raw/Marketing Intern Data/",pattern = "*.csv")
-tip_data1 <- rbindlist(lapply(paste0("C:/Users/jakek/blvd_dont_backup/20200909_raw/Marketing Intern Data/",files[-1]), fread))
+top <- fread(tip_header_path)
+files <- list.files(path = tip_dir, pattern = "*.csv", full.names = TRUE)
+stopifnot(length(files) > 1)
+tip_data1 <- rbindlist(lapply(files[!grepl("x00\\.csv$", basename(files))], fread))
 names(tip_data1)<-names(top)
 tip_data1<-rbind(tip_data1, top)
 rm(top)
 # only 5 obs with tips - clearly some issue with this.
 
-tip_data2<-fread('C:/Users/jakek/blvd_dont_backup/20201214_tip_more/bi_tip_lines_2017-2020.csv')
+tip_data2<-fread(tip_data2_path)
 
-tip_data3<-fread('C:/Users/jakek/blvd_dont_backup/20210809_alldata_refresh_withzip/tip_amount_export.csv')
+tip_data3<-fread(tip_data3_path)
 
 setnames(tip_data3, "APPOINTMENT_ID", "app_id")
 setnames(tip_data2, "appointment_id", "app_id")
@@ -217,7 +232,10 @@ working[, tip_date:=ifelse(is.na(tip),NA,date)]
 working[, tip_percent:=ifelse(is.na(tip) | price<=0,NA,tip/price)]
 
 
-## compile
+#' -----------------------------------------------------------------------------
+#' COMPILE FIRM-QUARTER PANEL
+#' -----------------------------------------------------------------------------
+
 working[, first_prebook:=min(prebook_date,na.rm=TRUE), by="location_id" ]
 working[, first_staffreq:=min(staffreq_date,na.rm=TRUE), by="location_id" ]
 working[,first_tip:=min(tip_date,na.rm=TRUE), by="location_id" ]
@@ -237,11 +255,12 @@ firm_quarter<-working[,.(cust_count=uniqueN(customer_id),pastrepeat_rate=uniqueN
 firm_quarter<-merge(firm_quarter, visit_data,by=c("location_id", "quarter_year"), all.x=TRUE)   
 
 ## add s-index.
-full_unsmoothed<-readRDS("analysis_final/data/01_00_staff_task_full.rds")
+full_unsmoothed<-readRDS(staff_task_full_path)
 full_unsmoothed<-unique(full_unsmoothed[,.SD, .SDcols=c(colnames(full_unsmoothed)[grep("^task_mix",colnames(full_unsmoothed))], "s_index", "location_id", "quarter_year", "county","location_zip")])
-firm_quarter<-merge(full_unsmoothed, firm_quarter, by=c("location_id", "quarter_year"), all.x=TRUE)
+# Keep only matched firm-quarters so stale pre-transition rows from legacy-import
+# histories do not survive through the merge when the task panel has been cleaned.
+firm_quarter<-merge(full_unsmoothed, firm_quarter, by=c("location_id", "quarter_year"))
 
-saveRDS(firm_quarter, "analysis_final/data/01_01_stylied_facts_data.rds")
 
 firm_quarter[, std_sindex:=s_index/sd(s_index, na.rm=TRUE)]
 firm_quarter[, std_uniq_desc:=uniq_desc/sd(uniq_desc, na.rm=TRUE)]
@@ -258,11 +277,15 @@ firm_quarter[, rev_cust:=revenue/cust_count]
 firm_quarter[, std_rev_cust:=rev_cust/sd(rev_cust, na.rm=TRUE)]
 firm_quarter[, std_cust:=cust_count/sd(cust_count, na.rm=TRUE)]
 
-### county - one zip code not mapped to county
-### manually code as orange county based on la times article: https://www.latimes.com/archives/la-xpm-1996-04-20-me-18603-story.html
+#' -----------------------------------------------------------------------------
+#' COUNTY AND ZIP CODE FIXES
+#' -----------------------------------------------------------------------------
+
+## one zip code not mapped to county
+## manually code as orange county based on la times article: https://www.latimes.com/archives/la-xpm-1996-04-20-me-18603-story.html
 firm_quarter[location_zip=='92681', county:='06059']
 stopifnot(nrow(firm_quarter[!is.na(location_zip) & is.na(county)])==0)
-### one missing zip code: set to be its own category for regressions
+## one missing zip code: set to be its own category for regressions
 stopifnot(uniqueN(firm_quarter[is.na(location_zip)]$location_id)==1)
 firm_quarter[is.na(location_zip),location_zip:= "-9999" ]
 firm_quarter[location_zip=="-9999" ,county:= "-9999" ]
@@ -292,11 +315,13 @@ firm_quarter<-merge(firm_quarter, unique(working[,c("business_id", "location_id"
 firm_quarter[, locs_bizid:=uniqueN(location_id), by="business_id"]
 print(uniqueN(firm_quarter[locs_bizid==1,"business_id"])/uniqueN(firm_quarter[,"business_id"]))
 
-## discount sophistication
+#' -----------------------------------------------------------------------------
+#' PRODUCT DATA AND DISCOUNT SOPHISTICATION
+#' -----------------------------------------------------------------------------
 
-product_data1<-fread('C:/Users/jakek/blvd_dont_backup/20210809_alldata_refresh_withzip/product_sales_export.csv')
+product_data1<-fread(product_data1_path)
 
-product_data2<-fread('C:/Users/jakek/blvd_dont_backup/2017_2020_product_sales/2017_2020_product_sales.csv')
+product_data2<-fread(product_data2_path)
 colnames(product_data1)<-str_to_lower(colnames(product_data1))
 product_data2[,date:=date(ymd_hms(report_at_date)) ]
 product_data1[,date:=date(ymd(report_at_date)) ]
@@ -315,18 +340,18 @@ firm_quarter[, has_productdata:=!is.na(uniq_products) & uniq_products>0,]
 firm_quarter[, std_uniq_discounts:=uniq_discounts/sd(uniq_discounts, na.rm=TRUE)]
 firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
 
-## exclusions
-# there is one salon in KY which is an anomaly
-firm_quarter<-firm_quarter[location_id!='fb686b3a-a166-469b-88ea-3467a68e2f53',]
 # exclude partial quarter
 firm_quarter<-firm_quarter[quarter_year!=2021.3,]
 
+saveRDS(firm_quarter, "results/data/01_01_stylized_facts_data.rds")
+
 firm_quarter[,s_max:=-task_mix_1*spec_log(task_mix_1)-task_mix_2*spec_log(task_mix_2)-task_mix_3*spec_log(task_mix_3)-task_mix_4*spec_log(task_mix_4)-task_mix_5*spec_log(task_mix_5)]
 
-## summary stats for full sample.
+#' -----------------------------------------------------------------------------
+#' SUMMARY STATISTICS
+#' -----------------------------------------------------------------------------
 
-
-firm_stats<-firm_quarter[,c("revenue","emps","cust_count","task_mix_1","task_mix_2", "task_mix_3", "task_mix_4", "task_mix_5")]
+firm_stats <- firm_quarter[, c("revenue", "emps", "cust_count", "task_mix_1", "task_mix_2", "task_mix_3", "task_mix_4", "task_mix_5")]
 
 
 names(firm_stats)<-c("Revenue","Employees","Customers",
@@ -334,12 +359,14 @@ names(firm_stats)<-c("Revenue","Employees","Customers",
                      "Share Admininstrative","Share Nail/Spa/Eye/Misc."
 )
 stargazer(firm_stats, header=FALSE, type='text')
-stargazer(firm_stats, header=FALSE,digits=2, out='analysis_final/out/tables/01_01_summary_stats.tex',single.row = TRUE)
+stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/01_01_summary_stats.tex',single.row = TRUE)
 
 
 
 
-## fact 1: varies greatly across firms, even among firms with the same number of emps
+#' -----------------------------------------------------------------------------
+#' FACT 1: DISPERSION IN SPECIALIZATION AND PRODUCTIVITY
+#' -----------------------------------------------------------------------------
 s_index_breaks<-seq(from=min(firm_quarter$s_index), to=max(firm_quarter$s_index), by=0.05)
 # use equal spacing now.
 
@@ -397,7 +424,7 @@ firm_stats<-firm_quarter[,c("rev_labor","s_index")]
 
 names(firm_stats)<-c("Labor Productivity","S-index")
 stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE, type='text')
-stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE,digits=2, out='analysis_final/out/tables/01_01_dispersion.tex',single.row = TRUE)
+stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE,digits=2, out='results/out/tables/01_01_dispersion.tex',single.row = TRUE)
 
 # the most productive quartile of firms are more than twice as specialized
 summary(firm_quarter[rev_labor<=quantile(firm_quarter$rev_labor, 0.25)]$s_index)
@@ -409,7 +436,7 @@ ggplot(firm_quarter, aes(x=s_index)) +
 theme_bw()+ theme(axis.text = element_text(size = 14))+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
-ggsave("analysis_final/out/figures/01_01_sindex_hist.png", width=4, height=4, units="in")
+ggsave("results/out/figures/01_01_sindex_hist.png", width=4, height=4, units="in")
 
 firm_quarter[, round_emps:=cut(emps, quantile(emps, seq(from=0, to=1, length=13)))]
 
@@ -419,7 +446,7 @@ ggplot(firm_quarter[emps>1,], aes(x=s_index)) +
   scale_x_continuous(breaks=c(0,0.5,1))+theme_bw() + theme(axis.text = element_text(size = 10))+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
 facet_wrap(~ round_emps) 
-ggsave("analysis_final/out/figures/01_01_sindex_hist_byemps.png", width=4, height=4, units="in")
+ggsave("results/out/figures/01_01_sindex_hist_byemps.png", width=4, height=4, units="in")
 
 ## persistence of both - use ar(1) persistence with and without fixed effect
 setorder(firm_quarter, "location_id", "quarter_year")
@@ -448,7 +475,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   etable(res0, res1,res2,res3,res4,res5,res6, fitstat=~n+r2,keep="!Constant",dict=c(county="County",std_rev_labor = "Revenue per Minute (standardized)", std_sindex="S-Index", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
                                                                     task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
                                                                     task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment"),
-         file="analysis_final/out/tables/01_01_productivity_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/01_01_productivity_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
   
@@ -457,7 +484,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + theme(axis.text = element_text(size = 14))+
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
   
-  ggsave("analysis_final/out/figures/01_01_sindex_prod_all.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/01_01_sindex_prod_all.png", width=4, height=4, units="in")
   
   scaleFUN <- function(x) formatC(signif(x, digits=1), digits=1, format="fg", flag="#")
   
@@ -466,7 +493,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+scale_x_continuous(labels=scaleFUN,breaks=c(0,0.5, 1))+
   facet_wrap(~round_emps) 
   
-  ggsave("analysis_final/out/figures/01_01_sindex_prod_byemps.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/01_01_sindex_prod_byemps.png", width=4, height=4, units="in")
   
   
   # the most specialized quartile of firms on averagegenerate $1.08 more revenue per minute
@@ -475,7 +502,9 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   summary(firm_quarter[s_index>=quantile(firm_quarter$s_index, 0.75)]$rev_labor)
   
   
-  ##  driven by revenue per customer rather than number of customers
+#' -----------------------------------------------------------------------------
+#' DECOMPOSITION: REVENUE PER CUSTOMER VS CUSTOMER COUNT
+#' -----------------------------------------------------------------------------
 
   res1<-feols(std_cust~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | quarter_year+location_zip+emps,cluster=~location_id, data=firm_quarter)
   
@@ -490,10 +519,12 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                                                               std_cust="Customer Count", std_rev_cust="Rev. per Customer",
                                                               std_futurereturn="Customer Return Rate"
                                                               ),
-         file="analysis_final/out/tables/01_01_rev_link_decomp.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/01_01_rev_link_decomp.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
-    ### uncorrelated variance share
+#' -----------------------------------------------------------------------------
+#' UNCORRELATED VARIANCE SHARE
+#' -----------------------------------------------------------------------------
     
     ## r2 for the two
     print(r2(feols(s_index~1|emps, data=firm_quarter))['r2'])
@@ -508,11 +539,13 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     uvs_size<-(r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2']-r2(feols(std_rev_labor~s_index, data=firm_quarter))['r2'])
     print(uvs_size/r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2'])
     
-    ### most aggressive uvs
+    ## most aggressive uvs
     uvs_aggr<-(r2(feols(std_rev_labor~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2']-r2(feols(std_rev_labor~task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2'])
     print(uvs_aggr/r2(feols(std_rev_labor~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2'])
     
-  ## fact 4: connected to other active management practices.
+#' -----------------------------------------------------------------------------
+#' FACT 4: MANAGEMENT PRACTICES AND TEAMWORK
+#' -----------------------------------------------------------------------------
   
   ## robust to using teamwork within visit specialization)
   
@@ -528,7 +561,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   etable(res0, res1,res2,res3,res4,res5, fitstat=~n+r2,keep="!Constant",dict=c(std_rev_labor = "Revenue per Minute", std_multi_rate="Teamwork", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
                                                                              task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
                                                                              task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment"),
-         file="analysis_final/out/tables/01_01_productivity_teamwork.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/01_01_productivity_teamwork.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
   ggplot(data = firm_quarter, aes( x = s_index, y = multi_rate)) + geom_smooth(method='lm',color = "red", se=FALSE)+
     stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + 
@@ -536,7 +569,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     theme(axis.text = element_text(size = 14))+
     xlab("Task Specialization (S-Index)")+ylab("Teamwork")
   
-  ggsave("analysis_final/out/figures/01_01_sindex_teamwork.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/01_01_sindex_teamwork.png", width=4, height=4, units="in")
   
   
 
@@ -558,10 +591,31 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                         std_uniq_discounts="Product Discounts",std_tip_time="Tip Feature",
                         std_prebook_time="Prebook Feature",std_staffreq_time="Request Feature",
                         std_first="Software Adopted"),
-         file="analysis_final/out/tables/01_01_management_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/01_01_management_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
-  ## customer utilization of features.
+#' -----------------------------------------------------------------------------
+#' ADDITIONAL AUXILIARY MEASURES
+#' -----------------------------------------------------------------------------
+  res0<-feols(std_mistake~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res1<-feols(std_renter~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res2<-feols(std_tip~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+quarter_year,cluster=~location_id, data=firm_quarter[quarter_year>=year(as_date(first_tip))+quarter(as_date(first_tip))/10])
+  res3<-feols(has_productdata~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter)
+  res4<-feols(has_renter~std_sindex|county,cluster=~location_id, data=firm_data)
+  res5<-feols(uses_tip~std_sindex|county,cluster=~location_id, data=firm_data)
+
+  etable(res0, res1,res2,res3,res4,res5, fitstat=~n+r2,keep="!Constant",dict=c(std_sindex="S-Index", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
+                                                                             task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
+                                                                             task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment",
+                        std_mistake="Misspellings", std_renter="Chair Renters", std_tip="Tip Percent",
+                        has_productdata="Has Product Data", has_renter="Has Chair Renter", uses_tip="Uses Tip Feature",
+                        county="County"),
+         file="results/out/tables/01_01_auxiliary_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+
+
+#' -----------------------------------------------------------------------------
+#' CUSTOMER UTILIZATION OF FEATURES
+#' -----------------------------------------------------------------------------
   res1<-feols(std_prebook~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | location_zip+quarter_year,cluster=~location_id, data=firm_quarter[quarter_year>=year(as_date(first_prebook))+quarter(as_date(first_prebook))/10])
   res2<-feols(std_tip~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+quarter_year,cluster=~location_id, data=firm_quarter[quarter_year>=year(as_date(first_tip))+quarter(as_date(first_tip))/10])
   
@@ -586,7 +640,9 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$staffreq_rate)
   
 
-### testable implication
+#' -----------------------------------------------------------------------------
+#' TESTABLE IMPLICATION: INCOME AND SPECIALIZATION
+#' -----------------------------------------------------------------------------
   firm_quarter[, year:=floor(quarter_year)]
   all_years<-data.table()
 library('tidycensus')
@@ -607,4 +663,5 @@ library('tidycensus')
 firm_quarter[, s_estimate:=estimate/sd(estimate, na.rm=TRUE)]
 feols(std_sindex~s_estimate, data=firm_quarter)
 feols(std_sindex~s_estimate|year, data=firm_quarter)
+
 

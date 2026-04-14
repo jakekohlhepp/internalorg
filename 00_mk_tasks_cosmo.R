@@ -4,8 +4,16 @@
 #' Creates the task-level dataset from raw salon transaction data.
 #' Only runs on machines with access to the raw data file.
 #'
-#' Input:  CONFIG$raw_data_path/compiled_trxns.rds (10GB+)
+#' Performs all shared data cleaning so downstream scripts receive a ready-to-use
+#' dataset: task category consolidation (6 → 5), zero-duration imputation,
+#' zip-to-county mapping, census population merge, and zero-revenue firm-quarter
+#' removal.
+#'
+#' Input:  CONFIG$raw_data_base/compiled_trxns.rds (10GB+)
+#'         CONFIG$raw_data_path/20220727_countypop/geocorr2022_*.csv
+#'         CONFIG$prep_output_dir/county_census_pop.rds
 #' Output: mkdata/data/00_tasks_cosmo.rds
+#'         mkdata/data/01_keytask.rds
 #'
 #' =============================================================================
 
@@ -87,7 +95,7 @@ classified[, service_performed := `Service Description`]
 classified[, `Service Description` := NULL]  # Remove the original column
 
 ## Incorporate approved review matches for newly observed service descriptions
-reviewed_match_path <- 'check2_truly_new_sorted_for_classification.csv'
+reviewed_match_path <- file.path(CONFIG$raw_data_path, '20260310_manual_review/check2_truly_new_sorted_for_classification.csv')
 stopifnot(file.exists(reviewed_match_path))
 
 reviewed_matches <- fread(reviewed_match_path)
@@ -249,6 +257,55 @@ tasks[, taskcat6 := variable == "6"]  # TRUE/FALSE: is this a Nail/Spa/Eye/Misc 
 tasks <- tasks[, -c("new_duration", "value1", "value2", "variable", "helper_id")]
 
 #' -----------------------------------------------------------------------------
+#' DROP LEGACY IMPORT DATA
+#' -----------------------------------------------------------------------------
+#' Some salons imported historical transactions from a prior POS system when they
+#' joined Boulevard. These imported records have placeholder durations (typically
+#' 0, 5, or 15 minutes) that do not reflect real appointment times.
+#'
+#' Transition-based rule: drop rows before the identified transition month for the
+#' 10 salons that show a clear switch from legacy-import placeholder durations to
+#' Boulevard-native booking data. These location-month cutoffs come from the
+#' monthly short-duration transition analysis documented in
+#' docs/duration_reliability_2026-04-08.md.
+
+n_before_legacy <- nrow(tasks)
+legacy_cutoffs <- data.table(
+  location_id = c(
+    "8310d870-fb13-414b-ba6c-2902eaf0276f",
+    "191172d5-2e41-4cf7-b94f-5b15145f18ec",
+    "b9f5c7cf-38d0-42ec-9669-2304d7abfedd",
+    "f44c05e5-5c88-4ab5-99ab-32ac1ee1d470",
+    "23468507-cec2-458d-a053-ac09060d4721",
+    "01fbf61d-01ef-4c3a-9a88-3e64cc8f99fe",
+    "fb282d29-cc1f-41ab-87b1-b33cdba2ea3f",
+    "ec64ba65-7a8e-49be-a8ca-e04dd0be4ff2",
+    "a413d2fc-b120-4b5f-b13c-c5fac327866d",
+    "f4938ca8-a8cf-49a7-9358-1df7ca32e336"
+  ),
+  transition_start = as.Date(c(
+    "2018-09-01",
+    "2019-08-01",
+    "2019-08-01",
+    "2020-12-01",
+    "2020-02-01",
+    "2020-04-01",
+    "2019-01-01",
+    "2018-11-01",
+    "2018-07-01",
+    "2019-04-01"
+  ))
+)
+
+tasks <- merge(tasks, legacy_cutoffs, by = "location_id", all.x = TRUE)
+n_legacy <- nrow(tasks[!is.na(transition_start) & date < transition_start])
+tasks <- tasks[is.na(transition_start) | date >= transition_start]
+tasks[, transition_start := NULL]
+
+message("Dropped ", n_legacy, " legacy-import rows (",
+        round(100 * n_legacy / n_before_legacy, 2), "%) from ",
+        nrow(legacy_cutoffs), " locations")
+#' -----------------------------------------------------------------------------
 #' CREATE FINAL TASK CATEGORIES
 #' -----------------------------------------------------------------------------
 
@@ -268,6 +325,75 @@ tasks[taskcat6 == 1, rep_text_cluster := "Nail/Spa/Eye/Misc."]
 
 # Remove the individual taskcat columns (no longer needed now that we have clust)
 tasks <- tasks[, -c("taskcat1", "taskcat2", "taskcat3", "taskcat4", "taskcat5", "taskcat6")]
+
+#' -----------------------------------------------------------------------------
+#' MERGE TASK CATEGORIES: EXTENSIONS INTO BLOWDRY/STYLE/TREATMENT
+#' -----------------------------------------------------------------------------
+#' Reduce from 6 to 5 task categories by folding Extensions (clust 3) into
+#' Blowdry/Style/Treatment (clust 4), then re-rank to fill the gap.
+
+tasks[, clust := ifelse(clust == 3, 4, clust)]
+tasks[, rep_text_cluster := ifelse(clust == 4, "Blowdry/Style/Treatment/Extension", rep_text_cluster)]
+tasks[, clust := frank(clust, ties.method = "dense")]
+
+keytask <- unique(tasks[, c("clust", "rep_text_cluster")])
+keytask[, task := clust]
+keytask[, type := clust]
+saveRDS(keytask, "mkdata/data/01_keytask.rds")
+message("Task categories reduced to ", uniqueN(tasks$clust), " (merged Extensions into Blowdry/Style/Treatment)")
+
+#' -----------------------------------------------------------------------------
+#' TIME VARIABLES AND ZERO-DURATION IMPUTATION
+#' -----------------------------------------------------------------------------
+
+tasks[, quarter_year := year(date) + quarter(date) / 10]
+tasks[, year := year(date)]
+
+## all durations should be non-negative (verified upstream)
+stopifnot(nrow(tasks[duration < 0]) == 0)
+
+## impute zero-duration rows with quarter-cluster average
+n_imputed <- nrow(tasks[duration == 0, ])
+tasks[, temp_dur := ifelse(duration == 0, NA, duration)]
+tasks[, temp_mean_dur := mean(temp_dur, na.rm = TRUE), by = c("quarter_year", "clust")]
+tasks[, duration := ifelse(duration == 0, temp_mean_dur, duration)]
+tasks[, c("temp_dur", "temp_mean_dur") := list(NULL, NULL)]
+message("Imputed ", n_imputed, " zero-duration rows (",
+        round(100 * n_imputed / nrow(tasks), 1), "%)")
+
+#' -----------------------------------------------------------------------------
+#' MAP ZIP CODES TO COUNTY AND MERGE CENSUS POPULATION
+#' -----------------------------------------------------------------------------
+
+countypop <- fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220806816.csv'))[-1]
+countypop[, CSPOP := pop20]
+stopifnot(uniqueN(countypop$county) == nrow(countypop))
+data <- fread(file.path(CONFIG$raw_data_path, '20220727_countypop/geocorr2022_2220801561.csv'))[-1]
+data[, count := uniqueN(county), by = zcta]
+data <- data[afact > 0.50 | count == 1]  # mapping only if more than 50 percent of zip is within county
+stopifnot(uniqueN(data$zcta) == nrow(data))
+data <- merge(data, countypop[, c("county")], by = "county")
+data[, location_zip := as.numeric(zcta)]
+tasks <- merge(tasks, data[, c("location_zip", "county")], by = "location_zip", all.x = TRUE)
+stopifnot(uniqueN(tasks[is.na(county), location_id]) == 2)  # one NA zip and one unmatched
+
+## merge county-year census population estimates
+tasks <- merge(tasks, readRDS(file.path(CONFIG$prep_output_dir, "county_census_pop.rds")),
+               by = c("county", "year"), all.x = TRUE)
+
+#' -----------------------------------------------------------------------------
+#' DROP ZERO-REVENUE FIRM-QUARTERS
+#' -----------------------------------------------------------------------------
+
+temp <- tasks[, .(rev = sum(price)), by = c("quarter_year", "location_id")]
+temp[, is_zero := rev <= 0]
+n_zero_fq <- nrow(temp[is_zero == 1])
+temp[, rev := NULL]
+tasks <- merge(tasks, temp, by = c("quarter_year", "location_id"), all.x = TRUE)
+tasks <- tasks[is_zero == 0, ]
+tasks[, is_zero := NULL]
+rm(temp)
+message("Dropped ", n_zero_fq, " zero-revenue firm-quarters")
 
 # Create binary flags for customer gender/age from the Male, Female, Child columns
 # male_flag: 1 if Male==1, 0 otherwise (including NA)
@@ -301,4 +427,5 @@ message("Saved mkdata/data/00_tasks_cosmo.rds with ", nrow(tasks), " rows")
 # write.csv(tasks[app_id %in% c('000c4d3e-6445-489d-84d3-6b2e91c39e60',
 #                               '00342f4b-49c0-4100-8786-7333f4308163')],
 #           "analysis_final/out/mk_tasks_cosmo_examples.csv")
+
 
