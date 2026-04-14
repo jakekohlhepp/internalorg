@@ -43,6 +43,14 @@ CONFIG <- list(
   # and clustering where the raw data uses zero-padded codes
   counties_padded = c("17031", "36061", "06037"),
 
+  # Estimation sample quarters (exclude 2020 Q2/Q3 COVID disruption quarters)
+  estimation_quarters = c(
+    2018.1, 2018.2, 2018.3, 2018.4,
+    2019.1, 2019.2, 2019.3, 2019.4,
+    2020.1, 2020.4,
+    2021.1, 2021.2
+  ),
+
   # ---------------------------------------------------------------------------
   # Model dimensions
   # ---------------------------------------------------------------------------
@@ -155,6 +163,25 @@ get_task_mix_cols <- function(config = CONFIG) {
 #' @return Character vector of E_raw column names
 get_E_raw_cols <- function(config = CONFIG) {
   paste0(config$E_raw_pattern, 1:config$n_worker_types)
+}
+
+#' Detect operating system
+#'
+#' @return Character string: "windows", "osx", or "linux"
+get_os <- function() {
+  sysinf <- Sys.info()
+  if (!is.null(sysinf)){
+    os <- sysinf['sysname']
+    if (os == 'Darwin')
+      os <- "osx"
+  } else { ## mystery machine
+    os <- .Platform$OS.type
+    if (grepl("^darwin", R.version$os))
+      os <- "osx"
+    if (grepl("linux-gnu", R.version$os))
+      os <- "linux"
+  }
+  tolower(os)
 }
 
 #' Get core count for parallel processing

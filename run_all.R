@@ -112,7 +112,7 @@ if (RUN_MAKE_TASKS) {
       log_message(paste("Raw data file:", raw_data_file))
 
       tryCatch({
-        source("00_mk_tasks_cosmo.R", local = new.env())
+        source("00_mk_tasks_cosmo.R", local = new.env(parent = globalenv()))
         log_message("Task data created successfully")
         log_complete(success = TRUE)
 
@@ -272,7 +272,7 @@ if (RUN_BUILD_DATA) {
       log_message("Starting data build")
 
       tryCatch({
-        source("01_build_data.R", local = new.env())
+        source("01_build_data.R", local = new.env(parent = globalenv()))
         log_message("Data build completed successfully")
         log_message(paste("Output: mkdata/data/01_working.rds"))
         log_complete(success = TRUE)
@@ -338,7 +338,7 @@ if (RUN_ESTIMATION) {
     log_message("Starting estimation")
 
     tryCatch({
-      source("02_estimation.R", local = new.env())
+      source("02_estimation.R")
       log_message("Estimation completed successfully")
       log_message("Output: results/data/02_parameters.rds")
       log_complete(success = TRUE)
