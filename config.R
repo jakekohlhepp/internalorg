@@ -165,6 +165,25 @@ get_E_raw_cols <- function(config = CONFIG) {
   paste0(config$E_raw_pattern, 1:config$n_worker_types)
 }
 
+#' Detect operating system
+#'
+#' @return Character string: "windows", "osx", or "linux"
+get_os <- function() {
+  sysinf <- Sys.info()
+  if (!is.null(sysinf)){
+    os <- sysinf['sysname']
+    if (os == 'Darwin')
+      os <- "osx"
+  } else { ## mystery machine
+    os <- .Platform$OS.type
+    if (grepl("^darwin", R.version$os))
+      os <- "osx"
+    if (grepl("linux-gnu", R.version$os))
+      os <- "linux"
+  }
+  tolower(os)
+}
+
 #' Get core count for parallel processing
 #'
 #' Returns either the configured core count or auto-detects based on OS.
