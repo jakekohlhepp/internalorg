@@ -95,7 +95,7 @@ classified[, service_performed := `Service Description`]
 classified[, `Service Description` := NULL]  # Remove the original column
 
 ## Incorporate approved review matches for newly observed service descriptions
-reviewed_match_path <- 'check2_truly_new_sorted_for_classification.csv'
+reviewed_match_path <- file.path(CONFIG$raw_data_path, '20260310_manual_review/check2_truly_new_sorted_for_classification.csv')
 stopifnot(file.exists(reviewed_match_path))
 
 reviewed_matches <- fread(reviewed_match_path)

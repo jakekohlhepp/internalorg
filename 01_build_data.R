@@ -164,7 +164,7 @@ saveRDS(staff_task,'mkdata/data/01_staff_task.rds')
 
 ### run cluster program
 rm(list=setdiff(ls(), c("staff_task", "staffnum_xwalk", "CONFIG", "get_core_count", "get_initial_E", "get_task_mix_cols", "get_E_raw_cols", "build_E_formula", "build_task_mix_sum")))
-source('cluster.R')
+source('cluster.R', local = TRUE)
 
 
 saveRDS(verywide_expanded,'mkdata/data/01_working.rds')
