@@ -16,8 +16,9 @@
 #'   1. Setup environment (packages from fixed snapshot date)
 #'   2. Build data (01_build_data.R)
 #'   3. Run estimation (02_estimation.R)
+#'   4. Demand IV spec comparison (02_iv_spec_comparison.R)
 #'
-#' Output: results/data/02_parameters.rds
+#' Outputs: results/data/02_parameters.rds; results/out/tables/02_demand_iv_spec_comparison.tex; results/out/tables/02_nested_iv_spec_comparison.tex
 #' =============================================================================
 
 # Clear environment
@@ -49,6 +50,7 @@ RUN_MAKE_TASKS <- TRUE
 RUN_SETUP <- TRUE
 RUN_BUILD_DATA <- TRUE
 RUN_ESTIMATION <- TRUE
+RUN_IV_SPEC_COMPARISON <- TRUE
 
 # Track whether downstream steps should be forced due to upstream changes
 force_downstream <- TRUE
@@ -216,6 +218,11 @@ if (RUN_SETUP) {
       "lessR",
       "xtable",
 
+      # IV diagnostics and inference
+      "ivreg",
+      "sandwich",
+      "lmtest",
+
       # For build_data.R
       "binsreg",
       "ggplot2",
@@ -351,6 +358,9 @@ if (RUN_ESTIMATION) {
         error = NULL, skipped = FALSE
       )
 
+      # Force downstream steps since this step ran
+      force_downstream <- TRUE
+
     }, error = function(e) {
       log_message(paste("ERROR:", e$message), "ERROR")
       log_complete(success = FALSE)
@@ -365,6 +375,64 @@ if (RUN_ESTIMATION) {
   } else {
     message("STEP 3 skipped (no changes detected)")
     pipeline_results[["02_estimation.R"]] <- list(
+      ran = FALSE, success = TRUE, duration = 0,
+      error = NULL, skipped = TRUE
+    )
+  }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 4: Demand IV Specification Comparison (02_iv_spec_comparison.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_IV_SPEC_COMPARISON) {
+  message("\n", strrep("-", 70))
+  message("STEP 4: Checking 02_iv_spec_comparison.R")
+  message(strrep("-", 70))
+
+  if (!file.exists("mkdata/data/01_working.rds")) {
+    stop("Required data file mkdata/data/01_working.rds not found. ",
+         "Run data build step first or check data paths.")
+  }
+
+  # Dependencies: config.R, preamble.R
+  step4_deps <- c("config.R", "preamble.R")
+
+  if (force_downstream || needs_rerun("02_iv_spec_comparison.R", step4_deps)) {
+    step4_start <- Sys.time()
+
+    log_init("02_iv_spec_comparison.R")
+    log_message("Starting demand IV specification comparison")
+
+    tryCatch({
+      source("02_iv_spec_comparison.R")
+      step4_outputs <- c("results/out/tables/02_demand_iv_spec_comparison.tex", "results/out/tables/02_nested_iv_spec_comparison.tex")
+      log_message("Demand IV specification comparison completed successfully")
+      log_message(paste("Outputs:", paste(step4_outputs, collapse = "; ")))
+      log_complete(success = TRUE)
+
+      step4_time <- difftime(Sys.time(), step4_start, units = "mins")
+      message("STEP 4 complete (", round(step4_time, 2), " minutes)")
+
+      pipeline_results[["02_iv_spec_comparison.R"]] <- list(
+        ran = TRUE, success = TRUE, duration = as.numeric(step4_time),
+        error = NULL, skipped = FALSE
+      )
+
+    }, error = function(e) {
+      log_message(paste("ERROR:", e$message), "ERROR")
+      log_complete(success = FALSE)
+
+      pipeline_results[["02_iv_spec_comparison.R"]] <<- list(
+        ran = TRUE, success = FALSE, duration = 0,
+        error = e$message, skipped = FALSE
+      )
+
+      stop("Demand IV specification comparison failed: ", e$message)
+    })
+  } else {
+    message("STEP 4 skipped (no changes detected)")
+    pipeline_results[["02_iv_spec_comparison.R"]] <- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
     )
@@ -412,3 +480,5 @@ if (file.exists("renv.lock")) {
 }
 message("Log directory: ", CONFIG$log_dir)
 message(strrep("=", 70))
+
+
