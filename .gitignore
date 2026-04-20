@@ -51,3 +51,6 @@ Thumbs.db
 .Renviron.R
 .Rprofile
 
+
+# Local archive of superseded scripts (not for public repo)
+archive/
