@@ -1,18 +1,38 @@
 #' =============================================================================
-#' STEP 01_01: Stylized Facts and Non-Task Variables
+#' STEP 01_01: Stylized Facts and Non-Task Variables (Full National Sample)
 #' =============================================================================
-#' Creates stylized facts from task-level data: summary statistics, dispersion
-#' measures, productivity-specialization correlations, management practices,
-#' and additional non-task variables (tips, prebooking, chair renters, etc.).
+#' Produces the stylized-facts evidence reported in the paper: dispersion in
+#' specialization and productivity, productivity-specialization correlations,
+#' management practices, service description quality, customer return rates,
+#' and the ACS income cross-check. This script runs on the FULL national
+#' sample, not the three-county estimation sample -- stylized facts are
+#' intended to describe the industry broadly.
 #'
-#' Input:  mkdata/data/00_tasks_cosmo.rds
-#'         mkdata/data/01_staff_task_full.rds
-#' Output: results/data/01_01_stylized_facts_data.rds
-#'         results/out/tables/01_01_*.tex
-#'         results/out/figures/01_01_*.png
+#' Pipeline:
+#'   1. Load cleaned transactions from 00_tasks_cosmo.rds.
+#'   2. Build visit-level customer-behavior variables.
+#'   3. Compute service-description misspelling rates.
+#'   4. Merge three auxiliary data pulls (chair renters, tips, products).
+#'   5. Collapse to a firm-quarter panel; join s_index and task_mix from the
+#'      pre-filter 01_staff_task_full.rds.
+#'   6. Save the firm-quarter panel for use by 01_02.
+#'   7. Run the stylized-facts regressions and save tables / figures.
+#'
+#' Inputs:
+#'   - mkdata/data/00_tasks_cosmo.rds        (cleaned transactions)
+#'   - mkdata/data/01_staff_task_full.rds    (pre-filter firm-quarter panel)
+#'   - CONFIG$raw_data_base/<sub-paths>      (chair renters, tip pulls, products)
+#'   - ACS (tidycensus) for the zip-level income regression
+#'
+#' Outputs:
+#'   - results/data/01_01_stylized_facts_data.rds  (firm-quarter panel used by 01_02)
+#'   - results/out/tables/01_01_*.tex               (6 tex files)
+#'   - results/out/figures/01_01_*.png              (5 png files)
 #' =============================================================================
 
-# Load required packages
+# -----------------------------------------------------------------------------
+# Libraries
+# -----------------------------------------------------------------------------
 library('qdapDictionaries')
 library('data.table')
 library('lubridate')
@@ -34,8 +54,12 @@ library('fixest')
 library('pander')
 library('stargazer')
 library('showtext')
+library('mediation')
+library('tidycensus')
 
-# Load configuration
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
 source('config.R')
 
 ensure_directory("results/data")
@@ -340,8 +364,8 @@ firm_quarter[, has_productdata:=!is.na(uniq_products) & uniq_products>0,]
 firm_quarter[, std_uniq_discounts:=uniq_discounts/sd(uniq_discounts, na.rm=TRUE)]
 firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
 
-# exclude partial quarter
-firm_quarter<-firm_quarter[quarter_year!=2021.3,]
+## exclude partial quarters (see CONFIG$excluded_quarters_analysis)
+firm_quarter <- firm_quarter[!quarter_year %in% CONFIG$excluded_quarters_analysis, ]
 
 saveRDS(firm_quarter, "results/data/01_01_stylized_facts_data.rds")
 
@@ -356,7 +380,7 @@ firm_stats <- firm_quarter[, c("revenue", "emps", "cust_count", "task_mix_1", "t
 
 names(firm_stats)<-c("Revenue","Employees","Customers",
                      "Share Haircut/Shave", "Share Color/Highlight/Wash", "Share Blowdry/Style/Treatment/Extensions",
-                     "Share Admininstrative","Share Nail/Spa/Eye/Misc."
+                     "Share Administrative","Share Nail/Spa/Eye/Misc."
 )
 stargazer(firm_stats, header=FALSE, type='text')
 stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/01_01_summary_stats.tex',single.row = TRUE)
@@ -630,7 +654,6 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   model.Y <- lm(std_rev_labor ~ std_sindex+std_staffreq, firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10])
   summary(model.Y)
   
-  library(mediation)
   results <- mediate(model.M, model.Y, treat='std_sindex', mediator='std_staffreq',
                      boot=TRUE, sims=500)
   summary(results)
@@ -645,7 +668,6 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
 #' -----------------------------------------------------------------------------
   firm_quarter[, year:=floor(quarter_year)]
   all_years<-data.table()
-library('tidycensus')
   for (y in 2011:2021){
     zcta_income = get_acs(
       geography = "zcta",

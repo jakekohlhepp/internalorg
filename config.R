@@ -51,6 +51,10 @@ CONFIG <- list(
     2021.1, 2021.2
   ),
 
+  # Partial quarters to exclude from the stylized-facts / full-sample analyses.
+  # 2021.3 is only partially observed in the raw data pull.
+  excluded_quarters_analysis = c(2021.3),
+
   # ---------------------------------------------------------------------------
   # Model dimensions
   # ---------------------------------------------------------------------------
