@@ -52,8 +52,8 @@
 #'   - Objects created by preamble.R (estim_matrix, CONFIG, counties list, ...)
 #'
 #' Outputs:
-#'   - results/out/tables/02_demand_iv_spec_comparison.tex
-#'   - results/out/tables/02_nested_iv_spec_comparison.tex
+#'   - results/out/tables/06_demand_iv_spec_comparison.tex
+#'   - results/out/tables/06_nested_iv_spec_comparison.tex
 #' =============================================================================
 
 library("data.table")
@@ -239,9 +239,6 @@ estimate_stars <- function(p_value) {
   }
   if (p_value < 0.05) {
     return("**")
-  }
-  if (p_value < 0.1) {
-    return("*")
   }
   ""
 }
@@ -431,7 +428,7 @@ standard_table_lines <- c(
   "\\end{table}"
 )
 
-standard_output_path <- "results/out/tables/02_demand_iv_spec_comparison.tex"
+standard_output_path <- "results/out/tables/06_demand_iv_spec_comparison.tex"
 writeLines(standard_table_lines, standard_output_path)
 
 # -----------------------------------------------------------------------------
@@ -566,7 +563,7 @@ nested_table_lines <- c(
   "\\end{table}"
 )
 
-nested_output_path <- "results/out/tables/02_nested_iv_spec_comparison.tex"
+nested_output_path <- "results/out/tables/06_nested_iv_spec_comparison.tex"
 writeLines(nested_table_lines, nested_output_path)
 
 cat("\nDemand IV specification comparison saved to:\n")

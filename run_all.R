@@ -15,10 +15,10 @@
 #'   0. Make task data (00_mk_tasks_cosmo.R) - only if raw data file exists
 #'   1. Setup environment (packages from fixed snapshot date)
 #'   2. Build data (01_build_data.R)
-#'   3. Run estimation (02_estimation.R)
-#'   4. Demand IV spec comparison (02_iv_spec_comparison.R)
+#'   3. Run estimation (05_estimation.R)
+#'   4. Demand IV spec comparison (06_iv_spec_comparison.R)
 #'
-#' Outputs: results/data/02_parameters.rds; results/out/tables/02_demand_iv_spec_comparison.tex; results/out/tables/02_nested_iv_spec_comparison.tex
+#' Outputs: results/data/05_parameters.rds; results/out/tables/06_demand_iv_spec_comparison.tex; results/out/tables/06_nested_iv_spec_comparison.tex
 #' =============================================================================
 
 # Clear environment
@@ -317,12 +317,12 @@ if (RUN_BUILD_DATA) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 3: Run Estimation (02_estimation.R)
+#' STEP 3: Run Estimation (05_estimation.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_ESTIMATION) {
   message("\n", strrep("-", 70))
-  message("STEP 3: Checking 02_estimation.R")
+  message("STEP 3: Checking 05_estimation.R")
   message(strrep("-", 70))
 
   # Check if required data exists
@@ -338,22 +338,22 @@ if (RUN_ESTIMATION) {
   # Dependencies: config.R, preamble.R
   step3_deps <- c("config.R", "preamble.R")
 
-  if (force_downstream || needs_rerun("02_estimation.R", step3_deps)) {
+  if (force_downstream || needs_rerun("05_estimation.R", step3_deps)) {
     step3_start <- Sys.time()
 
-    log_init("02_estimation.R")
+    log_init("05_estimation.R")
     log_message("Starting estimation")
 
     tryCatch({
-      source("02_estimation.R")
+      source("05_estimation.R")
       log_message("Estimation completed successfully")
-      log_message("Output: results/data/02_parameters.rds")
+      log_message("Output: results/data/05_parameters.rds")
       log_complete(success = TRUE)
 
       step3_time <- difftime(Sys.time(), step3_start, units = "mins")
       message("STEP 3 complete (", round(step3_time, 2), " minutes)")
 
-      pipeline_results[["02_estimation.R"]] <- list(
+      pipeline_results[["05_estimation.R"]] <- list(
         ran = TRUE, success = TRUE, duration = as.numeric(step3_time),
         error = NULL, skipped = FALSE
       )
@@ -365,7 +365,7 @@ if (RUN_ESTIMATION) {
       log_message(paste("ERROR:", e$message), "ERROR")
       log_complete(success = FALSE)
 
-      pipeline_results[["02_estimation.R"]] <<- list(
+      pipeline_results[["05_estimation.R"]] <<- list(
         ran = TRUE, success = FALSE, duration = 0,
         error = e$message, skipped = FALSE
       )
@@ -374,7 +374,7 @@ if (RUN_ESTIMATION) {
     })
   } else {
     message("STEP 3 skipped (no changes detected)")
-    pipeline_results[["02_estimation.R"]] <- list(
+    pipeline_results[["05_estimation.R"]] <- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
     )
@@ -382,12 +382,12 @@ if (RUN_ESTIMATION) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 4: Demand IV Specification Comparison (02_iv_spec_comparison.R)
+#' STEP 4: Demand IV Specification Comparison (06_iv_spec_comparison.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_IV_SPEC_COMPARISON) {
   message("\n", strrep("-", 70))
-  message("STEP 4: Checking 02_iv_spec_comparison.R")
+  message("STEP 4: Checking 06_iv_spec_comparison.R")
   message(strrep("-", 70))
 
   if (!file.exists("mkdata/data/01_working.rds")) {
@@ -398,15 +398,15 @@ if (RUN_IV_SPEC_COMPARISON) {
   # Dependencies: config.R, preamble.R
   step4_deps <- c("config.R", "preamble.R")
 
-  if (force_downstream || needs_rerun("02_iv_spec_comparison.R", step4_deps)) {
+  if (force_downstream || needs_rerun("06_iv_spec_comparison.R", step4_deps)) {
     step4_start <- Sys.time()
 
-    log_init("02_iv_spec_comparison.R")
+    log_init("06_iv_spec_comparison.R")
     log_message("Starting demand IV specification comparison")
 
     tryCatch({
-      source("02_iv_spec_comparison.R")
-      step4_outputs <- c("results/out/tables/02_demand_iv_spec_comparison.tex", "results/out/tables/02_nested_iv_spec_comparison.tex")
+      source("06_iv_spec_comparison.R")
+      step4_outputs <- c("results/out/tables/06_demand_iv_spec_comparison.tex", "results/out/tables/06_nested_iv_spec_comparison.tex")
       log_message("Demand IV specification comparison completed successfully")
       log_message(paste("Outputs:", paste(step4_outputs, collapse = "; ")))
       log_complete(success = TRUE)
@@ -414,7 +414,7 @@ if (RUN_IV_SPEC_COMPARISON) {
       step4_time <- difftime(Sys.time(), step4_start, units = "mins")
       message("STEP 4 complete (", round(step4_time, 2), " minutes)")
 
-      pipeline_results[["02_iv_spec_comparison.R"]] <- list(
+      pipeline_results[["06_iv_spec_comparison.R"]] <- list(
         ran = TRUE, success = TRUE, duration = as.numeric(step4_time),
         error = NULL, skipped = FALSE
       )
@@ -423,7 +423,7 @@ if (RUN_IV_SPEC_COMPARISON) {
       log_message(paste("ERROR:", e$message), "ERROR")
       log_complete(success = FALSE)
 
-      pipeline_results[["02_iv_spec_comparison.R"]] <<- list(
+      pipeline_results[["06_iv_spec_comparison.R"]] <<- list(
         ran = TRUE, success = FALSE, duration = 0,
         error = e$message, skipped = FALSE
       )
@@ -432,7 +432,7 @@ if (RUN_IV_SPEC_COMPARISON) {
     })
   } else {
     message("STEP 4 skipped (no changes detected)")
-    pipeline_results[["02_iv_spec_comparison.R"]] <- list(
+    pipeline_results[["06_iv_spec_comparison.R"]] <- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
     )
