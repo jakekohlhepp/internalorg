@@ -17,18 +17,24 @@ within_firm_clust<-function(mat,cut_level){
   
   
   # for each market, set the cut_level to be such that all firms have N or less types.
-  for (cnty in CONFIG$counties_padded) print(max(staff_task[county==cnty]$min_cutlevel))
+  if (isTRUE(CONFIG$verbose_logging)) {
+    for (cnty in CONFIG$counties_padded) print(max(staff_task[county==cnty]$min_cutlevel))
+  }
 
 staff_task[,county_cutlevel:=max(min_cutlevel), by=county ]
 staff_task[,type_within_firm:=within_firm_clust(as.matrix(.SD),county_cutlevel[1]), by=c("location_id", "quarter_year"), .SDcols=colnames(staff_task)[colnames(staff_task) %like% "^Btilde_raw_"]]
 staff_task[,types_observed_firm:=max(type_within_firm), by=c("location_id", "quarter_year")]
-hist(unique(staff_task[,c("types_observed_firm","location_id", "quarter_year")])$types_observed_firm)
-print(table(unique(staff_task[, c("types_observed_firm", "location_id", "quarter_year")])$types_observed_firm))
+if (isTRUE(CONFIG$verbose_logging)) {
+  hist(unique(staff_task[,c("types_observed_firm","location_id", "quarter_year")])$types_observed_firm)
+  print(table(unique(staff_task[, c("types_observed_firm", "location_id", "quarter_year")])$types_observed_firm))
+}
 
 
-for (col in gsub("^B_","",names(staff_task)[grep("^B_", names(staff_task))])) staff_task[,(paste0("Btilde_raw_",col)):=NULL]
+btilde_raw_cols <- grep("^Btilde_raw_", names(staff_task), value = TRUE)
+if (length(btilde_raw_cols)) staff_task[, (btilde_raw_cols) := NULL]
 for (col in gsub("^duration_","",names(staff_task)[grep("^duration_", names(staff_task))])) staff_task[,smooth_e_frac  := smooth_e_frac+get(paste0("B_",col))]
-for (col in gsub("^B_","",names(staff_task)[grep("^B_", names(staff_task))])) staff_task[,(paste0("Btilde_",col)):=get(paste0("B_",col))/smooth_e_frac ]
+transform_cols(staff_task, "B_", "Btilde_",
+               function(d, s) d[[paste0("B_", s)]] / d$smooth_e_frac)
 stopifnot(max(staff_task$types_observed_firm)<= CONFIG$n_worker_types )
 
 # sample(unique(staff_task[type_within_firm==7]$location_id),1)
@@ -44,10 +50,12 @@ staffnum_xwalk<-merge(staffnum_xwalk,unique(staff_task[,c("loc_person", "quarter
 staff_merged_within<-staff_task[, lapply(.SD,sum),.SDcols=colnames(staff_task)[colnames(staff_task) %like% "^smooth_duration_"], by=c("county","location_id", "quarter_year", "type_within_firm", "service_types","types_observed_firm", "loc_person","service_mix_id","emps")]
 staff_merged_within[, smooth_tot_duration:=0]
 for (col in gsub("^smooth_duration_","",names(staff_merged_within)[grep("^smooth_duration_", names(staff_merged_within))])) staff_merged_within[,smooth_tot_duration  := smooth_tot_duration+sum(get(paste0("smooth_duration_",col))), by=c("location_id", "quarter_year")]
-for (col in gsub("^smooth_duration_","",names(staff_merged_within)[grep("^smooth_duration_", names(staff_merged_within))])) staff_merged_within[,(paste0("B_",col))  := get(paste0("smooth_duration_",col))/smooth_tot_duration]
+transform_cols(staff_merged_within, "smooth_duration_", "B_",
+               function(d, s) d[[paste0("smooth_duration_", s)]] / d$smooth_tot_duration)
 staff_merged_within[,smooth_e_frac:=0]
 for (col in gsub("^smooth_duration_","",names(staff_merged_within)[grep("^smooth_duration_", names(staff_merged_within))])) staff_merged_within[,smooth_e_frac  := smooth_e_frac+get(paste0("B_",col))]
-for (col in gsub("^B_","",names(staff_merged_within)[grep("^B_", names(staff_merged_within))])) staff_merged_within[,(paste0("Btilde_",col)):=get(paste0("B_",col))/smooth_e_frac ]
+transform_cols(staff_merged_within, "B_", "Btilde_",
+               function(d, s) d[[paste0("B_", s)]] / d$smooth_e_frac)
 ## service_mix_id gives which tasks are performed with positive probability in a quarter-location
 
 #### AT THIS POINT, STAFF_MERGED_WITHIN IS MUTUALLY EXCLUSIVE BY TYPE WITHIN FIRM BUT NOT ACROSS FIRMS.
@@ -133,7 +141,7 @@ check<-check[, .(count_types=uniqueN(worker_type), count=.N), by=c("staff_id")]
 uniqueN(check[count>1 & count_types==1]$staff_id)/uniqueN(check[count>1]$staff_id)
 # of the staffid-quarters observed more than once, how many are classified as more than one type?
 nrow(check[count>1 & count_types>1])/nrow(check[count>1])
-hist(check[count>1]$count_types)
+if (isTRUE(CONFIG$verbose_logging)) hist(check[count>1]$count_types)
 check<-working_data[, .(worker_type=max(worker_type), count=.N), by=c("staff_id", "quarter_year")]
 check<-check[count==1,]
 check[, count:=sum(count), by=staff_id]
@@ -170,13 +178,16 @@ expanded_data[, worker_type:=1:.N, by=cols_tokeep]
 expanded_data<-merge(expanded_data, staff_merged_within, by=c(cols_tokeep,"worker_type"), all.x=TRUE)
 for (col in c(names(expanded_data)[grep("^smooth_duration_", names(expanded_data))],"smooth_emp_duration")) expanded_data[,(col)  := ifelse(is.na(get(col)), 0,get(col))  ]
 for (col in c(names(expanded_data)[grep("^duration_", names(expanded_data))],"emp_duration")) expanded_data[,(col)  := ifelse(is.na(get(col)), 0,get(col))  ]
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("B_",col)):=get(paste0("smooth_duration_",col))/smooth_tot_duration]
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("BdivE_",col)):=get(paste0("smooth_duration_",col))/smooth_emp_duration]
+transform_cols(expanded_data, "smooth_duration_", "B_",
+               function(d, s) d[[paste0("smooth_duration_", s)]] / d$smooth_tot_duration)
+transform_cols(expanded_data, "smooth_duration_", "BdivE_",
+               function(d, s) d[[paste0("smooth_duration_", s)]] / d$smooth_emp_duration)
 expanded_data[, E:=smooth_emp_duration/smooth_tot_duration]
 
 ## raw versions
 expanded_data[, E_raw:=emp_duration/tot_duration]
-for (col in gsub("^duration_","",names(expanded_data)[grep("^duration_", names(expanded_data))])) expanded_data[,(paste0("B_raw_",col)):=get(paste0("duration_",col))/tot_duration]
+transform_cols(expanded_data, "duration_", "B_raw_",
+               function(d, s) d[[paste0("duration_", s)]] / d$tot_duration)
 
 # cast to fully wide for regressions and gamma.
 # note that labeling B_1_2 means task 1, worker 2
@@ -202,28 +213,44 @@ setnames(temp, "smooth_emp_duration", "compare_emp_duration")
 setnames(temp, "worker_type", "compare_type")
 expanded_data<-merge(expanded_data, temp, by=c(cols_tokeep,"compare_type"), all.x=TRUE)
 rm(temp)
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("BdivE_",col)):=get(paste0("smooth_duration_",col))/smooth_emp_duration]
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("compare_BdivE_",col)):=get(paste0("compare_duration_",col))/compare_emp_duration]
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("ratio_",col)):=log(get(paste0("compare_BdivE_",col))/get(paste0("BdivE_",col))) ]
-for (col in gsub("^smooth_duration_","",names(expanded_data)[grep("^smooth_duration_", names(expanded_data))])) expanded_data[,(paste0("raw_fracs_",col)):=pmin(get(paste0("compare_BdivE_",col)),get(paste0("BdivE_",col)))]
+transform_cols(expanded_data, "smooth_duration_", "BdivE_",
+               function(d, s) d[[paste0("smooth_duration_", s)]] / d$smooth_emp_duration)
+transform_cols(expanded_data, "smooth_duration_", "compare_BdivE_",
+               function(d, s) d[[paste0("compare_duration_", s)]] / d$compare_emp_duration)
+transform_cols(expanded_data, "smooth_duration_", "ratio_",
+               function(d, s) log(d[[paste0("compare_BdivE_", s)]] /
+                                  d[[paste0("BdivE_", s)]]))
+transform_cols(expanded_data, "smooth_duration_", "raw_fracs_",
+               function(d, s) pmin(d[[paste0("compare_BdivE_", s)]],
+                                   d[[paste0("BdivE_", s)]]))
 
 # for any BdivE that is small set ratio to NA
-for (col in gsub("^ratio_","",names(expanded_data)[grep("^ratio", names(expanded_data))])) expanded_data[,(paste0("ratio_",col)):=ifelse(round(get(paste0("compare_BdivE_",col)),3)==0, NA,get(paste0("ratio_",col))) ]
-for (col in gsub("^ratio_","",names(expanded_data)[grep("^ratio", names(expanded_data))])) expanded_data[,(paste0("ratio_",col)):=ifelse(round(get(paste0("BdivE_",col)),3)==0, NA,get(paste0("ratio_",col))) ]
+transform_cols(expanded_data, "ratio_", "ratio_",
+               function(d, s) ifelse(round(d[[paste0("compare_BdivE_", s)]], 3) == 0,
+                                     NA, d[[paste0("ratio_", s)]]))
+transform_cols(expanded_data, "ratio_", "ratio_",
+               function(d, s) ifelse(round(d[[paste0("BdivE_", s)]], 3) == 0,
+                                     NA, d[[paste0("ratio_", s)]]))
 
 forgamma_verywide<-dcast(expanded_data, location_id+quarter_year+county~worker_type+compare_type, value.var=names(expanded_data)[grep("^ratio_", names(expanded_data))] )
 # new variables read as "task_numeratortype_denomtype
 # set all nas to 0 (unused)
 for (col in gsub("^ratio_","",names(forgamma_verywide)[grep("^log_ratio_", names(forgamma_verywide))])) forgamma_verywide[,(paste0("ratio_",col)):=ifelse(is.na(get(paste0("ratio_",col))), 0,get(paste0("ratio_",col))) ]
-# set all infinites to 0 
-for (col in gsub("^ratio_","",names(forgamma_verywide)[grep("^ratio_", names(forgamma_verywide))])) forgamma_verywide[,(paste0("ratio_",col)):=ifelse(is.finite(get(paste0("ratio_",col))), get(paste0("ratio_",col)),0) ]
+# set all infinites to 0
+transform_cols(forgamma_verywide, "ratio_", "ratio_",
+               function(d, s) ifelse(is.finite(d[[paste0("ratio_", s)]]),
+                                     d[[paste0("ratio_", s)]], 0))
 
 # this is just to reference the raw fractions.
 rawfracs_verywide<-dcast(expanded_data, location_id+quarter_year+county~worker_type+compare_type, value.var=names(expanded_data)[grep("^raw_fracs_", names(expanded_data))] )
 # set all nas to 0 (unused)
-for (col in gsub("^raw_fracs_","",names(rawfracs_verywide)[grep("^raw_fracs_", names(rawfracs_verywide))])) rawfracs_verywide[,(paste0("raw_fracs_",col)):=ifelse(is.na(get(paste0("raw_fracs_",col))), 0,get(paste0("raw_fracs_",col))) ]
-# set all infinites to 0 
-for (col in gsub("^raw_fracs_","",names(rawfracs_verywide)[grep("^raw_fracs_", names(rawfracs_verywide))])) rawfracs_verywide[,(paste0("raw_fracs_",col)):=ifelse(is.finite(get(paste0("raw_fracs_",col))), get(paste0("raw_fracs_",col)),0) ]
+transform_cols(rawfracs_verywide, "raw_fracs_", "raw_fracs_",
+               function(d, s) ifelse(is.na(d[[paste0("raw_fracs_", s)]]),
+                                     0, d[[paste0("raw_fracs_", s)]]))
+# set all infinites to 0
+transform_cols(rawfracs_verywide, "raw_fracs_", "raw_fracs_",
+               function(d, s) ifelse(is.finite(d[[paste0("raw_fracs_", s)]]),
+                                     d[[paste0("raw_fracs_", s)]], 0))
 
 
 ### recover gamma
