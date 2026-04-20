@@ -1,5 +1,5 @@
 #' =============================================================================
-#' STEP 01_02: Spatial Correlation of Productivity, Specialization, Return Rate
+#' STEP 03: Spatial Correlation of Productivity, Specialization, Return Rate
 #' =============================================================================
 #' For each of the three focal counties, plots a ZIP-code choropleth map of:
 #'   - rev_labor   (revenue per minute, a productivity proxy)
@@ -10,17 +10,17 @@
 #' each U.S. state (sample coverage).
 #'
 #' Input:
-#'   - results/data/01_01_stylized_facts_data.rds
-#'     (produced by 01_01; contains firm-quarter panel with location_zip,
+#'   - results/data/02_stylized_facts_data.rds
+#'     (produced by 02_stylized_facts.R; contains firm-quarter panel with location_zip,
 #'      county, rev_labor, s_index, pastrepeat_rate, location_state)
 #'   - 20220727_countypop/geocorr2022_2220801561.csv        (GEOCORR ZCTA->county crosswalk)
 #'   - 20240415_census_zcta_shapefiles/cb_2018_us_zcta510_500k.shp
 #'     (Census cartographic-boundary ZCTAs for all U.S.)
 #'
 #' Output:
-#'   - results/out/figures/01_02_spatial_cor_<FIPS>_{rev,sindex,return_rate}.png
+#'   - results/out/figures/03_spatial_cor_<FIPS>_{rev,sindex,return_rate}.png
 #'     (9 files: 3 counties x 3 variables)
-#'   - results/out/figures/01_02_coverage.png (state-level salon count map)
+#'   - results/out/figures/03_coverage.png (state-level salon count map)
 #' =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -40,7 +40,7 @@ source('config.R')
 
 ensure_directory("results/out/figures")
 
-stylized_path <- file.path("results", "data", "01_01_stylized_facts_data.rds")
+stylized_path <- file.path("results", "data", "02_stylized_facts_data.rds")
 zcta_county_path <- file.path(CONFIG$raw_data_path,
                               "20220727_countypop/geocorr2022_2220801561.csv")
 zcta_shape_path <- file.path(CONFIG$raw_data_path,
@@ -48,7 +48,7 @@ zcta_shape_path <- file.path(CONFIG$raw_data_path,
 assert_required_files(c(stylized_path, zcta_county_path, zcta_shape_path))
 
 # -----------------------------------------------------------------------------
-# Load 01_01 output and aggregate to the ZIP level
+# Load 02 output and aggregate to the ZIP level
 # -----------------------------------------------------------------------------
 working_data <- data.table(readRDS(stylized_path))
 
@@ -135,7 +135,7 @@ plot_county_map <- function(sf_data, county_fips, variable, out_png) {
   png(out_png, width = 700, height = 700)
   plot(st_geometry(county_sf), col = ramp[cats], bg = "white", lwd = 0.25)
   dev.off()
-  message("01_02: wrote ", out_png)
+  message("03: wrote ", out_png)
 }
 
 ## map variable name -> suffix used in the output filename
@@ -148,7 +148,7 @@ variable_suffix <- list(
 for (county_fips in CONFIG$counties_padded) {
   for (var in names(variable_suffix)) {
     out_png <- sprintf(
-      "results/out/figures/01_02_spatial_cor_%s_%s.png",
+      "results/out/figures/03_spatial_cor_%s_%s.png",
       county_fips, variable_suffix[[var]]
     )
     plot_county_map(my_sf, county_fips, var, out_png)
@@ -166,5 +166,5 @@ ggplot(state_data_count, aes(map_id = region)) +
   theme_map() +
   theme(legend.text = element_text(size = 18),
         legend.title = element_text(size = 18))
-ggsave("results/out/figures/01_02_coverage.png", width = 12, height = 6, units = "in")
-message("01_02: wrote results/out/figures/01_02_coverage.png")
+ggsave("results/out/figures/03_coverage.png", width = 12, height = 6, units = "in")
+message("03: wrote results/out/figures/03_coverage.png")

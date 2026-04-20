@@ -1,5 +1,5 @@
 #' =============================================================================
-#' STEP 01_01: Stylized Facts and Non-Task Variables (Full National Sample)
+#' STEP 02: Stylized Facts and Non-Task Variables (Full National Sample)
 #' =============================================================================
 #' Produces the stylized-facts evidence reported in the paper: dispersion in
 #' specialization and productivity, productivity-specialization correlations,
@@ -15,7 +15,7 @@
 #'   4. Merge three auxiliary data pulls (chair renters, tips, products).
 #'   5. Collapse to a firm-quarter panel; join s_index and task_mix from the
 #'      pre-filter 01_staff_task_full.rds.
-#'   6. Save the firm-quarter panel for use by 01_02.
+#'   6. Save the firm-quarter panel for use by 03_spatial_corr.R.
 #'   7. Run the stylized-facts regressions and save tables / figures.
 #'
 #' Inputs:
@@ -25,9 +25,9 @@
 #'   - ACS (tidycensus) for the zip-level income regression
 #'
 #' Outputs:
-#'   - results/data/01_01_stylized_facts_data.rds  (firm-quarter panel used by 01_02)
-#'   - results/out/tables/01_01_*.tex               (6 tex files)
-#'   - results/out/figures/01_01_*.png              (5 png files)
+#'   - results/data/02_stylized_facts_data.rds  (firm-quarter panel used by 03)
+#'   - results/out/tables/02_*.tex               (6 tex files)
+#'   - results/out/figures/02_*.png              (5 png files)
 #' =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -67,7 +67,7 @@ ensure_directory("results/out/tables")
 ensure_directory("results/out/figures")
 
 if (!nzchar(CONFIG$raw_data_base)) {
-  stop("CONFIG$raw_data_base must be set to run 01_01_stylized_facts.R")
+  stop("CONFIG$raw_data_base must be set to run 02_stylized_facts.R")
 }
 
 task_data_path <- project_path(CONFIG$prep_output_dir, "00_tasks_cosmo.rds")
@@ -367,7 +367,7 @@ firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
 ## exclude partial quarters (see CONFIG$excluded_quarters_analysis)
 firm_quarter <- firm_quarter[!quarter_year %in% CONFIG$excluded_quarters_analysis, ]
 
-saveRDS(firm_quarter, "results/data/01_01_stylized_facts_data.rds")
+saveRDS(firm_quarter, "results/data/02_stylized_facts_data.rds")
 
 firm_quarter[,s_max:=-task_mix_1*spec_log(task_mix_1)-task_mix_2*spec_log(task_mix_2)-task_mix_3*spec_log(task_mix_3)-task_mix_4*spec_log(task_mix_4)-task_mix_5*spec_log(task_mix_5)]
 
@@ -383,7 +383,7 @@ names(firm_stats)<-c("Revenue","Employees","Customers",
                      "Share Administrative","Share Nail/Spa/Eye/Misc."
 )
 stargazer(firm_stats, header=FALSE, type='text')
-stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/01_01_summary_stats.tex',single.row = TRUE)
+stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/02_summary_stats.tex',single.row = TRUE)
 
 
 
@@ -448,7 +448,7 @@ firm_stats<-firm_quarter[,c("rev_labor","s_index")]
 
 names(firm_stats)<-c("Labor Productivity","S-index")
 stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE, type='text')
-stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE,digits=2, out='results/out/tables/01_01_dispersion.tex',single.row = TRUE)
+stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE,digits=2, out='results/out/tables/02_dispersion.tex',single.row = TRUE)
 
 # the most productive quartile of firms are more than twice as specialized
 summary(firm_quarter[rev_labor<=quantile(firm_quarter$rev_labor, 0.25)]$s_index)
@@ -460,7 +460,7 @@ ggplot(firm_quarter, aes(x=s_index)) +
 theme_bw()+ theme(axis.text = element_text(size = 14))+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
-ggsave("results/out/figures/01_01_sindex_hist.png", width=4, height=4, units="in")
+ggsave("results/out/figures/02_sindex_hist.png", width=4, height=4, units="in")
 
 firm_quarter[, round_emps:=cut(emps, quantile(emps, seq(from=0, to=1, length=13)))]
 
@@ -470,7 +470,7 @@ ggplot(firm_quarter[emps>1,], aes(x=s_index)) +
   scale_x_continuous(breaks=c(0,0.5,1))+theme_bw() + theme(axis.text = element_text(size = 10))+
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
 facet_wrap(~ round_emps) 
-ggsave("results/out/figures/01_01_sindex_hist_byemps.png", width=4, height=4, units="in")
+ggsave("results/out/figures/02_sindex_hist_byemps.png", width=4, height=4, units="in")
 
 ## persistence of both - use ar(1) persistence with and without fixed effect
 setorder(firm_quarter, "location_id", "quarter_year")
@@ -499,7 +499,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   etable(res0, res1,res2,res3,res4,res5,res6, fitstat=~n+r2,keep="!Constant",dict=c(county="County",std_rev_labor = "Revenue per Minute (standardized)", std_sindex="S-Index", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
                                                                     task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
                                                                     task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment"),
-         file="results/out/tables/01_01_productivity_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/02_productivity_sindex.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
   
@@ -508,7 +508,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + theme(axis.text = element_text(size = 14))+
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
   
-  ggsave("results/out/figures/01_01_sindex_prod_all.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/02_sindex_prod_all.png", width=4, height=4, units="in")
   
   scaleFUN <- function(x) formatC(signif(x, digits=1), digits=1, format="fg", flag="#")
   
@@ -517,7 +517,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+scale_x_continuous(labels=scaleFUN,breaks=c(0,0.5, 1))+
   facet_wrap(~round_emps) 
   
-  ggsave("results/out/figures/01_01_sindex_prod_byemps.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/02_sindex_prod_byemps.png", width=4, height=4, units="in")
   
   
   # the most specialized quartile of firms on averagegenerate $1.08 more revenue per minute
@@ -543,7 +543,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                                                               std_cust="Customer Count", std_rev_cust="Rev. per Customer",
                                                               std_futurereturn="Customer Return Rate"
                                                               ),
-         file="results/out/tables/01_01_rev_link_decomp.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/02_rev_link_decomp.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
 #' -----------------------------------------------------------------------------
@@ -585,7 +585,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   etable(res0, res1,res2,res3,res4,res5, fitstat=~n+r2,keep="!Constant",dict=c(std_rev_labor = "Revenue per Minute", std_multi_rate="Teamwork", location_zip="Zip" ,quarter_year="Quarter-Year", emps="Firm Size",
                                                                              task_mix_2="Color Task Mix",task_mix_3="Blowdry Task Mix",
                                                                              task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment"),
-         file="results/out/tables/01_01_productivity_teamwork.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/02_productivity_teamwork.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
   ggplot(data = firm_quarter, aes( x = s_index, y = multi_rate)) + geom_smooth(method='lm',color = "red", se=FALSE)+
     stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + 
@@ -593,7 +593,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
     theme(axis.text = element_text(size = 14))+
     xlab("Task Specialization (S-Index)")+ylab("Teamwork")
   
-  ggsave("results/out/figures/01_01_sindex_teamwork.png", width=4, height=4, units="in")
+  ggsave("results/out/figures/02_sindex_teamwork.png", width=4, height=4, units="in")
   
   
 
@@ -615,7 +615,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                         std_uniq_discounts="Product Discounts",std_tip_time="Tip Feature",
                         std_prebook_time="Prebook Feature",std_staffreq_time="Request Feature",
                         std_first="Software Adopted"),
-         file="results/out/tables/01_01_management_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/02_management_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
 
 #' -----------------------------------------------------------------------------
@@ -634,7 +634,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                         std_mistake="Misspellings", std_renter="Chair Renters", std_tip="Tip Percent",
                         has_productdata="Has Product Data", has_renter="Has Chair Renter", uses_tip="Uses Tip Feature",
                         county="County"),
-         file="results/out/tables/01_01_auxiliary_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
+         file="results/out/tables/02_auxiliary_practices.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
 
 
 #' -----------------------------------------------------------------------------
