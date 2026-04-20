@@ -96,7 +96,7 @@ for (cur_loc_quarter in unique(staff_comparable$year_loc)){
     res[i]<-tot
   }
   stopifnot(length(which.min(res))==1)
-  --
+  
   label_final<-rbind(label_final, t(c(cur_loc_quarter,allcombos[[which.min(res)]] )), fill=TRUE)
 }
 
