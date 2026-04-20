@@ -81,7 +81,7 @@ source("run_all.R")
 
 | Step | Script | Output | Description |
 |:----:|--------|--------|-------------|
-| 0 | `00_mk_tasks_cosmo.R` | `00_tasks_cosmo.rds` | Task-level aggregation with Lidstone smoothing |
+| 0 | `00_mk_tasks_cosmo.R` | `00_tasks_cosmo.rds` | Task-level aggregation with Lidstone smoothing; drops legacy-import rows (see `docs/legacy_import_data_issue.md`) |
 | 1 | `01_build_data.R` | `01_working.rds` | Hierarchical clustering of workers into 5 types; constructs skill matrix **B** and worker distribution **E** |
 | 2 | `02_estimation.R` | `02_parameters.rds` | **Stage 1**: IV demand estimation. **Stage 2**: GMM on assignment equilibrium moments |
 
@@ -97,31 +97,37 @@ source("01_02_spatial_corr.R")      # Spatial patterns
 source("01_03_summary_stats_esample.R")  # Sample summary statistics
 ```
 
-## Identifying Worker Types
+## `01_build_data.R` Pipeline
 
-Worker types are not directly observed in the data---they must be inferred from how workers allocate their time across tasks. The identification proceeds in three stages, implemented in `01_build_data.R` and `cluster.R`:
+`01_build_data.R` (which sources `cluster.R` at the end) transforms raw task-level data into the estimation-ready dataset `01_working.rds`. The full pipeline has nine stages:
 
-### Stage 1: Skill Profiles
+| Stage | Location | Description |
+|-------|----------|-------------|
+| 1 | `01_build_data.R:31–54` | **Task merge + duration imputation.** Merge task cluster 3 into 4 (blowdry/style/treatment/extension), re-rank cluster IDs, impute zero-duration services (~2%) with the quarter–task-cluster mean. |
+| 2 | `01_build_data.R:57–69` | **ZIP → county mapping.** GEOCORR crosswalk with >50% area-fraction threshold; merge county population data. |
+| 3 | `01_build_data.R:76–83` | **Drop zero-revenue firm-quarters.** |
+| 4 | `01_build_data.R:107–162` | **Staff-task matrix.** Aggregate transactions to worker × firm × quarter × task; wide-pivot so each row is one worker-quarter with duration columns per task. Compute firm-level task mix, `service_mix_id` (binary string of active tasks), and the **specialization index `s_index`** (a KL-divergence-type measure of how much a worker's task allocation deviates from the firm average). Save `01_staff_task_full.rds`. |
+| 5 | `01_build_data.R:164–175` | **Lidstone smoothing + sample filter.** Restrict to target quarters (2018 Q1–2021 Q2, excluding 2020 Q2/Q3) and the three study counties. Add the mean service duration as a pseudocount to regularize zero-duration cells; recompute B shares on smoothed totals. Save `01_staff_task_full_smoothed.rds` and `01_staff_task.rds`. |
+| 6 | `cluster.R:1–38` | **Within-firm hierarchical clustering.** For each county, find the minimum dendrogram cut height that guarantees ≤ `n_worker_types` groups per firm (complete linkage, Euclidean distance on `Btilde_raw`). Apply cut to assign `type_within_firm`. |
+| 7 | `cluster.R:44–113` | **Cross-firm type matching.** Select a reference firm per county (largest firm with all 5 types). For each comparable firm-quarter, exhaustively enumerate permutations of local type labels and pick the one minimizing L1 distance on normalized log-ratio Btilde vectors. Produces globally consistent `worker_type` labels. |
+| 8 | `cluster.R:115–226` | **Expand to full type matrix.** Collapse to merged type × firm × quarter; expand so every firm always has all 5 type rows (zeros for absent types); cast wide to `verywide_expanded` (one row per firm-quarter). Also build `forgamma_verywide` (pairwise log-ratios of `BdivE` across type pairs, used for gamma estimation). |
+| 9 | `cluster.R:229–424` | **Gamma estimation + auxiliary merges.** Build a firm-similarity graph (two firms are linked if they share ≥2 comparable type pairs). Traverse shortest paths from each firm to the reference firm to estimate `gamma_normalized` (relative productivity/entropy parameter). Merge CEX outside-good shares and QCEW county wages. |
 
-For each worker in each firm-quarter, the code computes **Btilde**---the worker's normalized time allocation across the 5 task types (e.g., what fraction of a worker's time goes to haircuts vs. color vs. styling). Before clustering, raw durations are **Lidstone-smoothed** (adding a tuning parameter equal to the mean service duration) to regularize zero-duration cells, ensuring that a worker who happens not to perform a task in a given quarter is not treated as categorically unable to do so.
+### Key Variables
 
-### Stage 2: Within-Firm Clustering
-
-Workers within each firm-quarter are grouped using **complete-linkage hierarchical clustering** on the Euclidean distance between their Btilde vectors. The cut height is set per county at the minimum level that guarantees every firm has at most 5 worker types. This yields worker type labels that are consistent within a firm (e.g., "type 1" and "type 2" at Salon A) but not yet comparable across firms.
-
-### Stage 3: Across-Firm Type Matching
-
-To make types comparable across firms, the code selects a **reference firm** in each county---the largest firm (by employee count) that exhibits all 5 worker types. Every other firm's within-firm type labels are then mapped to the reference firm's labels by:
-
-1. Enumerating all possible permutations of the mapping from local types to the reference firm's 5 types.
-2. For each permutation, computing the **L1 distance on normalized log-ratios** of skill profiles across all pairwise worker-type comparisons.
-3. Selecting the permutation that minimizes this distance.
-
-This produces globally consistent worker type labels within each market: "type 1" at Salon A and "type 1" at Salon B reflect the same pattern of comparative advantage relative to the reference firm.
+| Variable | Definition |
+|----------|-----------|
+| `Btilde_raw` | Worker's raw (unsmoothed) share of each task, normalized by total worker time. Used for clustering. |
+| `Btilde` | Smoothed version of `Btilde_raw`. |
+| `B` | Worker type's share of total firm time by task (smoothed). |
+| `BdivE` | `B` divided by the worker type's employment share `E`. Core input for gamma estimation. |
+| `s_index` | Firm-level specialization index: sum over workers and tasks of `B_raw * log(B_raw / task_mix / e_frac)`. |
+| `gamma_normalized` | Estimated entropy-regularization parameter per firm-quarter, recovered from skill-ratio paths. |
+| `e_frac` / `E` | Worker type's share of total firm labor time. |
 
 ### Validation
 
-The code includes checks on temporal consistency: among workers observed across multiple quarters, approximately 90% are classified as the same type in every quarter, providing evidence that the inferred types capture stable worker characteristics rather than transient variation.
+Among workers observed across multiple quarters, approximately 90% are classified as the same type in every quarter, providing evidence that the inferred types capture stable worker characteristics rather than transient variation.
 
 ## Numerical Methods
 
