@@ -1,5 +1,0 @@
-library('data.table')
-set.seed(4459665)
-working_data <- data.table(readRDS('mkdata/data/01_working.rds'))
-source('preamble.R')
-source('02_check_2sls.R')
