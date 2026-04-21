@@ -2,8 +2,15 @@
 
 library('data.table')
 set.seed(4459665)
-working_data<-data.table(readRDS('mkdata/data/01_working.rds'))
 
+## load estimation-ready dataset assembled by 04_estimation_sample.R
+source('config.R')
+estimation_sample <- readRDS(file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds"))
+working_data  <- estimation_sample$working_data
+estim_matrix  <- estimation_sample$estim_matrix
+quarter_count <- estimation_sample$quarter_count
+county_count  <- estimation_sample$county_count
+skill_count   <- estimation_sample$skill_count
 
 ## setup the data and main functions
 source('preamble.R')

@@ -29,19 +29,19 @@
 #'
 #' Fixed-effect specifications (columns within a table)
 #' ----------------------------------------------------
-#'   "Full CxQ"               Fully saturated county x quarter FE (ivreg
+#'   "County x quarter; full" Fully saturated county x quarter FE (ivreg
 #'                            default). Typically absorbs the instrument's
 #'                            identifying variation.
-#'   "Manual"                 County x quarter FE with the three county:2018.1
+#'   "County x quarter; omit" County x quarter FE with the three county:2018.1
 #'                            cells omitted by hand, recovering the original
 #'                            manual 2SLS spec in preamble.R. Imposes that
 #'                            county-quarter FE are equal across counties in
 #'                            2018.1.
-#'   "Quarter only"           Additive quarter FE (reference quarter 2018.1
-#'                            omitted); no county FE, no CxQ interaction.
+#'   "Quarter only; omit"     Additive quarter FE (reference quarter omitted);
+#'                            no county FE, no county x quarter interaction.
 #'                            County-level variation is absorbed only through
 #'                            the avg_labor x B_raw cost controls.
-#'   "Quarter only; all qtrs" Additive quarter FE including ALL quarters with
+#'   "Quarter only; all"      Additive quarter FE including all quarters with
 #'                            the intercept suppressed ("- 1" on the formula).
 #'   "County + quarter"       Additive county FE + additive quarter FE
 #'                            (one reference quarter omitted).
@@ -53,9 +53,9 @@
 #' Tables produced
 #' ---------------
 #'   Table 1 (06_standard_iv_comparison.tex): standard logit, 4 columns crossing
-#'     {Hausman, Dye} x {Manual, Quarter only}. Lets readers see how the price
-#'     coefficient moves with the choice of instrument vs. the choice of FE
-#'     structure.
+#'     {Hausman, Dye} x {County x quarter; omit, Quarter only; omit}. Lets
+#'     readers see how the price coefficient moves with the choice of
+#'     instrument vs. the choice of FE structure.
 #'
 #'   Table 2 (06_standard_hausman_fe_comparison.tex): standard logit with the
 #'     Hausman instrument, across all 5 FE configurations. Diagnoses whether
@@ -68,8 +68,8 @@
 #'     weak-IV F statistics for each endogenous regressor.
 #'
 #' Inputs:
-#'   - mkdata/data/01_working.rds
-#'   - Objects created by preamble.R (estim_matrix, CONFIG, counties list, ...)
+#'   - mkdata/data/04_estimation_sample.rds (working_data + estim_matrix built by 04_estimation_sample.R)
+#'   - Objects created by preamble.R (beta, model matrices, GMM helpers, ...)
 #'
 #' Outputs:
 #'   - results/out/tables/06_standard_iv_comparison.tex
@@ -79,7 +79,14 @@
 
 library("data.table")
 set.seed(4459665)
-working_data <- data.table(readRDS("mkdata/data/01_working.rds"))
+
+source("config.R")
+estimation_sample <- readRDS(file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds"))
+working_data  <- estimation_sample$working_data
+estim_matrix  <- estimation_sample$estim_matrix
+quarter_count <- estimation_sample$quarter_count
+county_count  <- estimation_sample$county_count
+skill_count   <- estimation_sample$skill_count
 
 source("preamble.R")
 
@@ -120,23 +127,23 @@ county_qy_terms <- as.vector(outer(paste0("factor(county):"), qy_dummy_names, pa
 ## and instruments are appended by the formula builder.
 spec_definitions <- list(
   full_ivreg = list(
-    label    = "Full CxQ",
-    fe_label = "County$\\times$quarter",
+    label    = "County$\\times$quarter; full",
+    fe_label = "County$\\times$quarter; full",
     exog_terms = c(
       "factor(county):factor(quarter_year)",
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
   manual = list(
-    label    = "Manual",
-    fe_label = paste0("County$\\times$quarter; omit ", ref_quarter),
+    label    = "County$\\times$quarter; omit",
+    fe_label = "County$\\times$quarter; omit",
     exog_terms = c(
       county_qy_terms,
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
   quarter_only = list(
-    label    = paste0("Quarter only; omit ", ref_quarter),
+    label    = "Quarter only; omit",
     fe_label = "Quarter FE",
     exog_terms = c(
       unique(str_replace(county_qy_terms, "factor\\(county\\):", "")),
@@ -144,7 +151,7 @@ spec_definitions <- list(
     )
   ),
   quarter_only_all = list(
-    label    = "Quarter only; all qtrs",
+    label    = "Quarter only; all",
     fe_label = "All quarter FE",
     exog_terms = c(
       "factor(quarter_year)",
@@ -271,11 +278,14 @@ estimate_stars <- function(p_value) {
   if (is.na(p_value)) {
     return("")
   }
-  if (p_value < 0.01) {
+  if (p_value < 0.001) {
     return("***")
   }
-  if (p_value < 0.05) {
+  if (p_value < 0.01) {
     return("**")
+  }
+  if (p_value < 0.05) {
+    return("*")
   }
   ""
 }
@@ -487,7 +497,7 @@ build_iv_table <- function(columns, caption, label,
 }
 
 # -----------------------------------------------------------------------------
-# Table 1: standard logit, {Hausman, Dye} x {Manual, Quarter only}
+# Table 1: standard logit, {Hausman, Dye} x {County x quarter; omit, Quarter only; omit}
 # -----------------------------------------------------------------------------
 
 table1_columns <- list(
@@ -522,12 +532,13 @@ table1_notes <- paste0(
   "Notes: Standard-logit 2SLS price coefficients with location-level clustered ",
   "standard errors in parentheses. Columns cross the two instruments (Hausman ",
   "leave-own-county-out same-quarter price; dye = task\\_mix\\_2 $\\times$ ",
-  "PPI) with two fixed-effect parameterizations: ``Manual'' uses county",
-  "$\\times$quarter FE with the county:", ref_quarter, " cells dropped, and ",
-  "``Quarter only'' uses additive quarter FE with ", ref_quarter, " as the ",
-  "reference quarter. All columns also include county-specific $avg\\_labor ",
-  "\\times B\\_raw$ cost controls. Weak-IV rows report the diagnostic ",
-  "statistics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+  "PPI) with two fixed-effect parameterizations. ``County$\\times$quarter; ",
+  "omit'' drops the county-specific ", ref_quarter, " cells, and ``Quarter ",
+  "only; omit'' uses additive quarter FE with an omitted reference quarter. ",
+  "All columns also include county-specific $avg\\_labor \\times B\\_raw$ cost ",
+  "controls. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$, ",
+  "respectively. Weak-IV rows report the diagnostic statistics from ",
+  "\\texttt{summary(ivreg, diagnostics = TRUE)}."
 )
 
 table1_lines <- build_iv_table(
@@ -561,12 +572,13 @@ table2_notes <- paste0(
   "standard errors in parentheses. All columns use the county-specific Hausman ",
   "instrument (leave-own-county-out same-quarter average customer price) and ",
   "county-specific $avg\\_labor \\times B\\_raw$ controls. Columns vary only in ",
-  "the fixed-effect parameterization. The manual specification omits the ",
-  "county-specific ", ref_quarter, " quarter indicators; the quarter-only ",
-  "omitted-quarter and county-plus-quarter specifications omit ", ref_quarter,
-  " as the common quarter reference; the all-quarter quarter-only specification ",
-  "includes all quarter fixed effects. Weak-IV rows report the diagnostic ",
-  "statistics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+  "the fixed-effect parameterization. ``County$\\times$quarter; omit'' drops ",
+  "the county-specific ", ref_quarter, " quarter indicators; ``Quarter only; ",
+  "omit'' and ``County + quarter'' use an omitted common quarter reference; ",
+  "``Quarter only; all'' includes all quarter fixed effects. *, **, and *** ",
+  "denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows ",
+  "report the diagnostic statistics from ",
+  "\\texttt{summary(ivreg, diagnostics = TRUE)}."
 )
 
 table2_lines <- build_iv_table(
@@ -602,13 +614,13 @@ table3_notes <- paste0(
   "instrument and the county-specific Hausman instrument (leave-own-county-out ",
   "same-quarter price) together, plus county-specific $avg\\_labor \\times ",
   "B\\_raw$ controls. Columns vary only in the fixed-effect parameterization. ",
-  "The manual specification omits the county-specific ", ref_quarter, " quarter ",
-  "indicators; the quarter-only omitted-quarter and county-plus-quarter ",
-  "specifications omit ", ref_quarter, " as the common quarter reference; the ",
-  "all-quarter quarter-only specification includes all quarter fixed effects. ",
-  "Weak-IV rows report the diagnostics from \\texttt{summary(ivreg, ",
-  "diagnostics = TRUE)}. In a simple nested-logit interpretation, sigma values ",
-  "in $[0,1)$ are the usual RUM-consistent range."
+  "``County$\\times$quarter; omit'' drops the county-specific ", ref_quarter,
+  " quarter indicators; ``Quarter only; omit'' and ``County + quarter'' use ",
+  "an omitted common quarter reference; ``Quarter only; all'' includes all ",
+  "quarter fixed effects. *, **, and *** denote $p<0.05$, $p<0.01$, and ",
+  "$p<0.001$, respectively. Weak-IV rows report the diagnostics from ",
+  "\\texttt{summary(ivreg, diagnostics = TRUE)}. In a simple nested-logit ",
+  "interpretation, sigma values in $[0,1)$ are the usual RUM-consistent range."
 )
 
 table3_lines <- build_iv_table(
