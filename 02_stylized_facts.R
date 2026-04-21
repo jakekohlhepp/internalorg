@@ -26,7 +26,7 @@
 #'
 #' Outputs:
 #'   - results/data/02_stylized_facts_data.rds  (firm-quarter panel used by 03)
-#'   - results/out/tables/02_*.tex               (6 tex files)
+#'   - results/out/tables/02_*.tex               (7 tex files)
 #'   - results/out/figures/02_*.png              (5 png files)
 #' =============================================================================
 
@@ -505,7 +505,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   
   ## do graphs unconditional and conditional on firm size.
   ggplot(data = firm_quarter, aes( x = s_index, y = rev_labor)) + geom_smooth(method='lm',color = "red", se=FALSE)+ylab("Revenue per Minute")+xlab("Task-Specialization (S-Index)")+
-    stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + theme(axis.text = element_text(size = 14))+
+    stat_summary_bin(fun = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + theme(axis.text = element_text(size = 14))+
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
   
   ggsave("results/out/figures/02_sindex_prod_all.png", width=4, height=4, units="in")
@@ -513,7 +513,7 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   scaleFUN <- function(x) formatC(signif(x, digits=1), digits=1, format="fg", flag="#")
   
   ggplot(data = firm_quarter[!is.na(round_emps)], aes( x = s_index, y = rev_labor)) + geom_smooth(method='lm',color = "red", se=FALSE)+
-    stat_summary_bin(fun.y = mean, breaks=quantile(firm_quarter$s_index,seq(from=0.05, to=0.95,by=0.05)), geom = "point")+ xlab("Task Specialization")+ ylab("Revenue per Minute")+theme_bw() + theme(axis.text = element_text(size = 10))+
+    stat_summary_bin(fun = mean, breaks=quantile(firm_quarter$s_index,seq(from=0.05, to=0.95,by=0.05)), geom = "point")+ xlab("Task Specialization")+ ylab("Revenue per Minute")+theme_bw() + theme(axis.text = element_text(size = 10))+
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+scale_x_continuous(labels=scaleFUN,breaks=c(0,0.5, 1))+
   facet_wrap(~round_emps) 
   
@@ -666,6 +666,9 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
 #' -----------------------------------------------------------------------------
 #' TESTABLE IMPLICATION: INCOME AND SPECIALIZATION
 #' -----------------------------------------------------------------------------
+#' Fetches ACS zip-level median household income (B19013_001) for 2011-2021
+#' via tidycensus and cross-tabulates with s_index. Results are printed to
+#' console only; no output file is produced.
   firm_quarter[, year:=floor(quarter_year)]
   all_years<-data.table()
   for (y in 2011:2021){
@@ -675,15 +678,20 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
       year      = y)
     zcta_income<-data.table(zcta_income)
     setnames(zcta_income, "GEOID", "location_zip")
-    zcta_income[,location_zip:=as.integer(location_zip) ]
+    ## Keep as integer to match numeric location_zip in firm_quarter.
+    ## (GEOID from tidycensus is zero-padded character; as.integer drops
+    ## the leading zero, matching how location_zip is stored numerically.)
+    zcta_income[, location_zip := as.integer(location_zip)]
     zcta_income[, year:=y]
     all_years<-rbind(zcta_income,all_years)
-    
+
   }
 
   firm_quarter<-merge(firm_quarter, all_years, by=c("location_zip", "year"), all.x=TRUE)
-firm_quarter[, s_estimate:=estimate/sd(estimate, na.rm=TRUE)]
-feols(std_sindex~s_estimate, data=firm_quarter)
-feols(std_sindex~s_estimate|year, data=firm_quarter)
+  firm_quarter[, s_estimate:=estimate/sd(estimate, na.rm=TRUE)]
+  print(feols(std_sindex~s_estimate, data=firm_quarter))
+  print(feols(std_sindex~s_estimate|year, data=firm_quarter))
+
+message("02: complete")
 
 
