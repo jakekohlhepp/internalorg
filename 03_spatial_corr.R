@@ -128,6 +128,11 @@ my_sf <- merge(my_sf, working_data, by = "ZCTA5CE10", all.x = TRUE)
 ## the darkest ZIP gets black, and the rest are linearly interpolated.
 plot_county_map <- function(sf_data, county_fips, variable, out_png) {
   county_sf <- sf_data[sf_data$county == county_fips & sf_data$coverage == 1, ]
+  if (nrow(county_sf) == 0) {
+    warning("03: no covered ZIPs found for county ", county_fips,
+            " — skipping ", out_png)
+    return(invisible(NULL))
+  }
   vals <- county_sf[[variable]]
   ramp <- c("white",
             colorRampPalette(c("white", "black"))(uniqueN(vals) - 1))
