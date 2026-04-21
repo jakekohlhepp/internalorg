@@ -452,64 +452,9 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG) {
 }
 
 
-# get_os() is defined in config.R
-
-
-
-
-### Purpose: estimate via GMM the market parameters.
-stopifnot(nrow(working_data[cust_price<=0])==0)
-
-# have ppi be one quarter lagged
-ppi<-data.table(readRDS("mkdata/data/ppi.rds"))
-setkey(ppi, "quarter_year")
-ppi[, lag_ppi:=data.table::shift(ppi_inputs )]
-working_data<-merge(working_data,ppi ,all.x=TRUE, by="quarter_year")
-stopifnot(nrow(working_data[is.na(ppi_inputs)])==0)
-stopifnot(nrow(working_data[cust_price<=0])==0)
-working_data[, labor_instrument:=avg_wkly_wage/40*avg_labor]
-working_data[, year:=floor(quarter_year)]
-working_data[, quarter:=round((quarter_year-floor(quarter_year))*10)]
-working_data[, qy_cnty:=paste0(county," - ",as.character(quarter_year))]
-stopifnot(any(rowSums(working_data[,.SD, .SDcols = names(working_data)[grep("^B_raw_[0-9]_", names(working_data))]])==1))
-stopifnot(any(rowSums(working_data[,.SD, .SDcols = names(working_data)[grep("^B_[0-9]_", names(working_data))]])==1))
-
-# minimum wages
-min_wage<-data.table(read_excel('mkdata/data/minwage.xlsx'))
-working_data<-merge(working_data,min_wage[,c("county", "quarter_year", "min_wage")],by=c("county", "quarter_year"),all.x=TRUE)
-stopifnot(nrow(working_data[is.na(min_wage)])==0)
-
-working_data[, log_rel_mkt:=log(salon_share_subdiv/outside_share)]
-working_data[, mk_piece:=1/(1-salon_share_subdiv)]
-working_data[, org_cost:=gamma_normalized*s_index*avg_labor]
-setorder(working_data, "location_id", "quarter_year")
-working_data[, dye_instrument:=get(paste0("task_mix_", CONFIG$dye_task_index))*ppi_inputs]
-stopifnot(nrow(working_data[is.na(org_cost)])==0)
-sumcount<-function(x) return(sum(x>0))
-# no situatons where wrker type is not observed
-working_data[,lapply(.SD,sumcount), by=c("qy_cnty"), .SDcols=names(working_data)[grep("^E_raw_[0-9]", names(working_data))]]->check
-#stopifnot(all(check>0))
-
-# estimate via gmm. all counties share the same material cost parameters.
-# national-quarter parameters: 5 material costs (5 parms times number of quarters)
-# county time invariant: price sensitivity, org cost, skills (27 parms times number of counties)
-# county-quarter: 5 wages, 1 demand intercept, 1 cost intercept (7 parms times the number of county-quarters)
-quarter_count<-uniqueN(working_data$quarter_year)
-county_count<-uniqueN(working_data$county)
-skill_count<-length(names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
-
-# make county string
-working_data[, county:=as.character(county)]
-
-working_data[, mult_duration_hrs:=tot_duration/60]
-estim_matrix<-as.data.frame(working_data[,.SD, .SDcols=c("avg_labor","dye_instrument","county","quarter_year","log_rel_mkt", "cust_price",
-                                                         names(working_data)[grep("^B_raw_[0-9]_", names(working_data))],
-                                                         "org_cost","mk_piece",
-                                                         names(working_data)[grep("^E_raw_[0-9]", names(working_data))],
-                                                         names(working_data)[grep("^task_mix_[0-9]", names(working_data))],"qy_cnty",
-                                                         "gamma_normalized", "s_index")])
-
 ####### setup estimation equations
+## working_data and estim_matrix are assembled in 04_estimation_sample.R and
+## passed into this file's environment by 05_estimation.R / 06_iv_spec_comparison.R.
 ## none should be missing
 stopifnot(all(!is.na(estim_matrix)))
 
@@ -541,9 +486,6 @@ E_col_names <- paste0("E_", 2:CONFIG$n_worker_types)
 colnames(E_match)<-c(E_col_names, "s_index", "county")
 E_mat<-model.matrix(build_E_formula(2:CONFIG$n_worker_types, include_s_index = TRUE), data=E_match)
 
-
-##### compute the analytic estimator as a check
-skip_to_next <- FALSE
 
 ##### compute the analytic estimator
 # Precompute projection matrix for efficiency
