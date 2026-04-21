@@ -18,7 +18,7 @@
 #'   3. Run estimation (05_estimation.R)
 #'   4. Demand IV spec comparison (06_iv_spec_comparison.R)
 #'
-#' Outputs: results/data/05_parameters.rds; results/out/tables/06_demand_iv_spec_comparison.tex; results/out/tables/06_nested_iv_spec_comparison.tex
+#' Outputs: results/data/05_parameters.rds; results/out/tables/06_standard_iv_comparison.tex; results/out/tables/06_standard_hausman_fe_comparison.tex; results/out/tables/06_nested_fe_comparison.tex
 #' =============================================================================
 
 # Clear environment
@@ -406,7 +406,7 @@ if (RUN_IV_SPEC_COMPARISON) {
 
     tryCatch({
       source("06_iv_spec_comparison.R")
-      step4_outputs <- c("results/out/tables/06_demand_iv_spec_comparison.tex", "results/out/tables/06_nested_iv_spec_comparison.tex")
+      step4_outputs <- c("results/out/tables/06_standard_iv_comparison.tex", "results/out/tables/06_standard_hausman_fe_comparison.tex", "results/out/tables/06_nested_fe_comparison.tex")
       log_message("Demand IV specification comparison completed successfully")
       log_message(paste("Outputs:", paste(step4_outputs, collapse = "; ")))
       log_complete(success = TRUE)

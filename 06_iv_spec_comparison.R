@@ -1,59 +1,80 @@
 #' =============================================================================
 #' DEMAND IV SPECIFICATION COMPARISON TABLES
 #' =============================================================================
-#' Produces side-by-side LaTeX tables comparing alternative fixed-effect
-#' parameterizations for the 2SLS demand equation. Two demand models are fit
-#' under each specification:
+#' Produces three LaTeX tables comparing alternative 2SLS specifications of the
+#' demand equation. The model is always a logit (or nested logit), fit by
+#' county-specific instrumental-variables regression with standard errors
+#' clustered at the location_id level. Tables differ in the set of instruments
+#' and fixed-effect parameterizations shown side by side.
 #'
+#' Demand models
+#' -------------
 #'   (A) Standard logit:
 #'         log(s / s_0) = alpha_c * p + controls + xi
 #'       Endogenous: factor(county):cust_price
-#'       Instrument: factor(county):dye_instrument  (task_mix_2 * ppi_inputs)
 #'
 #'   (B) Nested logit (single inside nest containing all salons; the outside
 #'       option is "no salon visit"):
 #'         log(s / s_0) = alpha_c * p + sigma_c * log(s_{j|g}) + controls + xi
 #'       where s_{j|g} = salon_share_subdiv / (1 - outside_share).
 #'       Endogenous: factor(county):cust_price, factor(county):log_within_share
-#'       Instruments: factor(county):dye_instrument,
-#'                    factor(county):hausman_other_price  (leave-own-county-out
-#'                    average customer price in the same quarter).
 #'
-#' Each column of the output table corresponds to a different FE parameterization:
+#' Instruments
+#' -----------
+#'   Dye      factor(county):dye_instrument       (task_mix_2 * ppi_inputs;
+#'                                                 input-cost shifter)
+#'   Hausman  factor(county):hausman_other_price  (leave-own-county-out mean
+#'                                                 cust_price in the same
+#'                                                 quarter)
 #'
-#'   1. "Full CxQ"               Fully saturated county x quarter FE (ivreg
-#'                               default). Typically absorbs the instrument's
-#'                               identifying variation.
-#'   2. "Manual"                 County x quarter FE with the three
-#'                               county:2018.1 cells omitted by hand, recovering
-#'                               the original manual 2SLS spec in preamble.R.
-#'                               Imposes that county-quarter FE are equal
-#'                               across counties in 2018.1.
-#'   3. "Quarter only; omit 2018.1"
-#'                               Additive quarter FE (one reference quarter
-#'                               omitted), no county FE, no county x quarter
-#'                               interaction. County levels absorbed only by
-#'                               the avg_labor x B_raw cost controls.
-#'   4. "Quarter only; all qtrs"
-#'                               Additive quarter FE including ALL quarters,
-#'                               with no constant (the "- 1" on the formula
-#'                               suppresses the intercept). Keeps every quarter
-#'                               dummy in the design matrix.
-#'   5. "County + quarter"       Additive county FE + additive quarter FE
-#'                               (one reference quarter omitted).
+#' Fixed-effect specifications (columns within a table)
+#' ----------------------------------------------------
+#'   "Full CxQ"               Fully saturated county x quarter FE (ivreg
+#'                            default). Typically absorbs the instrument's
+#'                            identifying variation.
+#'   "Manual"                 County x quarter FE with the three county:2018.1
+#'                            cells omitted by hand, recovering the original
+#'                            manual 2SLS spec in preamble.R. Imposes that
+#'                            county-quarter FE are equal across counties in
+#'                            2018.1.
+#'   "Quarter only"           Additive quarter FE (reference quarter 2018.1
+#'                            omitted); no county FE, no CxQ interaction.
+#'                            County-level variation is absorbed only through
+#'                            the avg_labor x B_raw cost controls.
+#'   "Quarter only; all qtrs" Additive quarter FE including ALL quarters with
+#'                            the intercept suppressed ("- 1" on the formula).
+#'   "County + quarter"       Additive county FE + additive quarter FE
+#'                            (one reference quarter omitted).
 #'
 #' All specifications include county-specific skill-weighted labor controls
 #' factor(county):avg_labor:B_raw_j as exogenous cost shifters and estimate
-#' county-specific price coefficients. Standard errors are clustered at the
-#' location_id level.
+#' county-specific price coefficients.
+#'
+#' Tables produced
+#' ---------------
+#'   Table 1 (06_standard_iv_comparison.tex): standard logit, 4 columns crossing
+#'     {Hausman, Dye} x {Manual, Quarter only}. Lets readers see how the price
+#'     coefficient moves with the choice of instrument vs. the choice of FE
+#'     structure.
+#'
+#'   Table 2 (06_standard_hausman_fe_comparison.tex): standard logit with the
+#'     Hausman instrument, across all 5 FE configurations. Diagnoses whether
+#'     results are sensitive to the FE parameterization when the instrument
+#'     is held fixed.
+#'
+#'   Table 3 (06_nested_fe_comparison.tex): nested logit using BOTH the Hausman
+#'     and Dye instruments, across all 5 FE configurations. Reports
+#'     county-specific price and sigma coefficients together with first-stage
+#'     weak-IV F statistics for each endogenous regressor.
 #'
 #' Inputs:
 #'   - mkdata/data/01_working.rds
 #'   - Objects created by preamble.R (estim_matrix, CONFIG, counties list, ...)
 #'
 #' Outputs:
-#'   - results/out/tables/06_demand_iv_spec_comparison.tex
-#'   - results/out/tables/06_nested_iv_spec_comparison.tex
+#'   - results/out/tables/06_standard_iv_comparison.tex
+#'   - results/out/tables/06_standard_hausman_fe_comparison.tex
+#'   - results/out/tables/06_nested_fe_comparison.tex
 #' =============================================================================
 
 library("data.table")
@@ -67,7 +88,7 @@ missing_packages <- required_packages[!vapply(required_packages, requireNamespac
                                               logical(1), quietly = TRUE)]
 if (length(missing_packages) > 0) {
   stop("Missing required package(s): ", paste(missing_packages, collapse = ", "),
-       "\nInstall them before running 02_iv_spec_comparison.R.")
+       "\nInstall them before running 06_iv_spec_comparison.R.")
 }
 
 library("ivreg")
@@ -92,58 +113,46 @@ qy_dummy_names <- paste0("qy_", gsub("\\.", "_", as.character(non_ref_quarters))
 county_qy_terms <- as.vector(outer(paste0("factor(county):"), qy_dummy_names, paste0))
 
 # -----------------------------------------------------------------------------
-# Specification definitions
+# Fixed-effect specification definitions (columns)
 # -----------------------------------------------------------------------------
-# Each entry defines one column of the output tables:
-#   name       -> internal identifier used to key results
-#   label      -> column header in the LaTeX table
-#   fe_label   -> "Fixed effects" row entry
-#   exog_terms -> RHS terms that appear on BOTH sides of the ivreg formula
-#                 (standard + nested). The endogenous price (and within-share)
-#                 regressors and instruments are appended by the formula
-#                 builders below.
-# See the file header for a description of each specification's identifying
-# assumptions and what it imposes on the county-quarter FE structure.
+## Each entry defines one FE parameterization. `exog_terms` are the RHS terms
+## that appear on BOTH sides of the ivreg formula; the endogenous regressors
+## and instruments are appended by the formula builder.
 spec_definitions <- list(
-  list(
-    name = "full_ivreg",
-    label = "Full CxQ",
+  full_ivreg = list(
+    label    = "Full CxQ",
     fe_label = "County$\\times$quarter",
     exog_terms = c(
       "factor(county):factor(quarter_year)",
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
-  list(
-    name = "manual",
-    label = "Manual",
-    fe_label = "County$\\times$quarter; omit 2018.1",
+  manual = list(
+    label    = "Manual",
+    fe_label = paste0("County$\\times$quarter; omit ", ref_quarter),
     exog_terms = c(
       county_qy_terms,
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
-  list(
-    name = "quarter_only",
-    label = "Quarter only; omit 2018.1",
+  quarter_only = list(
+    label    = paste0("Quarter only; omit ", ref_quarter),
     fe_label = "Quarter FE",
     exog_terms = c(
-      unique(str_replace(county_qy_terms, "factor\\(county\\):","")),
+      unique(str_replace(county_qy_terms, "factor\\(county\\):", "")),
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
-  list(
-    name = "quarter_only_all",
-    label = "Quarter only; all qtrs",
+  quarter_only_all = list(
+    label    = "Quarter only; all qtrs",
     fe_label = "All quarter FE",
     exog_terms = c(
       "factor(quarter_year)",
       paste0("factor(county):avg_labor:", b_raw_cols)
     )
   ),
-  list(
-    name = "county_plus_quarter",
-    label = "County + quarter",
+  county_plus_quarter = list(
+    label    = "County + quarter",
     fe_label = "County + quarter",
     exog_terms = c(
       "factor(county)",
@@ -153,34 +162,62 @@ spec_definitions <- list(
   )
 )
 
-spec_order <- vapply(spec_definitions, `[[`, character(1), "name")
-spec_labels <- setNames(vapply(spec_definitions, `[[`, character(1), "label"), spec_order)
-spec_fe_labels <- setNames(vapply(spec_definitions, `[[`, character(1), "fe_label"), spec_order)
-spec_terms <- setNames(lapply(spec_definitions, `[[`, "exog_terms"), spec_order)
+# -----------------------------------------------------------------------------
+# Formula builder and fitting helpers
+# -----------------------------------------------------------------------------
+
+## model_type:   "standard" or "nested"
+## instruments:  character vector of instrument base names (without
+##               "factor(county):") -- e.g. c("dye_instrument"),
+##               c("hausman_other_price"), or
+##               c("dye_instrument","hausman_other_price").
+build_demand_formula <- function(exog_terms, instruments,
+                                 model_type = c("standard", "nested")) {
+  model_type <- match.arg(model_type)
+  exog_str <- paste(exog_terms, collapse = " + ")
+  inst_terms <- paste(paste0("factor(county):", instruments), collapse = " + ")
+
+  if (model_type == "standard") {
+    rhs_endog <- "factor(county):cust_price"
+  } else {
+    rhs_endog <- "factor(county):cust_price + factor(county):log_within_share"
+  }
+
+  as.formula(paste0(
+    "log_rel_mkt ~ ", exog_str, " + ", rhs_endog, " - 1",
+    " | ",
+    exog_str, " + ", inst_terms, " - 1"
+  ))
+}
+
+fit_demand_spec <- function(spec_name, instruments,
+                            model_type = c("standard", "nested")) {
+  model_type <- match.arg(model_type)
+  exog_terms <- spec_definitions[[spec_name]]$exog_terms
+  fit <- ivreg(build_demand_formula(exog_terms, instruments, model_type),
+               data = estim_matrix)
+  clust_vcov <- vcovCL(fit, cluster = estim_matrix$location_id, type = "HC1")
+  coef_test <- coeftest(fit, vcov. = clust_vcov)
+  diagnostics <- summary(fit, diagnostics = TRUE)$diagnostics
+
+  result <- list(
+    fit = fit,
+    prices = extract_county_rows(coef_test, "cust_price"),
+    diagnostics = diagnostics,
+    condition_number = scaled_xpzx_condition(fit),
+    adj_r2 = summary(fit)$adj.r.squared
+  )
+
+  if (model_type == "nested") {
+    result$sigmas <- extract_county_rows(coef_test, "log_within_share")
+  }
+
+  result
+}
 
 # -----------------------------------------------------------------------------
 # Shared helpers
 # -----------------------------------------------------------------------------
-
-build_standard_formula <- function(exog_terms) {
-  exog_str <- paste(exog_terms, collapse = " + ")
-  as.formula(paste0(
-    "log_rel_mkt ~ ", exog_str, " + factor(county):cust_price - 1",
-    " | ",
-    exog_str, " + factor(county):dye_instrument - 1"
-  ))
-}
-
-build_nested_formula <- function(exog_terms) {
-  exog_str <- paste(exog_terms, collapse = " + ")
-  as.formula(paste0(
-    "log_rel_mkt ~ ", exog_str,
-    " + factor(county):cust_price + factor(county):log_within_share - 1",
-    " | ",
-    exog_str,
-    " + factor(county):dye_instrument + factor(county):hausman_other_price - 1"
-  ))
-}
 
 scaled_xpzx_condition <- function(fit) {
   x_mat <- model.matrix(fit, component = "regressors")
@@ -285,13 +322,18 @@ table_row <- function(label, values) {
   paste0(label, " & ", paste(values, collapse = " & "), " \\\\")
 }
 
+weak_iv_row_name <- function(cnty, suffix) {
+  paste0("Weak instruments (factor(county)", cnty, ":", suffix, ")")
+}
+
 # -----------------------------------------------------------------------------
 # Nested-logit variables and Hausman instrument
 # -----------------------------------------------------------------------------
 
 working_data[, row_id := .I]
-## warning: because not all salons are sampled, within share should be 1-outside option share.
-working_data[, within_share := salon_share_subdiv / (1-outside_share) ]
+## warning: because not all salons are sampled, within share should be
+## 1 - outside_share.
+working_data[, within_share := salon_share_subdiv / (1 - outside_share)]
 working_data[, log_within_share := log(within_share)]
 
 quarter_totals <- working_data[, .(
@@ -319,256 +361,268 @@ estim_matrix$log_within_share <- working_data$log_within_share
 estim_matrix$hausman_other_price <- working_data$hausman_other_price
 
 # -----------------------------------------------------------------------------
-# Standard logit comparison table
+# Generic table builder
+# -----------------------------------------------------------------------------
+## `columns` is a list where each element describes one column of the table:
+##   label      -> main column header
+##   fe_label   -> entry in the "Fixed effects" row
+##   result     -> output from fit_demand_spec()
+##
+## `extra_header_rows` is an optional list of additional rows placed between
+## the column header and the "Fixed effects" row. Each entry is a list with
+##   label   -> row label
+##   values  -> character vector (one entry per column)
+##
+## `has_sigma` controls whether county sigma rows and their first-stage F rows
+## are included (only the nested-logit table sets this).
+build_iv_table <- function(columns, caption, label,
+                           has_sigma = FALSE,
+                           extra_header_rows = list(),
+                           notes = "") {
+  n_cols <- length(columns)
+  align <- paste0("l", strrep("c", n_cols))
+  total_cols <- n_cols + 1L  # column for row labels + data columns
+
+  header_values <- vapply(columns, `[[`, character(1), "label")
+  fe_values <- vapply(columns, `[[`, character(1), "fe_label")
+
+  lines <- c(
+    "\\begin{table}[!htbp] \\centering",
+    paste0("  \\caption{", caption, "}"),
+    paste0("  \\label{", label, "}"),
+    paste0("  \\begin{tabular}{", align, "}"),
+    "\\\\[-1.8ex]\\hline",
+    "\\hline \\\\[-1.8ex]",
+    table_row("", header_values)
+  )
+  for (hdr in extra_header_rows) {
+    lines <- c(lines, table_row(hdr$label, hdr$values))
+  }
+  lines <- c(lines,
+    "\\hline \\\\[-1.8ex]",
+    table_row("Fixed effects", fe_values)
+  )
+
+  # County-specific price rows
+  for (cnty in counties) {
+    price_cells <- vapply(columns, function(col) {
+      row <- col$result$prices[county == cnty]
+      format_estimate(row$estimate, row$p_value)
+    }, character(1))
+    price_se_cells <- vapply(columns, function(col) {
+      row <- col$result$prices[county == cnty]
+      format_se(row$se)
+    }, character(1))
+    lines <- c(lines,
+      table_row(paste0("Price (county ", cnty, ")"), price_cells),
+      table_row("", price_se_cells)
+    )
+
+    if (has_sigma) {
+      sigma_cells <- vapply(columns, function(col) {
+        row <- col$result$sigmas[county == cnty]
+        format_estimate(row$estimate, row$p_value)
+      }, character(1))
+      sigma_se_cells <- vapply(columns, function(col) {
+        row <- col$result$sigmas[county == cnty]
+        format_se(row$se)
+      }, character(1))
+      lines <- c(lines,
+        table_row(paste0("Sigma (county ", cnty, ")"), sigma_cells),
+        table_row("", sigma_se_cells)
+      )
+    }
+  }
+
+  # Weak-IV F rows (price, and also sigma when nested)
+  weak_iv_price_rows <- vapply(counties, function(cnty) {
+    values <- vapply(columns, function(col) {
+      format_stat(safe_diag_value(col$result$diagnostics,
+                                  weak_iv_row_name(cnty, "cust_price"),
+                                  "statistic"))
+    }, character(1))
+    table_row(paste0("Weak-IV F price (", cnty, ")"), values)
+  }, character(1))
+  lines <- c(lines, weak_iv_price_rows)
+
+  if (has_sigma) {
+    weak_iv_sigma_rows <- vapply(counties, function(cnty) {
+      values <- vapply(columns, function(col) {
+        format_stat(safe_diag_value(col$result$diagnostics,
+                                    weak_iv_row_name(cnty, "log_within_share"),
+                                    "statistic"))
+      }, character(1))
+      table_row(paste0("Weak-IV F sigma (", cnty, ")"), values)
+    }, character(1))
+    lines <- c(lines, weak_iv_sigma_rows)
+  }
+
+  wu_p_values <- vapply(columns, function(col) {
+    format_p_value(safe_diag_value(col$result$diagnostics,
+                                   "Wu-Hausman", "p-value"))
+  }, character(1))
+  cond_values <- vapply(columns, function(col) {
+    format_int(col$result$condition_number)
+  }, character(1))
+  adj_r2_values <- vapply(columns, function(col) {
+    format_stat(col$result$adj_r2, digits = 4)
+  }, character(1))
+  obs_values <- vapply(columns, function(col) {
+    format_int(nobs(col$result$fit))
+  }, character(1))
+
+  lines <- c(lines,
+    table_row("Wu-Hausman $p$-value", wu_p_values),
+    table_row("Scaled $X'P_ZX$ cond.", cond_values),
+    table_row("Adj. $R^2$", adj_r2_values),
+    table_row("Observations", obs_values),
+    "\\hline \\\\[-1.8ex]",
+    paste0("\\multicolumn{", total_cols,
+           "}{p{0.92\\linewidth}}{\\footnotesize ", notes, "}\\\\"),
+    "\\end{tabular}",
+    "\\end{table}"
+  )
+
+  lines
+}
+
+# -----------------------------------------------------------------------------
+# Table 1: standard logit, {Hausman, Dye} x {Manual, Quarter only}
 # -----------------------------------------------------------------------------
 
-fit_standard_spec <- function(spec_name) {
-  fit <- ivreg(build_standard_formula(spec_terms[[spec_name]]), data = estim_matrix)
-  clust_vcov <- vcovCL(fit, cluster = estim_matrix$location_id, type = "HC1")
-  coef_test <- coeftest(fit, vcov. = clust_vcov)
-  diagnostics <- summary(fit, diagnostics = TRUE)$diagnostics
-
+table1_columns <- list(
   list(
-    fit = fit,
-    prices = extract_county_rows(coef_test, "cust_price"),
-    diagnostics = diagnostics,
-    condition_number = scaled_xpzx_condition(fit),
-    adj_r2 = summary(fit)$adj.r.squared
-  )
-}
-
-standard_results <- setNames(lapply(spec_order, fit_standard_spec), spec_order)
-
-standard_header_values <- unname(spec_labels[spec_order])
-standard_fe_values <- unname(spec_fe_labels[spec_order])
-
-standard_table_lines <- c(
-  "\\begin{table}[!htbp] \\centering",
-  "  \\caption{Comparison of Demand IV Specifications}",
-  "  \\label{tab:demand_iv_spec_comparison}",
-  "  \\begin{tabular}{lccccc}",
-  "\\\\[-1.8ex]\\hline",
-  "\\hline \\\\[-1.8ex]",
-  table_row("", standard_header_values),
-  "\\hline \\\\[-1.8ex]",
-  table_row("Fixed effects", standard_fe_values)
-)
-
-for (cnty in counties) {
-  estimate_cells <- vapply(spec_order, function(spec_name) {
-    row <- standard_results[[spec_name]]$prices[county == cnty]
-    format_estimate(row$estimate, row$p_value)
-  }, character(1))
-
-  se_cells <- vapply(spec_order, function(spec_name) {
-    row <- standard_results[[spec_name]]$prices[county == cnty]
-    format_se(row$se)
-  }, character(1))
-
-  standard_table_lines <- c(
-    standard_table_lines,
-    table_row(paste0("Price (county ", cnty, ")"), estimate_cells),
-    table_row("", se_cells)
-  )
-}
-
-weak_iv_row_name <- function(cnty, suffix) {
-  paste0("Weak instruments (factor(county)", cnty, ":", suffix, ")")
-}
-
-standard_weak_iv_rows <- vapply(counties, function(cnty) {
-  values <- vapply(spec_order, function(spec_name) {
-    format_stat(safe_diag_value(
-      standard_results[[spec_name]]$diagnostics,
-      weak_iv_row_name(cnty, "cust_price"),
-      "statistic"
-    ))
-  }, character(1))
-  table_row(paste0("Weak-IV F (county ", cnty, ")"), values)
-}, character(1))
-
-standard_wu_p_values <- vapply(spec_order, function(spec_name) {
-  format_p_value(safe_diag_value(standard_results[[spec_name]]$diagnostics,
-                                 "Wu-Hausman", "p-value"))
-}, character(1))
-
-standard_cond_values <- vapply(spec_order, function(spec_name) {
-  format_int(standard_results[[spec_name]]$condition_number)
-}, character(1))
-
-standard_adj_r2_values <- vapply(spec_order, function(spec_name) {
-  format_stat(standard_results[[spec_name]]$adj_r2, digits = 4)
-}, character(1))
-
-standard_obs_values <- vapply(spec_order, function(spec_name) {
-  format_int(nobs(standard_results[[spec_name]]$fit))
-}, character(1))
-
-standard_table_lines <- c(
-  standard_table_lines,
-  standard_weak_iv_rows,
-  table_row("Wu-Hausman $p$-value", standard_wu_p_values),
-  table_row("Scaled $X'P_ZX$ cond.", standard_cond_values),
-  table_row("Adj. $R^2$", standard_adj_r2_values),
-  table_row("Observations", standard_obs_values),
-  "\\hline \\\\[-1.8ex]",
-  paste0(
-    "\\multicolumn{6}{p{0.92\\linewidth}}{\\footnotesize Notes: Entries are ",
-    "2SLS price coefficients with location-level clustered standard errors in ",
-    "parentheses. All five specifications use county-specific dye instruments ",
-    "and county-specific $avg\\_labor \\times B\\_raw$ controls. The manual ",
-    "specification omits the county-specific ", ref_quarter,
-    " quarter indicators; the quarter-only omitted-quarter and county-plus-quarter ",
-    "specifications omit ", ref_quarter,
-    " as the common quarter reference; the all-quarter quarter-only specification ",
-    "includes all quarter fixed effects. Weak-IV rows report the diagnostic ",
-    "statistics from \\texttt{summary(ivreg, diagnostics = TRUE)}.}\\\\"
+    label = spec_definitions$manual$label,
+    fe_label = spec_definitions$manual$fe_label,
+    result = fit_demand_spec("manual", "hausman_other_price", "standard")
   ),
-  "\\end{tabular}",
-  "\\end{table}"
-)
-
-standard_output_path <- "results/out/tables/06_demand_iv_spec_comparison.tex"
-writeLines(standard_table_lines, standard_output_path)
-
-# -----------------------------------------------------------------------------
-# Nested logit comparison table
-# -----------------------------------------------------------------------------
-
-fit_nested_spec <- function(spec_name) {
-  fit <- ivreg(build_nested_formula(spec_terms[[spec_name]]), data = estim_matrix)
-  clust_vcov <- vcovCL(fit, cluster = estim_matrix$location_id, type = "HC1")
-  coef_test <- coeftest(fit, vcov. = clust_vcov)
-  diagnostics <- summary(fit, diagnostics = TRUE)$diagnostics
-
   list(
-    fit = fit,
-    prices = extract_county_rows(coef_test, "cust_price"),
-    sigmas = extract_county_rows(coef_test, "log_within_share"),
-    diagnostics = diagnostics,
-    condition_number = scaled_xpzx_condition(fit),
-    adj_r2 = summary(fit)$adj.r.squared
-  )
-}
-
-nested_results <- setNames(lapply(spec_order, fit_nested_spec), spec_order)
-
-nested_header_values <- unname(spec_labels[spec_order])
-nested_fe_values <- unname(spec_fe_labels[spec_order])
-
-nested_table_lines <- c(
-  "\\begin{table}[!htbp] \\centering",
-  "  \\caption{Comparison of Nested Logit IV Specifications}",
-  "  \\label{tab:nested_iv_spec_comparison}",
-  "  \\begin{tabular}{lccccc}",
-  "\\\\[-1.8ex]\\hline",
-  "\\hline \\\\[-1.8ex]",
-  table_row("", nested_header_values),
-  "\\hline \\\\[-1.8ex]",
-  table_row("Fixed effects", nested_fe_values)
-)
-
-for (cnty in counties) {
-  price_cells <- vapply(spec_order, function(spec_name) {
-    row <- nested_results[[spec_name]]$prices[county == cnty]
-    format_estimate(row$estimate, row$p_value)
-  }, character(1))
-  price_se_cells <- vapply(spec_order, function(spec_name) {
-    row <- nested_results[[spec_name]]$prices[county == cnty]
-    format_se(row$se)
-  }, character(1))
-  sigma_cells <- vapply(spec_order, function(spec_name) {
-    row <- nested_results[[spec_name]]$sigmas[county == cnty]
-    format_estimate(row$estimate, row$p_value)
-  }, character(1))
-  sigma_se_cells <- vapply(spec_order, function(spec_name) {
-    row <- nested_results[[spec_name]]$sigmas[county == cnty]
-    format_se(row$se)
-  }, character(1))
-
-  nested_table_lines <- c(
-    nested_table_lines,
-    table_row(paste0("Price (county ", cnty, ")"), price_cells),
-    table_row("", price_se_cells),
-    table_row(paste0("Sigma (county ", cnty, ")"), sigma_cells),
-    table_row("", sigma_se_cells)
-  )
-}
-
-nested_weak_price_rows <- vapply(counties, function(cnty) {
-  values <- vapply(spec_order, function(spec_name) {
-    format_stat(safe_diag_value(
-      nested_results[[spec_name]]$diagnostics,
-      weak_iv_row_name(cnty, "cust_price"),
-      "statistic"
-    ))
-  }, character(1))
-  table_row(paste0("Weak-IV F price (", cnty, ")"), values)
-}, character(1))
-
-nested_weak_sigma_rows <- vapply(counties, function(cnty) {
-  values <- vapply(spec_order, function(spec_name) {
-    format_stat(safe_diag_value(
-      nested_results[[spec_name]]$diagnostics,
-      weak_iv_row_name(cnty, "log_within_share"),
-      "statistic"
-    ))
-  }, character(1))
-  table_row(paste0("Weak-IV F sigma (", cnty, ")"), values)
-}, character(1))
-
-nested_wu_p_values <- vapply(spec_order, function(spec_name) {
-  format_p_value(safe_diag_value(nested_results[[spec_name]]$diagnostics,
-                                 "Wu-Hausman", "p-value"))
-}, character(1))
-
-nested_cond_values <- vapply(spec_order, function(spec_name) {
-  format_int(nested_results[[spec_name]]$condition_number)
-}, character(1))
-
-nested_adj_r2_values <- vapply(spec_order, function(spec_name) {
-  format_stat(nested_results[[spec_name]]$adj_r2, digits = 4)
-}, character(1))
-
-nested_obs_values <- vapply(spec_order, function(spec_name) {
-  format_int(nobs(nested_results[[spec_name]]$fit))
-}, character(1))
-
-nested_table_lines <- c(
-  nested_table_lines,
-  nested_weak_price_rows,
-  nested_weak_sigma_rows,
-  table_row("Wu-Hausman $p$-value", nested_wu_p_values),
-  table_row("Scaled $X'P_ZX$ cond.", nested_cond_values),
-  table_row("Adj. $R^2$", nested_adj_r2_values),
-  table_row("Observations", nested_obs_values),
-  "\\hline \\\\[-1.8ex]",
-  paste0(
-    "\\multicolumn{6}{p{0.92\\linewidth}}{\\footnotesize Notes: Entries are ",
-    "2SLS coefficients with location-level clustered standard errors in ",
-    "parentheses. Price rows report county-specific coefficients on \\texttt{cust\\_price}; ",
-    "sigma rows report county-specific coefficients on \\texttt{log\\_within\\_share}. ",
-    "All five specifications use county-specific dye instruments, a county-specific ",
-    "Hausman instrument built from the same-quarter average customer price in the ",
-    "other counties, and county-specific $avg\\_labor \\times B\\_raw$ controls. ",
-    "The manual specification omits the county-specific ", ref_quarter,
-    " quarter indicators; the quarter-only omitted-quarter and county-plus-quarter ",
-    "specifications omit ", ref_quarter,
-    " as the common quarter reference; the all-quarter quarter-only specification ",
-    "includes all quarter fixed effects. Weak-IV rows report the diagnostics from ",
-    "\\texttt{summary(ivreg, diagnostics = TRUE)}. In a simple nested-logit interpretation, ",
-    "sigma values in $[0,1)$ are the usual RUM-consistent range.}\\\\"
+    label = spec_definitions$quarter_only$label,
+    fe_label = spec_definitions$quarter_only$fe_label,
+    result = fit_demand_spec("quarter_only", "hausman_other_price", "standard")
   ),
-  "\\end{tabular}",
-  "\\end{table}"
+  list(
+    label = spec_definitions$manual$label,
+    fe_label = spec_definitions$manual$fe_label,
+    result = fit_demand_spec("manual", "dye_instrument", "standard")
+  ),
+  list(
+    label = spec_definitions$quarter_only$label,
+    fe_label = spec_definitions$quarter_only$fe_label,
+    result = fit_demand_spec("quarter_only", "dye_instrument", "standard")
+  )
 )
 
-nested_output_path <- "results/out/tables/06_nested_iv_spec_comparison.tex"
-writeLines(nested_table_lines, nested_output_path)
+table1_instrument_row <- list(
+  label = "Instrument",
+  values = c("Hausman", "Hausman", "Dye", "Dye")
+)
 
-cat("\nDemand IV specification comparison saved to:\n")
-cat("  ", standard_output_path, "\n", sep = "")
-cat("Nested IV specification comparison saved to:\n")
-cat("  ", nested_output_path, "\n", sep = "")
+table1_notes <- paste0(
+  "Notes: Standard-logit 2SLS price coefficients with location-level clustered ",
+  "standard errors in parentheses. Columns cross the two instruments (Hausman ",
+  "leave-own-county-out same-quarter price; dye = task\\_mix\\_2 $\\times$ ",
+  "PPI) with two fixed-effect parameterizations: ``Manual'' uses county",
+  "$\\times$quarter FE with the county:", ref_quarter, " cells dropped, and ",
+  "``Quarter only'' uses additive quarter FE with ", ref_quarter, " as the ",
+  "reference quarter. All columns also include county-specific $avg\\_labor ",
+  "\\times B\\_raw$ cost controls. Weak-IV rows report the diagnostic ",
+  "statistics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
 
+table1_lines <- build_iv_table(
+  columns = table1_columns,
+  caption = "Standard Logit: Instrument and Fixed-Effect Comparison",
+  label = "tab:standard_iv_comparison",
+  has_sigma = FALSE,
+  extra_header_rows = list(table1_instrument_row),
+  notes = table1_notes
+)
 
+table1_output_path <- "results/out/tables/06_standard_iv_comparison.tex"
+writeLines(table1_lines, table1_output_path)
+
+# -----------------------------------------------------------------------------
+# Table 2: standard logit with Hausman, all 5 FE specifications
+# -----------------------------------------------------------------------------
+
+spec_order <- names(spec_definitions)
+
+table2_columns <- lapply(spec_order, function(spec_name) {
+  list(
+    label = spec_definitions[[spec_name]]$label,
+    fe_label = spec_definitions[[spec_name]]$fe_label,
+    result = fit_demand_spec(spec_name, "hausman_other_price", "standard")
+  )
+})
+
+table2_notes <- paste0(
+  "Notes: Standard-logit 2SLS price coefficients with location-level clustered ",
+  "standard errors in parentheses. All columns use the county-specific Hausman ",
+  "instrument (leave-own-county-out same-quarter average customer price) and ",
+  "county-specific $avg\\_labor \\times B\\_raw$ controls. Columns vary only in ",
+  "the fixed-effect parameterization. The manual specification omits the ",
+  "county-specific ", ref_quarter, " quarter indicators; the quarter-only ",
+  "omitted-quarter and county-plus-quarter specifications omit ", ref_quarter,
+  " as the common quarter reference; the all-quarter quarter-only specification ",
+  "includes all quarter fixed effects. Weak-IV rows report the diagnostic ",
+  "statistics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
+
+table2_lines <- build_iv_table(
+  columns = table2_columns,
+  caption = "Standard Logit with Hausman Instrument: Fixed-Effect Comparison",
+  label = "tab:standard_hausman_fe_comparison",
+  has_sigma = FALSE,
+  notes = table2_notes
+)
+
+table2_output_path <- "results/out/tables/06_standard_hausman_fe_comparison.tex"
+writeLines(table2_lines, table2_output_path)
+
+# -----------------------------------------------------------------------------
+# Table 3: nested logit with Hausman + Dye, all 5 FE specifications
+# -----------------------------------------------------------------------------
+
+table3_columns <- lapply(spec_order, function(spec_name) {
+  list(
+    label = spec_definitions[[spec_name]]$label,
+    fe_label = spec_definitions[[spec_name]]$fe_label,
+    result = fit_demand_spec(spec_name,
+                             c("dye_instrument", "hausman_other_price"),
+                             "nested")
+  )
+})
+
+table3_notes <- paste0(
+  "Notes: Nested-logit 2SLS coefficients with location-level clustered standard ",
+  "errors in parentheses. Price rows report county-specific coefficients on ",
+  "\\texttt{cust\\_price}; sigma rows report county-specific coefficients on ",
+  "\\texttt{log\\_within\\_share}. All columns use the county-specific dye ",
+  "instrument and the county-specific Hausman instrument (leave-own-county-out ",
+  "same-quarter price) together, plus county-specific $avg\\_labor \\times ",
+  "B\\_raw$ controls. Columns vary only in the fixed-effect parameterization. ",
+  "The manual specification omits the county-specific ", ref_quarter, " quarter ",
+  "indicators; the quarter-only omitted-quarter and county-plus-quarter ",
+  "specifications omit ", ref_quarter, " as the common quarter reference; the ",
+  "all-quarter quarter-only specification includes all quarter fixed effects. ",
+  "Weak-IV rows report the diagnostics from \\texttt{summary(ivreg, ",
+  "diagnostics = TRUE)}. In a simple nested-logit interpretation, sigma values ",
+  "in $[0,1)$ are the usual RUM-consistent range."
+)
+
+table3_lines <- build_iv_table(
+  columns = table3_columns,
+  caption = "Nested Logit with Hausman + Dye Instruments: Fixed-Effect Comparison",
+  label = "tab:nested_fe_comparison",
+  has_sigma = TRUE,
+  notes = table3_notes
+)
+
+table3_output_path <- "results/out/tables/06_nested_fe_comparison.tex"
+writeLines(table3_lines, table3_output_path)
+
+cat("\nDemand IV specification comparison tables saved to:\n")
+cat("  ", table1_output_path, "\n", sep = "")
+cat("  ", table2_output_path, "\n", sep = "")
+cat("  ", table3_output_path, "\n", sep = "")
