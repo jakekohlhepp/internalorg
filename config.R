@@ -27,6 +27,13 @@ CONFIG <- list(
   raw_data_path = Sys.getenv("JMP_RAW_DATA_PATH", unset = "mkdata/raw"),
   raw_data_base = Sys.getenv("raw_data_base"),
   prep_output_dir = "mkdata/data",
+  counterfactual_data_dir = file.path("results", "data", "counterfactuals"),
+  counterfactual_table_dir = file.path("results", "out", "tables"),
+  counterfactual_figure_dir = file.path("results", "out", "figures"),
+  legacy_counterfactual_data_dir = file.path("analysis_final", "data"),
+  legacy_counterfactual_table_dir = file.path("analysis_final", "out", "tables"),
+  legacy_counterfactual_figure_dir = file.path("analysis_final", "out", "figures"),
+  nyc_rent_path = "mkdata/data/nyc_rent_zip_quarterly.rds",
   qcew_cache_path = "mkdata/raw/20220427_qcew_code/qcew_county_cache_2014_2021_812112.rds",
   qcew_force_refresh = FALSE,
   qcew_years = 2014:2021,
@@ -54,6 +61,7 @@ CONFIG <- list(
   # Partial quarters to exclude from the stylized-facts / full-sample analyses.
   # 2021.3 is only partially observed in the raw data pull.
   excluded_quarters_analysis = c(2021.3),
+  counterfactual_focus_quarters = c(2021.2),
 
   # ---------------------------------------------------------------------------
   # Model dimensions
