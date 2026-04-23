@@ -30,8 +30,23 @@ test_results <- test_dir(
 message("\n")
 message("=" |> rep(60) |> paste(collapse = ""))
 
-if (any(as.data.frame(test_results)$failed > 0)) {
-  message("Some tests FAILED. Review output above.")
+summary_df <- as.data.frame(test_results)
+n_passed <- sum(summary_df[["passed"]], na.rm = TRUE)
+n_failed <- sum(summary_df[["failed"]], na.rm = TRUE)
+n_errors <- sum(summary_df[["error"]], na.rm = TRUE)
+n_warnings <- sum(summary_df[["warning"]], na.rm = TRUE)
+
+if (n_failed > 0 || n_errors > 0) {
+  message(
+    sprintf(
+      "Tests completed with %d failed expectations and %d file-level error(s). Review output above.",
+      n_failed,
+      n_errors
+    )
+  )
+  quit(status = 1)
+} else if (n_warnings > 0) {
+  message(sprintf("All tests PASSED with %d warning(s) across %d passing expectations.", n_warnings, n_passed))
 } else {
-  message("All tests PASSED!")
+  message(sprintf("All tests PASSED! (%d passing expectations)", n_passed))
 }

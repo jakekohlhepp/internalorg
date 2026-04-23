@@ -127,6 +127,7 @@ RUN_PREP_03_MSA <- TRUE
 RUN_PREP_04_CEX <- TRUE
 RUN_PREP_05_PPI <- TRUE
 RUN_PREP_06_QCEW <- TRUE
+RUN_PREP_07_RENT <- TRUE
 RUN_PREP_00_TRANSACTIONS <- TRUE
 
 ensure_directory(CONFIG$log_dir)
@@ -249,6 +250,19 @@ prep_steps <- list(
     ),
     required_inputs = character(0),
     outputs = c(file.path(CONFIG$prep_output_dir, "qcew_county.rds")),
+    skip_if_inputs_missing = FALSE
+  ),
+  list(
+    label = "PREP 07: NYC Commercial Rent",
+    script_name = "prep_07_nyc_rent.R",
+    enabled = RUN_PREP_07_RENT,
+    dependencies = c(
+      "config.R",
+      "prep_07_nyc_rent.R",
+      "utils/logging.R"
+    ),
+    required_inputs = character(0),
+    outputs = c(CONFIG$nyc_rent_path),
     skip_if_inputs_missing = FALSE
   ),
   list(
