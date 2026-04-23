@@ -31,7 +31,8 @@ test_that("estimation sample has the expected shape", {
   expect_true(is.list(es))
   expect_setequal(
     names(es),
-    c("working_data", "estim_matrix", "quarter_count", "county_count", "skill_count")
+    c("working_data", "estim_matrix", "min_wage_levels",
+      "quarter_count", "county_count", "skill_count")
   )
   expect_true(data.table::is.data.table(es$working_data))
   expect_true(is.data.frame(es$estim_matrix))
