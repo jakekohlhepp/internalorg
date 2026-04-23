@@ -200,7 +200,7 @@ add_gamma_normalization <- function(
       }
       build_qgraph_paths(
         county_2019,
-        plot_path = file.path("results", "out", paste0("01_02_network_2019_", cnty, ".png")),
+        plot_path = file.path("results", "out", "figures", paste0("01_network_2019_", cnty, ".png")),
         edge_color = "black"
       )
     }
