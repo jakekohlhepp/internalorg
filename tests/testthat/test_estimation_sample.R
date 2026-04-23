@@ -47,13 +47,14 @@ test_that("estimation sample has the columns that 05/06 and preamble.R require",
   required_working <- c(
     "county", "quarter_year", "cust_price", "avg_labor",
     "log_rel_mkt", "mk_piece", "org_cost",
-    "labor_instrument", "dye_instrument", "qy_cnty",
+    "labor_instrument", "dye_instrument", "hausman_other_price", "qy_cnty",
     "ppi_inputs", "min_wage"
   )
   expect_true(all(required_working %in% names(es$working_data)))
 
   required_estim <- c(
-    "avg_labor", "dye_instrument", "county", "quarter_year",
+    "avg_labor", "dye_instrument", "hausman_other_price",
+    "county", "quarter_year",
     "log_rel_mkt", "cust_price", "org_cost", "mk_piece",
     "qy_cnty", "gamma_normalized", "s_index"
   )
