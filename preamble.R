@@ -452,58 +452,85 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG) {
 }
 
 
-####### setup estimation equations
-## working_data and estim_matrix are assembled in 04_estimation_sample.R and
-## passed into this file's environment by 05_estimation.R / 06_iv_spec_comparison.R.
-## none should be missing
-stopifnot(all(!is.na(estim_matrix)))
+####### shared setup for estimation equations
+## 04_estimation_sample.R owns the data assembly. 05_estimation.R and
+## 06_iv_spec_comparison.R pass those saved objects into this helper so
+## sourcing preamble.R no longer mutates ambient session state.
+build_estimation_setup <- function(working_data, estim_matrix, config = CONFIG) {
+  stopifnot(all(!is.na(estim_matrix)))
 
-xnam<-c("factor(county):cust_price","factor(county):factor(quarter_year)",paste0("factor(county):avg_labor:",names(working_data)[grep("^B_raw_[0-9]_", names(working_data))]))
-xnam <- as.formula(paste0("~",paste0(xnam, collapse="+"),"-1"))
-mm_1<-model.matrix(xnam, data=estim_matrix)
+  xnam <- c(
+    "factor(county):cust_price",
+    "factor(county):factor(quarter_year)",
+    paste0("factor(county):avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
+  )
+  xnam <- as.formula(paste0("~", paste0(xnam, collapse = "+"), "-1"))
+  mm_1 <- model.matrix(xnam, data = estim_matrix)
 
-xnam2 <- paste0("factor(quarter_year):",names(working_data)[grep("^task_mix", names(working_data))])
-xnam3 <- paste0("factor(county):avg_labor:",names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
-xnam4<-c(xnam2, xnam3)
-xnam4 <- as.formula(paste0("~factor(county):mk_piece+factor(county):org_cost+",paste0(xnam4, collapse="+"),"+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"))
-mm_2<-model.matrix(xnam4, data=estim_matrix)
-# instruments matrix is the same except cust_price is not used and we drop out . instead we swap in org_cost in the demand matrix
-xnam<-c("dye_instrument","factor(quarter_year)",paste0("avg_labor:",names(working_data)[grep("^B_raw_[0-9]_", names(working_data))]))
-xnam <- as.formula(paste0("~",paste0(paste0("factor(county):",xnam), collapse="+"),"-1"))
-z_mm_1<-model.matrix(xnam, data=estim_matrix)
+  xnam2 <- paste0("factor(quarter_year):", names(working_data)[grep("^task_mix", names(working_data))])
+  xnam3 <- paste0("factor(county):avg_labor:", names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
+  xnam4 <- c(xnam2, xnam3)
+  xnam4 <- as.formula(paste0(
+    "~factor(county):mk_piece+factor(county):org_cost+",
+    paste0(xnam4, collapse = "+"),
+    "+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"
+  ))
+  mm_2 <- model.matrix(xnam4, data = estim_matrix)
 
+  ## the instrument matrix swaps out the endogenous price terms for the
+  ## county-specific cost shifters built in 04_estimation_sample.R.
+  xnam <- c(
+    "dye_instrument",
+    "factor(quarter_year)",
+    paste0("avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
+  )
+  xnam <- as.formula(paste0("~", paste0(paste0("factor(county):", xnam), collapse = "+"), "-1"))
+  z_mm_1 <- model.matrix(xnam, data = estim_matrix)
 
-xnam2 <- paste0("factor(quarter_year):",names(working_data)[grep("^task_mix", names(working_data))])
-xnam3 <- paste0("factor(county):avg_labor:",names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
-xnam4<-c(xnam2, xnam3)
-xnam4 <- as.formula(paste0("~factor(county):org_cost+",paste0(xnam4, collapse="+"),"+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"))
-z_mm_2<-model.matrix(xnam4, data=estim_matrix)
+  xnam2 <- paste0("factor(quarter_year):", names(working_data)[grep("^task_mix", names(working_data))])
+  xnam3 <- paste0("factor(county):avg_labor:", names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
+  xnam4 <- c(xnam2, xnam3)
+  xnam4 <- as.formula(paste0(
+    "~factor(county):org_cost+",
+    paste0(xnam4, collapse = "+"),
+    "+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"
+  ))
+  z_mm_2 <- model.matrix(xnam4, data = estim_matrix)
 
-### create s-index, E moments.
-E_raw_cols_no_first <- paste0("E_raw_", 2:CONFIG$n_worker_types)
-E_match<- data.frame(as.matrix(estim_matrix[, c(E_raw_cols_no_first, "s_index")]), factor(estim_matrix[, "county"]))
-E_col_names <- paste0("E_", 2:CONFIG$n_worker_types)
-colnames(E_match)<-c(E_col_names, "s_index", "county")
-E_mat<-model.matrix(build_E_formula(2:CONFIG$n_worker_types, include_s_index = TRUE), data=E_match)
+  e_raw_cols_no_first <- paste0("E_raw_", 2:config$n_worker_types)
+  e_match <- data.frame(as.matrix(estim_matrix[, c(e_raw_cols_no_first, "s_index")]), factor(estim_matrix[, "county"]))
+  e_col_names <- paste0("E_", 2:config$n_worker_types)
+  colnames(e_match) <- c(e_col_names, "s_index", "county")
+  e_mat <- model.matrix(build_E_formula(2:config$n_worker_types, include_s_index = TRUE), data = e_match)
 
+  ztz_inv <- solve(t(z_mm_1) %*% z_mm_1)
+  proj_z <- z_mm_1 %*% ztz_inv %*% t(z_mm_1)
 
-##### compute the analytic estimator
-# Precompute projection matrix for efficiency
-ZtZ_inv <- solve(t(z_mm_1) %*% z_mm_1)
-proj_z <- z_mm_1 %*% ZtZ_inv %*% t(z_mm_1)
+  tryCatch({
+    beta <- solve(t(mm_1) %*% proj_z %*% mm_1) %*%
+      (t(mm_1) %*% proj_z %*% as.matrix(estim_matrix[, "log_rel_mkt"]))
+    p_adj <- estim_matrix[, "cust_price"]
+    for (cnty in config$counties) {
+      p_adj <- p_adj + estim_matrix[, "mk_piece"] *
+        (1 / beta[grep(paste0(cnty, ":cust_price"), rownames(beta))]) *
+        (estim_matrix$county == cnty)
+    }
+    beta_2 <- solve(t(z_mm_2) %*% z_mm_2) %*% t(z_mm_2) %*% as.matrix(p_adj)
+  }, error = function(e) {
+    stop("Analytic estimator failed: ", e$message,
+         "\nCheck for collinearity in instruments or singular matrices.")
+  })
 
-tryCatch({
-  beta <- solve(t(mm_1) %*% proj_z %*% mm_1) %*%
-          (t(mm_1) %*% proj_z %*% as.matrix(estim_matrix[,"log_rel_mkt"]))
-  p_adj <- estim_matrix[,"cust_price"]
-  for (cnty in CONFIG$counties) {
-    p_adj <- p_adj + estim_matrix[,"mk_piece"] * (1/beta[grep(paste0(cnty, ":cust_price"), rownames(beta))]) * (estim_matrix$county == cnty)
-  }
-  beta_2<-solve(t(z_mm_2)%*%z_mm_2)%*%t(z_mm_2)%*%as.matrix(p_adj)
-}, error = function(e) {
-  stop("Analytic estimator failed: ", e$message,
-       "\nCheck for collinearity in instruments or singular matrices.")
-})
+  return(list(
+    beta = beta,
+    beta_2 = beta_2,
+    mm_1 = mm_1,
+    mm_2 = mm_2,
+    z_mm_1 = z_mm_1,
+    z_mm_2 = z_mm_2,
+    e_mat = e_mat
+  ))
+}
 
 
 

@@ -1,19 +1,42 @@
-## estimate with moments normalized.
+#' =============================================================================
+#' STEP 05: Structural Estimation
+#' =============================================================================
+#' Estimates the structural model on the estimation-ready sample assembled by
+#' 04_estimation_sample.R.
+#'
+#' Inputs:
+#'   - mkdata/data/04_estimation_sample.rds
+#'   - mkdata/data/seeit_bb.rds
+#'
+#' Output:
+#'   - results/data/05_parameters.rds
+#' =============================================================================
 
 library('data.table')
 set.seed(4459665)
 
-## load estimation-ready dataset assembled by 04_estimation_sample.R
 source('config.R')
-estimation_sample <- readRDS(file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds"))
-working_data  <- estimation_sample$working_data
-estim_matrix  <- estimation_sample$estim_matrix
-quarter_count <- estimation_sample$quarter_count
-county_count  <- estimation_sample$county_count
-skill_count   <- estimation_sample$skill_count
 
-## setup the data and main functions
+estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
+assert_required_files(estimation_sample_path)
+
+## 04_estimation_sample.R owns all estimation-only data assembly. This script
+## only estimates from the saved artifact and the shared numerical helpers.
+estimation_sample <- readRDS(estimation_sample_path)
+working_data <- estimation_sample$working_data
+estim_matrix <- estimation_sample$estim_matrix
+if (!"min_wage_levels" %in% names(estimation_sample)) {
+  min_wage_levels <- unique(data.table(working_data)[, .(county, quarter_year, min_wage)])
+} else {
+  min_wage_levels <- data.table(estimation_sample$min_wage_levels)
+}
+stopifnot(uniqueN(min_wage_levels[, .(county, quarter_year)]) == nrow(min_wage_levels))
+
 source('preamble.R')
+estimation_objects <- build_estimation_setup(working_data, estim_matrix, config = CONFIG)
+beta <- estimation_objects$beta
+beta_2 <- estimation_objects$beta_2
+rm(estimation_objects)
 
 
 
@@ -91,7 +114,12 @@ temp2[,county:=as.numeric(gsub("factor\\(county\\)", "",str_extract(V1, "factor\
 
 
 temp<-merge(temp2, temp, by="county", allow.cartesian = TRUE)
-temp<-merge(temp, min_wage, by=c("county", "quarter_year"), all.x=TRUE)
+## the minimum-wage lower bounds come from the saved 04 artifact so this
+## regression does not depend on a hidden spreadsheet read from preamble.R.
+min_wage_bounds <- copy(min_wage_levels)
+min_wage_bounds[, county := as.numeric(county)]
+temp<-merge(temp, min_wage_bounds, by=c("county", "quarter_year"), all.x=TRUE)
+stopifnot(nrow(temp[is.na(min_wage)]) == 0)
 
 temp_bounds<-temp[, .(lb=max(min_wage-value)), by="position"]
 lower_bound<-rep(-Inf,length(first_try))
@@ -125,8 +153,5 @@ names(coef_vect2)<-names(first_try)
 
 ### reassemble all
 res_all<-data.table(demand=c(rep(TRUE,length(rownames(beta)) ),rep(FALSE,length(c(coef_vect,coef_vect2)))),parm_name=c(rownames(beta),names(coef_vect),names(coef_vect2)), coefficients=c(as.numeric(beta),coef_vect,coef_vect2))
-if (!dir.exists('results/data')) {
-  dir.create('results/data', recursive = TRUE)
-}
+ensure_directory('results/data')
 saveRDS(res_all, 'results/data/05_parameters.rds')
-
