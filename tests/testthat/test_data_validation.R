@@ -130,3 +130,48 @@ test_that("starting values file exists", {
   expect_true(is.numeric(starting_vals))
   expect_true(length(starting_vals) > 0)
 })
+
+test_that("04 estimation sample artifact exists and is readable", {
+  sample_path <- data_path("04_estimation_sample.rds")
+  if (!file.exists(sample_path)) {
+    skip("Estimation-sample artifact not found")
+  }
+
+  estimation_sample <- readRDS(sample_path)
+  expect_true(is.list(estimation_sample))
+  expect_true("working_data" %in% names(estimation_sample))
+  expect_true("estim_matrix" %in% names(estimation_sample))
+  expect_true("min_wage_levels" %in% names(estimation_sample))
+})
+
+test_that("04 estimation sample has required enriched columns", {
+  sample_path <- data_path("04_estimation_sample.rds")
+  if (!file.exists(sample_path)) {
+    skip("Estimation-sample artifact not found")
+  }
+
+  estimation_sample <- readRDS(sample_path)
+  working_data <- data.table::data.table(estimation_sample$working_data)
+  estim_matrix <- as.data.frame(estimation_sample$estim_matrix)
+
+  required_working_cols <- c(
+    "ppi_inputs", "min_wage", "dye_instrument", "labor_instrument",
+    "org_cost", "log_rel_mkt", "mk_piece"
+  )
+  for (col in required_working_cols) {
+    expect_true(col %in% names(working_data),
+                info = paste("Missing enriched working_data column:", col))
+  }
+
+  required_estim_cols <- c("location_id", "county", "quarter_year", "cust_price", "log_rel_mkt")
+  for (col in required_estim_cols) {
+    expect_true(col %in% names(estim_matrix),
+                info = paste("Missing estim_matrix column:", col))
+  }
+
+  expect_true(all(!is.na(working_data$ppi_inputs)), info = "ppi_inputs contains missing values")
+  expect_true(all(!is.na(working_data$min_wage)), info = "min_wage contains missing values")
+  expect_true(all(!is.na(working_data$org_cost)), info = "org_cost contains missing values")
+  expect_true(all(working_data$cust_price > 0), info = "04 working_data contains nonpositive prices")
+  expect_equal(nrow(working_data), nrow(estim_matrix))
+})

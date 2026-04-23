@@ -39,6 +39,10 @@ working[, last_visit := max(date), by = c("location_id", "customer_id")]
 
 feature_results <- build_staff_task_features(working, CONFIG)
 
+## save the full-sample worker-task panels before the structural sample filter.
+## descriptive scripts such as 01_01_stylized_facts.R should read these files
+## rather than the estimation-base artifact saved below.
+stopifnot(nrow(feature_results$staff_task_full) >= nrow(feature_results$staff_task))
 saveRDS(feature_results$staffnum_xwalk, 'mkdata/data/01_xwalk.rds')
 saveRDS(feature_results$staff_task_full, "mkdata/data/01_staff_task_full.rds")
 saveRDS(feature_results$staff_task_full_smoothed, "mkdata/data/01_staff_task_full_smoothed.rds")
@@ -72,4 +76,9 @@ working_results <- build_working_from_labels(
   mode = 'baseline'
 )
 
+## 01_working.rds is the estimation-base branch. It is already restricted to
+## CONFIG$counties / CONFIG$estimation_quarters, but it does not yet contain
+## estimation-only enrichments such as PPI, minimum wages, or instruments.
+stopifnot(all(as.character(working_results$verywide_expanded$county) %in% CONFIG$counties))
+stopifnot(all(working_results$verywide_expanded$quarter_year %in% CONFIG$estimation_quarters))
 saveRDS(working_results$verywide_expanded, 'mkdata/data/01_working.rds')

@@ -110,6 +110,27 @@ ordered_lookup_slice <- function(worker_type_lookup) {
   slice
 }
 
+test_that('reshape_label_assignments preserves skipped worker-type labels', {
+  wide_labels <- data.table::data.table(
+    year_loc = 'L1 - 2021.1',
+    type_within_firm1 = 2,
+    type_within_firm2 = 5,
+    type_within_firm3 = NA_real_,
+    type_within_firm4 = NA_real_,
+    type_within_firm5 = NA_real_
+  )
+
+  reshaped <- reshape_label_assignments(wide_labels, 5)[order(type_within_firm)]
+
+  expect_equal(
+    reshaped[, .(type_within_firm, worker_type)],
+    data.table::data.table(
+      type_within_firm = 1:5,
+      worker_type = c(2, 5, NA_real_, NA_real_, NA_real_)
+    )
+  )
+})
+
 test_that('positive location weights leave raw clustering inputs unchanged', {
   baseline <- build_staff_task_features(make_cluster_fixture(), TEST_CLUSTER_CONFIG)
   weighted <- build_staff_task_features(make_cluster_fixture(c(L1 = 2, L2 = 3)), TEST_CLUSTER_CONFIG)

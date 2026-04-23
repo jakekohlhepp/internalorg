@@ -338,18 +338,29 @@ if (RUN_ESTIMATION_SAMPLE) {
          "Run data build step first or check data paths.")
   }
 
-  step3_deps <- c("config.R", "04_estimation_sample.R")
+  step3_deps <- c(
+    "config.R",
+    "mkdata/data/01_working.rds",
+    "mkdata/data/01_staff_task_full.rds",
+    "mkdata/data/ppi.rds",
+    "mkdata/data/minwage.xlsx"
+  )
 
   if (force_downstream || needs_rerun("04_estimation_sample.R", step3_deps)) {
     step3_start <- Sys.time()
+    step3_outputs <- c(
+      "mkdata/data/04_estimation_sample.rds",
+      "results/out/tables/04_summary_stats_structural.tex"
+    )
 
     log_init("04_estimation_sample.R")
     log_message("Starting estimation-sample assembly")
 
     tryCatch({
       source("04_estimation_sample.R", local = new.env(parent = globalenv()))
+      assert_required_files(step3_outputs)
       log_message("Estimation-sample assembly completed successfully")
-      log_message("Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex")
+      log_message(paste("Outputs:", paste(step3_outputs, collapse = "; ")))
       log_complete(success = TRUE)
 
       step3_time <- difftime(Sys.time(), step3_start, units = "mins")
@@ -403,18 +414,25 @@ if (RUN_ESTIMATION) {
   }
 
   # Dependencies: config.R, preamble.R
-  step4_deps <- c("config.R", "preamble.R")
+  step4_deps <- c(
+    "config.R",
+    "preamble.R",
+    "mkdata/data/04_estimation_sample.rds",
+    "mkdata/data/seeit_bb.rds"
+  )
 
   if (force_downstream || needs_rerun("05_estimation.R", step4_deps)) {
     step4_start <- Sys.time()
+    step4_output <- "results/data/05_parameters.rds"
 
     log_init("05_estimation.R")
     log_message("Starting estimation")
 
     tryCatch({
       source("05_estimation.R")
+      assert_required_files(step4_output)
       log_message("Estimation completed successfully")
-      log_message("Output: results/data/05_parameters.rds")
+      log_message(paste("Output:", step4_output))
       log_complete(success = TRUE)
 
       step4_time <- difftime(Sys.time(), step4_start, units = "mins")
@@ -462,18 +480,26 @@ if (RUN_IV_SPEC_COMPARISON) {
          "Run 04_estimation_sample.R first or check data paths.")
   }
 
-  # Dependencies: config.R, preamble.R
-  step5_deps <- c("config.R", "preamble.R")
+  # Dependencies: config.R
+  step5_deps <- c(
+    "config.R",
+    "mkdata/data/04_estimation_sample.rds"
+  )
 
   if (force_downstream || needs_rerun("06_iv_spec_comparison.R", step5_deps)) {
     step5_start <- Sys.time()
+    step5_outputs <- c(
+      "results/out/tables/06_standard_iv_comparison.tex",
+      "results/out/tables/06_standard_hausman_fe_comparison.tex",
+      "results/out/tables/06_nested_fe_comparison.tex"
+    )
 
     log_init("06_iv_spec_comparison.R")
     log_message("Starting demand IV specification comparison")
 
     tryCatch({
       source("06_iv_spec_comparison.R")
-      step5_outputs <- c("results/out/tables/06_standard_iv_comparison.tex", "results/out/tables/06_standard_hausman_fe_comparison.tex", "results/out/tables/06_nested_fe_comparison.tex")
+      assert_required_files(step5_outputs)
       log_message("Demand IV specification comparison completed successfully")
       log_message(paste("Outputs:", paste(step5_outputs, collapse = "; ")))
       log_complete(success = TRUE)

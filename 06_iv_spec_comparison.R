@@ -69,7 +69,7 @@
 #'
 #' Inputs:
 #'   - mkdata/data/04_estimation_sample.rds (working_data + estim_matrix built by 04_estimation_sample.R)
-#'   - Objects created by preamble.R (beta, model matrices, GMM helpers, ...)
+#'   - config.R
 #'
 #' Outputs:
 #'   - results/out/tables/06_standard_iv_comparison.tex
@@ -78,17 +78,17 @@
 #' =============================================================================
 
 library("data.table")
+library("stringr")
 set.seed(4459665)
 
 source("config.R")
-estimation_sample <- readRDS(file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds"))
-working_data  <- estimation_sample$working_data
-estim_matrix  <- estimation_sample$estim_matrix
-quarter_count <- estimation_sample$quarter_count
-county_count  <- estimation_sample$county_count
-skill_count   <- estimation_sample$skill_count
 
-source("preamble.R")
+estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
+assert_required_files(estimation_sample_path)
+
+estimation_sample <- readRDS(estimation_sample_path)
+working_data <- estimation_sample$working_data
+estim_matrix <- estimation_sample$estim_matrix
 
 required_packages <- c("ivreg", "sandwich", "lmtest")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace,
@@ -104,7 +104,12 @@ library("lmtest")
 
 ensure_directory("results/out/tables")
 
-estim_matrix$location_id <- working_data$location_id
+## 04_estimation_sample.R keeps the common structural sample fixed. This
+## script adds only demand-specification-specific variables on top.
+if (!"location_id" %in% names(estim_matrix)) {
+  estim_matrix$location_id <- working_data$location_id
+}
+stopifnot("location_id" %in% names(estim_matrix))
 
 counties <- sort(unique(as.character(estim_matrix$county)))
 b_raw_cols <- names(working_data)[grep("^B_raw_[0-9]_", names(working_data))]
