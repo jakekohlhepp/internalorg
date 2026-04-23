@@ -76,23 +76,27 @@ skill_count   <- length(names(working_data)[grep("^B_raw_[0-9]_", names(working_
 
 working_data[, county := as.character(county)]
 working_data[, mult_duration_hrs := tot_duration / 60]
+min_wage_levels <- unique(working_data[, .(county, quarter_year, min_wage)])
+stopifnot(uniqueN(min_wage_levels[, .(county, quarter_year)]) == nrow(min_wage_levels))
 
 estim_matrix <- as.data.frame(working_data[, .SD, .SDcols = c(
-  "avg_labor", "dye_instrument", "county", "quarter_year", "log_rel_mkt", "cust_price",
+  "location_id", "avg_labor", "dye_instrument", "county", "quarter_year", "log_rel_mkt", "cust_price",
   names(working_data)[grep("^B_raw_[0-9]_", names(working_data))],
   "org_cost", "mk_piece",
   names(working_data)[grep("^E_raw_[0-9]", names(working_data))],
   names(working_data)[grep("^task_mix_[0-9]", names(working_data))], "qy_cnty",
   "gamma_normalized", "s_index"
 )])
+stopifnot(nrow(working_data) == nrow(estim_matrix))
 
 estimation_sample_out <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
 saveRDS(list(
-  working_data  = working_data,
-  estim_matrix  = estim_matrix,
-  quarter_count = quarter_count,
-  county_count  = county_count,
-  skill_count   = skill_count
+  working_data     = working_data,
+  estim_matrix     = estim_matrix,
+  min_wage_levels  = min_wage_levels,
+  quarter_count    = quarter_count,
+  county_count     = county_count,
+  skill_count      = skill_count
 ), estimation_sample_out)
 
 if (isTRUE(CONFIG$verbose_logging)) {

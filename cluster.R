@@ -58,6 +58,20 @@ build_service_mix_id <- function(dt, mix_prefix = "task_mix_") {
   invisible(dt)
 }
 
+#' Reshape wide local-type assignments into a long worker-type lookup
+reshape_label_assignments <- function(label_final, n_worker_types) {
+  label_final <- data.table::melt(
+    data.table::copy(label_final),
+    id.vars = "year_loc",
+    measure.vars = paste0("type_within_firm", seq_len(n_worker_types)),
+    variable.name = "type_within_firm",
+    value.name = "worker_type"
+  )
+  label_final[, type_within_firm := as.numeric(sub("type_within_firm", "", type_within_firm))]
+  label_final[, worker_type := as.numeric(worker_type)]
+  label_final
+}
+
 #' Smallest cut level that yields at most k clusters
 within_firm_min <- function(mat, k) {
   if (nrow(mat) <= k) {
@@ -546,15 +560,7 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
 
   stopifnot(all(staff_comparable[, type_within_firm == 1:.N, by = year_loc]$V1))
   colnames(label_final) <- c("year_loc", paste0("type_within_firm", seq_len(config$n_worker_types)))
-  label_final <- data.table::melt(
-    label_final,
-    id.vars = "year_loc",
-    measure.vars = paste0("type_within_firm", seq_len(config$n_worker_types)),
-    variable.name = "worker_type",
-    value.name = "type_within_firm"
-  )
-  label_final[, worker_type := as.numeric(sub("type_within_firm", "", worker_type))]
-  label_final[, type_within_firm := as.numeric(type_within_firm)]
+  label_final <- reshape_label_assignments(label_final, config$n_worker_types)
 
   staff_task[, year_loc := paste0(location_id, " - ", quarter_year)]
   staff_task_labeled <- merge(staff_task, label_final, by = c("year_loc", "type_within_firm"), all.x = TRUE)
