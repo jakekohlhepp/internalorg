@@ -477,10 +477,11 @@ build_estimation_setup <- function(working_data, estim_matrix, config = CONFIG) 
   ))
   mm_2 <- model.matrix(xnam4, data = estim_matrix)
 
-  ## the instrument matrix swaps out the endogenous price terms for the
-  ## county-specific cost shifters built in 04_estimation_sample.R.
+  ## the demand-side instrument matrix swaps out the endogenous price term for
+  ## the county-specific Hausman price instrument built in 04_estimation_sample.R
+  ## (leave-own-county-out mean cust_price in the same quarter).
   xnam <- c(
-    "dye_instrument",
+    "hausman_other_price",
     "factor(quarter_year)",
     paste0("avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
   )
