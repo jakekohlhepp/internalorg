@@ -118,6 +118,33 @@ prepare_equilibrium_rows <- function(x, config = CONFIG) {
   )
 }
 
+build_worker_moment_matrix <- function(E_values, county, config = CONFIG,
+                                       worker_indices = 2:config$n_worker_types) {
+  E_values <- as.matrix(E_values)
+  storage.mode(E_values) <- "double"
+  county <- as.character(county)
+
+  out <- matrix(
+    0,
+    nrow = length(county),
+    ncol = length(config$counties) * length(worker_indices)
+  )
+
+  col_names <- character(ncol(out))
+  col_id <- 1L
+  for (worker in worker_indices) {
+    worker_col <- match(worker, worker_indices)
+    for (cnty in config$counties) {
+      out[county == cnty, col_id] <- E_values[county == cnty, worker_col]
+      col_names[col_id] <- paste0("county", cnty, ":E_", worker)
+      col_id <- col_id + 1L
+    }
+  }
+
+  colnames(out) <- col_names
+  out
+}
+
 get_solver_tolerances <- function(config = CONFIG, state = NULL) {
   innertol <- config$innertol
   outertol <- config$outertol
@@ -660,13 +687,12 @@ objective_gmm <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust 
     return_full_E = FALSE
   )
 
-  E_match <- data.frame(
+  E_mat <- build_worker_moment_matrix(
     temp_res - rows$observed_E,
-    factor(rows$county)
+    rows$county,
+    config,
+    worker_indices = 2:config$n_worker_types
   )
-  E_col_names <- paste0("E_", 2:config$n_worker_types)
-  colnames(E_match) <- c(E_col_names, "county")
-  E_mat <- model.matrix(build_E_formula(2:config$n_worker_types, include_s_index = FALSE), data = E_match)
 
   state <- solver_state
   if (is.null(state) && solver_flag(config, "use_solver_warm_starts", TRUE)) {
@@ -700,13 +726,19 @@ eval_moments <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust =
   E_all_names <- paste0("E_", 1:config$n_worker_types)
 
   data <- as.data.frame(x)
-  E_match <- data.frame(as.matrix(data[, E_raw_all_cols, drop = FALSE]), factor(rows$county))
-  colnames(E_match) <- c(E_all_names, "county")
-  E_raw <- model.matrix(build_E_formula(1:config$n_worker_types, include_s_index = FALSE), data = E_match)
+  E_raw <- build_worker_moment_matrix(
+    as.matrix(data[, E_raw_all_cols, drop = FALSE]),
+    rows$county,
+    config,
+    worker_indices = 1:config$n_worker_types
+  )
 
-  E_match <- data.frame(temp_res, factor(rows$county))
-  colnames(E_match) <- c(E_all_names, "county")
-  E_model <- model.matrix(build_E_formula(1:config$n_worker_types, include_s_index = FALSE), data = E_match)
+  E_model <- build_worker_moment_matrix(
+    temp_res,
+    rows$county,
+    config,
+    worker_indices = 1:config$n_worker_types
+  )
 
   cbind(colMeans(E_model), colMeans(E_raw))
 }
@@ -783,7 +815,8 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
           clust = clust,
           solver_state = solver_state
         ))
-        as.numeric(moments)
+        county_moments <- grepl(paste0("county", cnty, ":E_"), names(moments), fixed = TRUE)
+        as.numeric(moments[county_moments])
       }
 
       result <- BBsolve(

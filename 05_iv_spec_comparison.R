@@ -75,6 +75,8 @@
 #'   - results/out/tables/05_standard_iv_comparison.tex
 #'   - results/out/tables/05_standard_hausman_fe_comparison.tex
 #'   - results/out/tables/05_nested_fe_comparison.tex
+#'   - results/out/tables/05_standard_iv_comparison_first_stage.tex
+#'   - results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex
 #' =============================================================================
 
 library("data.table")
@@ -217,7 +219,9 @@ fit_demand_spec <- function(spec_name, instruments,
     prices = extract_county_rows(coef_test, "cust_price"),
     diagnostics = diagnostics,
     condition_number = scaled_xpzx_condition(fit),
-    adj_r2 = summary(fit)$adj.r.squared
+    adj_r2 = summary(fit)$adj.r.squared,
+    instruments = instruments,
+    first_stages = extract_first_stages(fit, estim_matrix$location_id)
   )
 
   if (model_type == "nested") {
@@ -225,6 +229,51 @@ fit_demand_spec <- function(spec_name, instruments,
   }
 
   result
+}
+
+## First-stage OLS coefficients for each endogenous column, with location-
+## clustered standard errors. For each endogenous regressor in the ivreg
+## design (e.g. factor(county)c:cust_price), this regresses that column on
+## the full instrument design matrix (exogenous controls + excluded
+## instruments), mirroring the internal first stage of 2SLS.
+extract_first_stages <- function(fit, cluster_var) {
+  x_reg <- model.matrix(fit, component = "regressors")
+  x_inst <- model.matrix(fit, component = "instruments")
+  endog_cols <- setdiff(colnames(x_reg), colnames(x_inst))
+
+  safe_names <- paste0("z", seq_len(ncol(x_inst)))
+  x_df <- as.data.frame(x_inst)
+  names(x_df) <- safe_names
+
+  fs_list <- lapply(endog_cols, function(ec) {
+    df <- x_df
+    df$.y <- x_reg[, ec]
+    fs <- lm(.y ~ . - 1, data = df)
+    vc <- vcovCL(fs, cluster = cluster_var, type = "HC1")
+    ct <- coeftest(fs, vcov. = vc)
+    rownames(ct) <- colnames(x_inst)[match(rownames(ct), safe_names)]
+    list(coeftest = ct,
+         adj_r2 = summary(fs)$adj.r.squared,
+         nobs = nobs(fs))
+  })
+  names(fs_list) <- endog_cols
+  fs_list
+}
+
+get_first_stage_entry <- function(first_stages, endog_base, instrument_name, county) {
+  endog_col <- paste0("factor(county)", county, ":", endog_base)
+  inst_col  <- paste0("factor(county)", county, ":", instrument_name)
+  ct <- first_stages[[endog_col]]$coeftest
+  if (is.null(ct)) {
+    return(list(estimate = NA_real_, se = NA_real_, p_value = NA_real_))
+  }
+  idx <- match(inst_col, rownames(ct))
+  if (is.na(idx)) {
+    return(list(estimate = NA_real_, se = NA_real_, p_value = NA_real_))
+  }
+  list(estimate = unname(ct[idx, 1]),
+       se = unname(ct[idx, 2]),
+       p_value = unname(ct[idx, 4]))
 }
 
 # -----------------------------------------------------------------------------
@@ -621,7 +670,144 @@ table3_lines <- build_iv_table(
 table3_output_path <- "results/out/tables/05_nested_fe_comparison.tex"
 writeLines(table3_lines, table3_output_path)
 
+# -----------------------------------------------------------------------------
+# First-stage companion tables (standard logit only)
+# -----------------------------------------------------------------------------
+## Each column supplies `result$first_stages` and `result$instruments`; the
+## builder reports the first-stage coefficient on each county-specific
+## instrument, leaving cells blank when the column's spec does not include
+## that instrument. Weak-IV F rows reproduce the diagnostics from the
+## second-stage summary so the strength of each first stage is visible.
+build_first_stage_table <- function(columns, endog_specs,
+                                    instrument_labels,
+                                    caption, label, notes = "") {
+  n_cols <- length(columns)
+  align <- paste0("l", strrep("c", n_cols))
+  total_cols <- n_cols + 1L
+
+  header_values <- vapply(columns, `[[`, character(1), "label")
+  fe_values <- vapply(columns, `[[`, character(1), "fe_label")
+  instrument_bases <- names(instrument_labels)
+
+  lines <- c(
+    "\\begin{table}[!htbp] \\centering",
+    paste0("  \\caption{", caption, "}"),
+    paste0("  \\label{", label, "}"),
+    paste0("  \\begin{tabular}{", align, "}"),
+    "\\\\[-1.8ex]\\hline",
+    "\\hline \\\\[-1.8ex]",
+    table_row("", header_values),
+    "\\hline \\\\[-1.8ex]",
+    table_row("Fixed effects", fe_values)
+  )
+
+  for (endog in endog_specs) {
+    for (inst_base in instrument_bases) {
+      for (cnty in counties) {
+        coef_cells <- vapply(columns, function(col) {
+          if (!(inst_base %in% col$result$instruments)) return("")
+          entry <- get_first_stage_entry(col$result$first_stages,
+                                         endog$base, inst_base, cnty)
+          format_estimate(entry$estimate, entry$p_value)
+        }, character(1))
+        se_cells <- vapply(columns, function(col) {
+          if (!(inst_base %in% col$result$instruments)) return("")
+          entry <- get_first_stage_entry(col$result$first_stages,
+                                         endog$base, inst_base, cnty)
+          format_se(entry$se)
+        }, character(1))
+        row_label <- paste0(endog$label, " on ",
+                            instrument_labels[[inst_base]],
+                            " (county ", cnty, ")")
+        lines <- c(lines,
+          table_row(row_label, coef_cells),
+          table_row("", se_cells)
+        )
+      }
+    }
+  }
+
+  for (endog in endog_specs) {
+    for (cnty in counties) {
+      values <- vapply(columns, function(col) {
+        format_stat(safe_diag_value(col$result$diagnostics,
+                                    weak_iv_row_name(cnty, endog$base),
+                                    "statistic"))
+      }, character(1))
+      lines <- c(lines,
+        table_row(paste0("Weak-IV F ", endog$label, " (", cnty, ")"), values)
+      )
+    }
+  }
+
+  obs_values <- vapply(columns, function(col) {
+    format_int(nobs(col$result$fit))
+  }, character(1))
+
+  lines <- c(lines,
+    table_row("Observations", obs_values),
+    "\\hline \\\\[-1.8ex]",
+    paste0("\\multicolumn{", total_cols,
+           "}{p{0.92\\linewidth}}{\\footnotesize ", notes, "}\\\\"),
+    "\\end{tabular}",
+    "\\end{table}"
+  )
+  lines
+}
+
+fs_price_endog <- list(list(base = "cust_price", label = "Price"))
+fs_instrument_labels <- c(hausman_other_price = "Hausman",
+                          dye_instrument = "Dye")
+
+fs_table1_notes <- paste0(
+  "Notes: First-stage OLS coefficients on county-specific instruments, with ",
+  "location-level clustered standard errors in parentheses, for the same ",
+  "specifications reported in Table \\ref{tab:standard_iv_comparison}. Each ",
+  "column regresses the endogenous county-specific \\texttt{cust\\_price} ",
+  "column on all exogenous controls plus the excluded instrument(s) for that ",
+  "column. Blank cells indicate that the instrument is not included in the ",
+  "column's specification. *, **, and *** denote $p<0.05$, $p<0.01$, and ",
+  "$p<0.001$. Weak-IV F rows reproduce the diagnostics from ",
+  "\\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
+
+fs_table1_lines <- build_first_stage_table(
+  columns = table1_columns,
+  endog_specs = fs_price_endog,
+  instrument_labels = fs_instrument_labels,
+  caption = "Standard Logit First-Stage Estimates: Instrument and Fixed-Effect Comparison",
+  label = "tab:standard_iv_comparison_first_stage",
+  notes = fs_table1_notes
+)
+fs_table1_output_path <- "results/out/tables/05_standard_iv_comparison_first_stage.tex"
+writeLines(fs_table1_lines, fs_table1_output_path)
+
+fs_table2_notes <- paste0(
+  "Notes: First-stage OLS coefficients on the county-specific Hausman ",
+  "instrument (leave-own-county-out same-quarter average customer price), ",
+  "with location-level clustered standard errors in parentheses, for the ",
+  "same specifications reported in Table ",
+  "\\ref{tab:standard_hausman_fe_comparison}. Each column regresses the ",
+  "endogenous county-specific \\texttt{cust\\_price} column on all ",
+  "exogenous controls plus the excluded Hausman instrument. *, **, and *** ",
+  "denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows reproduce the ",
+  "diagnostics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
+
+fs_table2_lines <- build_first_stage_table(
+  columns = table2_columns,
+  endog_specs = fs_price_endog,
+  instrument_labels = c(hausman_other_price = "Hausman"),
+  caption = "Standard Logit with Hausman Instrument: First-Stage Fixed-Effect Comparison",
+  label = "tab:standard_hausman_fe_comparison_first_stage",
+  notes = fs_table2_notes
+)
+fs_table2_output_path <- "results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex"
+writeLines(fs_table2_lines, fs_table2_output_path)
+
 cat("\nDemand IV specification comparison tables saved to:\n")
 cat("  ", table1_output_path, "\n", sep = "")
 cat("  ", table2_output_path, "\n", sep = "")
 cat("  ", table3_output_path, "\n", sep = "")
+cat("  ", fs_table1_output_path, "\n", sep = "")
+cat("  ", fs_table2_output_path, "\n", sep = "")
