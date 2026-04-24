@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Literature Review: Potential Additions — The Inner Beauty of Firms</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #ffffff;
+    --border: #e0e0e0;
+    --accent1: #1a3a5c;
+    --accent2: #2d6a4f;
+    --accent3: #7b2d8e;
+    --accent4: #b85c1f;
+    --accent5: #c62828;
+    --text: #222;
+    --muted: #666;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+  h1 {
+    font-size: 2rem;
+    color: var(--accent1);
+    border-bottom: 3px solid var(--accent1);
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-style: italic;
+    margin-bottom: 32px;
+    font-size: 0.95rem;
+  }
+  h2 {
+    font-size: 1.45rem;
+    margin-top: 44px;
+    margin-bottom: 16px;
+    padding: 8px 14px;
+    border-left: 5px solid var(--accent1);
+    background: #f0f4f8;
+  }
+  h3 {
+    font-size: 1.15rem;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    color: var(--accent1);
+  }
+  p { margin-bottom: 14px; }
+  .strand-label {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 10px;
+    border-radius: 3px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .strand-1 { background: var(--accent1); }
+  .strand-2 { background: var(--accent2); }
+  .strand-3 { background: var(--accent3); }
+  .strand-4 { background: var(--accent4); }
+  .strand-5 { background: var(--accent5); }
+  .strand-6 { background: #37474f; }
+  .strand-7 { background: #00695c; }
+  .paper-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .paper-card .title {
+    font-weight: bold;
+    font-size: 1.05rem;
+    color: var(--accent1);
+    margin-bottom: 4px;
+  }
+  .paper-card .authors {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+  }
+  .paper-card .venue {
+    font-style: italic;
+    font-size: 0.88rem;
+    color: #888;
+    margin-bottom: 8px;
+  }
+  .paper-card .relevance { font-size: 0.95rem; }
+  .priority-high { border-left: 4px solid #c62828; }
+  .priority-medium { border-left: 4px solid #f9a825; }
+  .priority-low { border-left: 4px solid #90caf9; }
+  .priority-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    padding: 1px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+  }
+  .tag-high { background: #ffcdd2; color: #b71c1c; }
+  .tag-medium { background: #fff9c4; color: #f57f17; }
+  .tag-low { background: #e3f2fd; color: #1565c0; }
+  .summary-box {
+    background: #f0f7f4;
+    border: 1px solid #b2dfdb;
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin: 24px 0;
+  }
+  .summary-box h3 { color: var(--accent2); margin-top: 0; }
+  .toc {
+    background: #f5f5f5;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 24px;
+    margin-bottom: 32px;
+  }
+  .toc h3 { margin-top: 0; font-size: 1rem; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 4px; font-size: 0.93rem; }
+  .toc a { color: var(--accent1); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .existing-refs {
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+  }
+  .existing-refs strong { color: var(--accent4); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th { background: #f0f4f8; font-weight: bold; }
+  tr:nth-child(even) { background: #fafafa; }
+  .bibtex-section {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 3px solid var(--accent1);
+  }
+  .bibtex-block {
+    background: #263238;
+    color: #e0e0e0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 20px 24px;
+    border-radius: 6px;
+    margin: 12px 0 24px 0;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    position: relative;
+  }
+  .bibtex-block .copy-hint {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+    font-size: 0.7rem;
+    color: #90a4ae;
+    font-family: 'Georgia', serif;
+  }
+  .bibtex-label {
+    font-weight: bold;
+    font-size: 0.95rem;
+    margin-top: 20px;
+    margin-bottom: 4px;
+    color: var(--accent1);
+  }
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Literature Review: Potential Additions</h1>
+<p class="subtitle">
+  Deep dive for "The Inner Beauty of Firms" by Jacob Kohlhepp (UNC Chapel Hill, June 2025).<br>
+  Prepared March 2026. Sources: Claude web search, background research agent, and Gemini analysis.<br>
+  All BibTeX entries at the end for easy copy-paste.
+</p>
+
+<!-- ============================================================= -->
+<div class="summary-box">
+<h3>Executive Summary</h3>
+<p>
+  The paper's literature review currently covers three main strands: (1) determinants of firm productivity,
+  (2) task-based labor markets, and (3) talent allocation within the firm. This report identifies
+  <strong>33 papers</strong> that could strengthen the review, organized into seven thematic areas.
+</p>
+<table>
+  <tr><th>Priority</th><th>Meaning</th><th>Count</th></tr>
+  <tr><td><span class="priority-tag tag-high">High</span></td><td>Directly engages the paper's core mechanism or empirical setting; omission may be noticed by referees</td><td>11</td></tr>
+  <tr><td><span class="priority-tag tag-medium">Medium</span></td><td>Related work that strengthens positioning; useful but not essential</td><td>14</td></tr>
+  <tr><td><span class="priority-tag tag-low">Low</span></td><td>Tangentially relevant; cite only if space allows or a referee raises the topic</td><td>8</td></tr>
+</table>
+</div>
+
+<!-- ============================================================= -->
+<nav class="toc">
+<h3>Contents</h3>
+<ol>
+  <li><a href="#strand1">Division of Labor &amp; Task Bundling within Firms</a></li>
+  <li><a href="#strand2">Coworker Complementarities &amp; Team Production</a></li>
+  <li><a href="#strand3">Organizational Economics &amp; Information Costs</a></li>
+  <li><a href="#strand4">Labor Market Sorting &amp; Assignment Models</a></li>
+  <li><a href="#strand5">Management Practices &amp; Firm Productivity</a></li>
+  <li><a href="#strand6">Empirical Methods &amp; Related Estimation</a></li>
+  <li><a href="#strand7">AI, Technology &amp; Task Reallocation</a></li>
+  <li><a href="#strategy">Strategic Recommendations</a></li>
+  <li><a href="#bibtex">BibTeX Citations (All Papers)</a></li>
+</ol>
+</nav>
+
+<!-- ============================================================= -->
+<!-- STRAND 1 -->
+<!-- ============================================================= -->
+<h2 id="strand1">1. Division of Labor &amp; Task Bundling within Firms</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Becker &amp; Murphy (1992), Lazear (2009), Adenbaum (2022), Garicano (2000), Garicano &amp; Hubbard (2016).
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Division of Labor in the Global Economy</div>
+  <div class="authors">Sascha O. Becker, Hartmut Egger, Michael Koch, Marc-Andreas Muendler</div>
+  <div class="venue">CEPR DP 20860 / NBER WP 34549, November 2025</div>
+  <p class="relevance">
+    Uses German plant-worker data to document that larger plants use more occupations, assign fewer tasks per
+    occupation, and exhibit greater wage dispersion. Model: plants <em>endogenously bundle tasks into occupations</em>,
+    improving worker-task matching at the cost of higher fixed span-of-control costs. Embedded in a Melitz framework.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Closest recent paper to the core mechanism. Both papers model endogenous task bundling,
+    but differ: Kohlhepp focuses on organization costs (KL divergence) and within-market sorting; Becker et al.
+    focus on trade and Melitz-style selection. A referee in trade/IO will look for this citation.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Endogenous Firm Structure and Worker Specialization</div>
+  <div class="authors">Jacob Adenbaum</div>
+  <div class="venue">Working Paper, CUNEF Universidad (updated October 2025; presented SED 2025)</div>
+  <p class="relevance">
+    Already cited as 2022 WP. Substantially revised: now uses Brazilian admin data, finds 1/3 of TFP variance
+    is due to endogenous occupational choices, shutting down within-firm specialization reduces output by 9.6%.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Update the citation. Sharpen the distinction: Adenbaum studies the extensive margin
+    (which occupations to hire) while Kohlhepp studies the intensive margin (task assignments within occupations).
+    Update footnote 13 on p.25 to reflect the new results.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">No Line Left Behind: Assortative Matching Inside the Firm</div>
+  <div class="authors">Achyuta Adhvaryu, Vittorio Bassi, Anant Nyshadham, Jorge Tamayo</div>
+  <div class="venue">Review of Economic Studies, forthcoming 2024</div>
+  <p class="relevance">
+    Studies worker-to-team assignment within a garment factory using detailed production data. Finds that
+    assortative matching <em>within the firm</em> raises productivity. Uses structural estimation.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Closest empirical paper to your setting&mdash;both study within-firm task allocation
+    with granular production data and structural estimation. Their assembly-line setting vs. your service-sector
+    setting is a useful contrast. Cite in Section 2 (talent allocation within the firm).
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">The Geography of Job Tasks</div>
+  <div class="authors">Mons Chan, Sergio Salgado</div>
+  <div class="venue">Journal of Labor Economics, Vol. 42, No. 4, 2024</div>
+  <p class="relevance">
+    10&ndash;50% of task/technology variation between large and small markets exists <em>within</em> occupations.
+    Workers in larger markets are more specialized.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Reduced-form evidence for your model's mechanism. Your paper estimates
+    <em>why</em> this happens (organization costs); they document the geographic pattern.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Tasks at Work: Comparative Advantage, Technology and Labor Demand</div>
+  <div class="authors">Daron Acemoglu, Fredric Kong, Pascual Restrepo</div>
+  <div class="venue">NBER WP 32872 / Handbook of Labor Economics chapter, August 2024</div>
+  <p class="relevance">
+    Comprehensive review of the task framework. Production requires task completion; workers with different skills
+    are assigned to tasks; technological change affects this allocation.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> As a survey chapter, it positions your paper within the broader task literature.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Impact of Task-Level Worker Specialization, Workload, and Product Personalization on Consumer Returns</div>
+  <div class="authors">Hailong Cui, S. Rajagopalan, A.R. Ward</div>
+  <div class="venue">Manufacturing &amp; Service Operations Management, 23(2): 346&ndash;366, 2021</div>
+  <p class="relevance">
+    Studies how task-level specialization of workers affects product quality (returns) in a service/manufacturing
+    setting. Finds that specialization improves quality but workload effects can offset gains.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Empirical evidence from operations management that task specialization has real
+    productivity effects at the worker level, supporting your stylized facts. Cross-disciplinary cite
+    that broadens appeal.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-1">Division of Labor</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Task Assignment and Pay Dispersion under Moral Hazard</div>
+  <div class="authors">Clemens L&ouml;ffler, Christian Schmid</div>
+  <div class="venue">Management Accounting Research, 64: 100866, 2024</div>
+  <p class="relevance">
+    Theoretical model of task assignment with moral hazard. Specialization vs. diversification trade-off
+    when effort is not contractible.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if a referee asks about incentive/moral-hazard dimensions of task assignment.
+    Your model abstracts from agency problems.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 2 -->
+<!-- ============================================================= -->
+<h2 id="strand2">2. Coworker Complementarities &amp; Team Production</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Freund (2022), Haegele (2022), Coraggio et al. (2023), Minni (2023).
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-2">Team Production</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Production and Learning in Teams</div>
+  <div class="authors">Kyle Herkenhoff, Jeremy Lise, Guido Menzio, Gordon M. Phillips</div>
+  <div class="venue">Econometrica, 92(2): 467&ndash;504, March 2024</div>
+  <p class="relevance">
+    Production function is <em>supermodular</em>: marginal product of a knowledgeable worker increases
+    with coworkers' human capital. Market equilibrium features inefficiently positive sorting,
+    reducing aggregate human capital.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Leading recent paper on team production with structural estimation. Your model
+    generates coworker spillovers through task reassignment; theirs through learning.
+    Citing it and contrasting the mechanisms strengthens Section 6.3.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-2">Team Production</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Superstar Teams: The Micro Origins and Macro Implications of Coworker Complementarities</div>
+  <div class="authors">Lukas B. Freund</div>
+  <div class="venue">Working Paper, Cambridge (updated June 2025)</div>
+  <p class="relevance">
+    Already cited as Freund (2022). Major update: coworker complementarity has <em>doubled</em> since the
+    mid-1980s, accounting for 40% of the growth in between-firm wage inequality.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Update the citation to the 2025 version. The complementarity-has-doubled
+    finding directly connects to your s-index results.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-2">Team Production</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Learning from Coworkers</div>
+  <div class="authors">Gregor Jarosch, Ezra Oberfield, Esteban Rossi-Hansberg</div>
+  <div class="venue">Econometrica, 2021 (with 2023&ndash;2024 extensions)</div>
+  <p class="relevance">
+    Models knowledge transfer within firms. Equilibrium features endogenous sorting of workers to firms.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Dynamic channel for coworker effects: learning vs. your task-reassignment channel.
+    Cite alongside Herkenhoff et al. in Section 6.3 or conclusion.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-2">Team Production</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Propagation and Amplification of Local Productivity Spillovers</div>
+  <div class="authors">Nathaniel Baum-Snow, Nicolas Gendron-Carrier, Ronni Pavan</div>
+  <div class="venue">Econometrica, September 2024</div>
+  <p class="relevance">
+    Large plant openings raise productivity of distant plants within the same multi-plant firm.
+    Spillovers do not decay with distance and are stronger when plants share knowledge.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Demonstrates within-firm spillovers operate through organizational channels
+    rather than local agglomeration. Tangentially supports your organizational capital interpretation.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-2">Team Production</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Gender Promotion Gaps in Knowledge Work: The Role of Task Assignment in Teams</div>
+  <div class="authors">Cagatay Bircan, Guido Friebel, Tristan Stahl</div>
+  <div class="venue">RF Berlin Working Paper, 2025</div>
+  <p class="relevance">
+    Studies how task assignment within teams creates gender gaps in promotion. Documents that task assignment
+    patterns differ systematically by gender even within the same team.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if discussing heterogeneous effects of task assignment on different
+    worker demographics. Your data may allow testing for similar patterns.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 3 -->
+<!-- ============================================================= -->
+<h2 id="strand3">3. Organizational Economics &amp; Information Costs</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Alchian &amp; Demsetz (1972), Baker &amp; Hubbard (2003), Baker/Gibbons/Murphy (2002),
+  Garicano &amp; Wu (2012), Dessein &amp; Santos (2006), Martinez et al. (2015), Dessein &amp; Prat (2022),
+  Csaba (2021), Matejka &amp; McKay (2015), Shannon (1948), Cover &amp; Thomas (1991).
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-3">Org. Economics</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Rational Inattention: A Review</div>
+  <div class="authors">Filip Matejka, Christopher Sims, et al.</div>
+  <div class="venue">Journal of Economic Literature, 2023</div>
+  <p class="relevance">
+    Comprehensive review of rational inattention in economics. Covers when entropy-based (Shannon) costs
+    are appropriate versus alternative cost functions.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your Appendix A.1 microfounds the KL divergence cost using rational inattention.
+    This review grounds that micro-foundation. Any referee familiar with RI will expect this cite.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-3">Org. Economics</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Organizational Capital, Corporate Leadership, and Firm Dynamics</div>
+  <div class="authors">Wouter Dessein, Andrea Prat</div>
+  <div class="venue">Journal of Political Economy, 130(6), 2022</div>
+  <p class="relevance">
+    Already cited in conclusion. Models organizational capital as an intangible, slow-moving productive asset.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Move from conclusion to Section 2. Their "organizational capital" maps directly
+    onto your &gamma;<sub>j</sub>. Your paper recovers this parameter structurally from task assignment data.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-3">Org. Economics</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Competing to Commit: Markets with Rational Inattention</div>
+  <div class="authors">Various</div>
+  <div class="venue">American Economic Review, 114(1): 285&ndash;306, 2024</div>
+  <p class="relevance">
+    Markets where consumers pay entropy costs to process information about firms' offers.
+    Shows how information costs affect market equilibrium and firm competition.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Relevant if expanding the RI connection. Both use entropy-based costs in
+    competitive settings, though yours applies to internal organization.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-3">Org. Economics</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Information Technology, Workplace Organization, and the Demand for Skilled Labor</div>
+  <div class="authors">Timothy F. Bresnahan, Erik Brynjolfsson, Lorin M. Hitt</div>
+  <div class="venue">Quarterly Journal of Economics, 117(1): 339&ndash;376, 2002</div>
+  <p class="relevance">
+    Foundational paper on the complementarity between IT adoption, workplace reorganization, and demand for
+    skilled labor. Firms that adopt IT also reorganize work and hire more skilled workers.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your salons use management software; this paper establishes that IT adoption
+    and organizational structure are complements. Could motivate why salons using the software may
+    differ systematically from non-users (sample selection discussion).
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-3">Org. Economics</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Endogenous Reorganization: Status, Productivity &amp; Meritocratic Dynamics</div>
+  <div class="authors">Various</div>
+  <div class="venue">Journal of Economic Behavior &amp; Organization, 2024</div>
+  <p class="relevance">
+    Studies how firms reorganize internally in response to productivity shocks.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if a referee raises questions about dynamic reorganization.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 4 -->
+<!-- ============================================================= -->
+<h2 id="strand4">4. Labor Market Sorting &amp; Assignment Models</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Sattinger (1975), Lindenlaub (2017a, 2017b), Ocampo (2022), Haanwinckel (2023),
+  Card/Heining/Kline (2013), Alvarez et al. (2018), Song et al. (2019), Abowd/Kramarz/Margolis (1999).
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Supply, Demand, Institutions, and Firms: A Theory of Labor Market Sorting and the Wage Distribution</div>
+  <div class="authors">Daniel Haanwinckel</div>
+  <div class="venue">American Economic Review, 115(12): 4137&ndash;4182, December 2025</div>
+  <p class="relevance">
+    Already cited as 2023 WP. Now published in the AER. Workforce composition, labor demand, and minimum wage
+    jointly determine wages through worker-task assignments and firm-worker sorting.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Update from WP to published AER version. His model: sorting <em>across</em> firms.
+    Your model: organization <em>within</em> firms. Complementary perspectives.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Multidimensional Sorting Under Random Search</div>
+  <div class="authors">Ilse Lindenlaub, Fabien Postel-Vinay</div>
+  <div class="venue">Journal of Political Economy, 2023</div>
+  <p class="relevance">
+    Extends Lindenlaub (2017) to a frictional setting with multidimensional worker and firm heterogeneity.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your model features multidimensional skills and firm heterogeneity.
+    Since you already cite Lindenlaub (2017a, 2017b), citing this extension is natural.
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">High Wage Workers Work for High Wage Firms</div>
+  <div class="authors">Katarina Borovickova, Robert Shimer</div>
+  <div class="venue">Econometrica, forthcoming 2024</div>
+  <p class="relevance">
+    New method to decompose earnings into worker and firm components. PAM is stronger than AKM suggests.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your identification uses a connected-set argument similar to AKM but based on
+    task assignments rather than wages. This paper's critique of AKM strengthens the case for your approach.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">How Much Should We Trust Estimates of Firm Effects and Worker Sorting?</div>
+  <div class="authors">Stephane Bonhomme, Kerstin Holzheu, Thibaut Lamadon, Elena Manresa, Magne Mogstad, Bradley Setzler</div>
+  <div class="venue">Journal of Labor Economics, 2023</div>
+  <p class="relevance">
+    Critically examines AKM-style estimates. Standard approaches can be misleading about sorting.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your task-assignment-based identification avoids many AKM pitfalls.
+    This paper's critique strengthens your methodological contribution (Theorem 2).
+  </p>
+</div>
+
+<div class="paper-card priority-high">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-high">High Priority</span>
+  <div class="title">Learning on the Job</div>
+  <div class="authors">Jacob Adenbaum, Fil Babalievsky, William Jungerman</div>
+  <div class="venue">Working Paper, University of Edinburgh, 2024</div>
+  <p class="relevance">
+    Already cited in conclusion. Combines firm-level heterogeneity in organization costs with dynamic human
+    capital accumulation. Directly builds on the framework in this paper.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Consider adding to Section 2 in addition to the conclusion, since it extends
+    your exact framework.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Labor Market Dynamics with Sorting</div>
+  <div class="authors">Bastian Schulz</div>
+  <div class="venue">Journal of Economic Dynamics and Control, 2024</div>
+  <p class="relevance">
+    Extends sorting models to include dynamics and business-cycle variation.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if discussing dynamics or resilience in the conclusion.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-4">Sorting</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">A Theory of Wage and Promotion Dynamics Inside Firms</div>
+  <div class="authors">Robert Gibbons, Michael Waldman</div>
+  <div class="venue">Quarterly Journal of Economics, 114(4): 1321&ndash;1358, 1999</div>
+  <p class="relevance">
+    Classic model of internal labor markets with task assignment, learning, and promotion. Workers are
+    assigned to tasks based on evolving assessments of their ability.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Foundational internal labor market paper. Your model is static and doesn't
+    feature promotions, but the idea that firms assign workers to tasks based on skills is the same.
+    Natural cite for the "talent allocation within the firm" strand.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 5 -->
+<!-- ============================================================= -->
+<h2 id="strand5">5. Management Practices &amp; Firm Productivity</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Bloom &amp; Van Reenen (2007), Syverson (2004), De Loecker &amp; Syverson (2021),
+  Metcalfe/Sollaci/Syverson (2023), Kuhn et al. (2023), Bassi et al. (2023), Caliendo et al. (2020).
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-5">Productivity</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Productivity and Organization in Portuguese Firms</div>
+  <div class="authors">Lorenzo Caliendo, Giordano Mion, Luca David Opromolla, Esteban Rossi-Hansberg</div>
+  <div class="venue">Journal of Political Economy, 128(11): 4211&ndash;4257, 2020</div>
+  <p class="relevance">
+    Already cited. Adding management layers raises quantity-based productivity ~6%. Their "layers" capture
+    vertical organization (hierarchy); your &gamma;<sub>j</sub> captures horizontal organization (task specialization).
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Already cited. Consider deepening the discussion to contrast vertical vs.
+    horizontal organizational dimensions.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-5">Productivity</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Market Selection, Reallocation, and Restructuring in the US Retail Trade Sector in the 1990s</div>
+  <div class="authors">Lucia Foster, John Haltiwanger, Cornell J. Krizan</div>
+  <div class="venue">Review of Economics and Statistics, 88(4): 748&ndash;758, 2006</div>
+  <p class="relevance">
+    Studies productivity dispersion and reallocation in a service sector (retail). Documents that market
+    selection and reallocation account for most of productivity growth.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Your counterfactuals study how reallocation across firms (with and without
+    reorganization) affects aggregate productivity. This paper provides the empirical backdrop for
+    reallocation effects in services.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-5">Productivity</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Coordinated Firm-Level Work Processes and Macroeconomic Resilience</div>
+  <div class="authors">Moritz Kuhn, Jinfeng Luo, Iourii Manovskii, Xincheng Qiu</div>
+  <div class="venue">Journal of Monetary Economics, 137: 107&ndash;127, 2023</div>
+  <p class="relevance">
+    Already cited. More coordinated/specialized firms are more profitable but more vulnerable in downturns.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Already cited. Consider expanding discussion in the conclusion where you
+    mention resilience as a cost of specialization.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 6 -->
+<!-- ============================================================= -->
+<h2 id="strand6">6. Empirical Methods &amp; Related Estimation</h2>
+
+<div class="existing-refs">
+  <strong>Currently cited:</strong> Bonhomme &amp; Manresa (2015), Rubin (1981), Aravindakshan &amp; Ratchford (2011).
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-6">Methods</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Partially Directed Search in the Labor Market</div>
+  <div class="authors">Various</div>
+  <div class="venue">Journal of Economic Theory, 2024</div>
+  <p class="relevance">
+    Models limited information as a cost proportional to KL divergence between chosen and random search strategies.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if a referee questions the KL divergence cost function. Additional precedent.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-6">Methods</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Experimental Tests of Rational Inattention</div>
+  <div class="authors">Various</div>
+  <div class="venue">Journal of Political Economy, 131(12), 2023</div>
+  <p class="relevance">
+    Lab experiments support RI qualitatively but are inconsistent with linear Shannon entropy costs.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Useful for limitations discussion. Your Appendix A.1 micro-foundation is
+    specific to firm organization, which may be more appropriate than generic Shannon costs.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-6">Methods</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">The Skill Complementarity of Broadband Internet</div>
+  <div class="authors">Anders Akerman, Ingvil Gaarder, Magne Mogstad</div>
+  <div class="venue">Quarterly Journal of Economics, 130(4): 1781&ndash;1824, 2015</div>
+  <p class="relevance">
+    Shows broadband internet is skill-complementary, increasing productivity of skilled workers relative
+    to unskilled. Uses Norwegian firm-level data with an IV strategy.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if discussing how technology (salon management software) may
+    differentially affect firms based on their organizational structure.
+  </p>
+</div>
+
+<!-- ============================================================= -->
+<!-- STRAND 7 -->
+<!-- ============================================================= -->
+<h2 id="strand7">7. AI, Technology &amp; Task Reallocation</h2>
+
+<p>The Gemini analysis flagged several papers on AI and task reallocation. These are relevant
+if you expand the conclusion to discuss how AI/automation might interact with within-firm
+organization, or if a referee asks about technological change.</p>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-7">AI/Tech</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Job Transformation, Specialization, and the Labor Market Effects of AI</div>
+  <div class="authors">Enghin Atalay, Phai Phongthiengtham, Sebastian Sotelo, Daniel Tannenbaum</div>
+  <div class="venue">Minneapolis Fed Institute WP 114, September 2025</div>
+  <p class="relevance">
+    Automation shifts the relative importance of tasks within occupations. Uses NLP to measure task content.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if discussing AI/automation extensions. Your framework could study
+    how AI-driven task changes affect within-firm specialization.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-7">AI/Tech</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">GPTs are GPTs: An Early Look at the Labor Market Impact Potential of Large Language Models</div>
+  <div class="authors">Tyna Eloundou, Sam Manning, Pamela Mishkin, Daniel Rock</div>
+  <div class="venue">arXiv:2303.10130, 2023</div>
+  <p class="relevance">
+    Assesses which occupations and tasks are most exposed to LLMs. ~80% of workers have at least 10%
+    of their tasks affected.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> If discussing how AI might change the task mix (&alpha;<sub>j</sub>) facing firms,
+    which in your model would trigger reorganization. A one-sentence reference in the conclusion would suffice.
+  </p>
+</div>
+
+<div class="paper-card priority-medium">
+  <span class="strand-label strand-7">AI/Tech</span>
+  <span class="priority-tag tag-medium">Medium Priority</span>
+  <div class="title">Generative AI at Work</div>
+  <div class="authors">Erik Brynjolfsson, Danielle Li, Lindsey R. Raymond</div>
+  <div class="venue">NBER Working Paper w31161, 2023</div>
+  <p class="relevance">
+    Studies AI tool deployment in a customer service setting. AI raises productivity 14% on average,
+    with largest gains for less-skilled workers, compressing the skill distribution.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> If discussing how AI might change the skill parameters (&theta;<sub>i</sub>)
+    in your model, particularly by compressing skill differences across worker types.
+  </p>
+</div>
+
+<div class="paper-card priority-low">
+  <span class="strand-label strand-7">AI/Tech</span>
+  <span class="priority-tag tag-low">Low Priority</span>
+  <div class="title">Task Assignment as Dynamic Incentives</div>
+  <div class="authors">Yonghang Ji, Allen Vong</div>
+  <div class="venue">arXiv:2511.05338, 2026</div>
+  <p class="relevance">
+    Dynamic model of task assignment as an incentive device.
+  </p>
+  <p class="relevance">
+    <strong>Why cite:</strong> Only if discussing dynamic incentive effects of task assignment.
+  </p>
+</div>
+
+
+<!-- ============================================================= -->
+<!-- STRATEGIC RECOMMENDATIONS -->
+<!-- ============================================================= -->
+<h2 id="strategy">Strategic Recommendations</h2>
+
+<div class="summary-box">
+<h3>1. Highest-Impact New Additions (7 papers)</h3>
+<p>If you add only a few papers, these fill the most visible gaps:</p>
+<ul style="padding-left: 20px; margin-top: 8px;">
+  <li><strong>Becker, Egger, Koch &amp; Muendler (2025)</strong> &mdash; Closest paper to your mechanism, from the trade side.</li>
+  <li><strong>Herkenhoff, Lise, Menzio &amp; Phillips (2024)</strong> &mdash; Published in Econometrica; leading team production paper.</li>
+  <li><strong>Adhvaryu, Bassi, Nyshadham &amp; Tamayo (2024)</strong> &mdash; Within-firm assortative matching with structural estimation.</li>
+  <li><strong>Lindenlaub &amp; Postel-Vinay (JPE 2023)</strong> &mdash; Natural extension of Lindenlaub (2017) you already cite.</li>
+  <li><strong>Borovickova &amp; Shimer (Econometrica 2024)</strong> &mdash; New sorting decomposition; contrasts with your identification.</li>
+  <li><strong>Rational Inattention Review (JEL 2023)</strong> &mdash; Grounds your KL divergence cost.</li>
+  <li><strong>Acemoglu, Kong &amp; Restrepo (2024)</strong> &mdash; Handbook survey of the task approach.</li>
+</ul>
+</div>
+
+<div class="summary-box">
+<h3>2. Update Existing Citations (3 papers)</h3>
+<ul style="padding-left: 20px; margin-top: 8px;">
+  <li><strong>Haanwinckel (2023 &rarr; AER 2025)</strong> &mdash; Now published.</li>
+  <li><strong>Freund (2022 &rarr; 2025)</strong> &mdash; Major revision with complementarity-has-doubled result.</li>
+  <li><strong>Adenbaum (2022 &rarr; 2025)</strong> &mdash; Substantially revised with new data and 9.6% output loss result.</li>
+</ul>
+</div>
+
+<div class="summary-box">
+<h3>3. Structural Suggestions for the Lit Review</h3>
+<p>Consider splitting the "Task-Based Perspective" strand into two:</p>
+<ul style="padding-left: 20px; margin-top: 8px;">
+  <li><strong>Task-based labor markets</strong> (across-firm sorting: Sattinger, Lindenlaub, Haanwinckel, Acemoglu et al.)</li>
+  <li><strong>Division of labor within firms</strong> (Becker &amp; Murphy, Lazear, Adenbaum, Becker et al. 2025, Caliendo et al.)</li>
+</ul>
+<p>This sharpens your positioning: across-firm asks <em>who works where</em>;
+within-firm asks <em>what they do once they get there</em>. Your paper is the first to
+estimate both simultaneously.</p>
+</div>
+
+<div class="summary-box">
+<h3>4. Potential Gaps a Referee Might Flag</h3>
+<ul style="padding-left: 20px; margin-top: 8px;">
+  <li><strong>No AI/automation discussion:</strong> Even one sentence in the conclusion acknowledging that
+    your framework could study automation's effect on within-firm organization would be valuable.
+    Cite Acemoglu et al. (2024) or Eloundou et al. (2023).</li>
+  <li><strong>Limited RI engagement:</strong> Currently only Matejka &amp; McKay (2015), Csaba (2021),
+    and Tian (2019). The JEL review would fill this gap.</li>
+  <li><strong>Geographic variation in specialization:</strong> Chan &amp; Salgado (2024) document
+    more specialization in larger markets, consistent with your model.</li>
+  <li><strong>IT and organizational complementarity:</strong> Bresnahan, Brynjolfsson &amp; Hitt (2002)
+    could address concerns about salons using management software being a selected sample.</li>
+</ul>
+</div>
+
+
+<!-- ============================================================= -->
+<!-- SUMMARY TABLE -->
+<!-- ============================================================= -->
+<h2>Master Reference Table</h2>
+
+<table>
+  <tr>
+    <th>Paper</th>
+    <th>Priority</th>
+    <th>Status</th>
+    <th>Where to Cite</th>
+  </tr>
+  <tr><td>Becker, Egger, Koch &amp; Muendler (2025)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 2, task-based lit</td></tr>
+  <tr><td>Adenbaum (2025 revision)</td><td><span class="priority-tag tag-high">High</span></td><td>Update</td><td>Section 2, footnote 13</td></tr>
+  <tr><td>Adhvaryu, Bassi, Nyshadham &amp; Tamayo (2024)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 2, talent allocation</td></tr>
+  <tr><td>Herkenhoff, Lise, Menzio &amp; Phillips (2024)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 2 &amp; 6.3</td></tr>
+  <tr><td>Freund (2025 revision)</td><td><span class="priority-tag tag-high">High</span></td><td>Update</td><td>Section 2</td></tr>
+  <tr><td>Rational Inattention Review (JEL 2023)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 4.1 / Appendix A.1</td></tr>
+  <tr><td>Dessein &amp; Prat (2022)</td><td><span class="priority-tag tag-high">High</span></td><td>Move</td><td>Move to Section 2</td></tr>
+  <tr><td>Haanwinckel (AER 2025)</td><td><span class="priority-tag tag-high">High</span></td><td>Update</td><td>Update citation</td></tr>
+  <tr><td>Lindenlaub &amp; Postel-Vinay (JPE 2023)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 2, sorting</td></tr>
+  <tr><td>Borovickova &amp; Shimer (Econometrica 2024)</td><td><span class="priority-tag tag-high">High</span></td><td>New</td><td>Section 5, identification</td></tr>
+  <tr><td>Adenbaum, Babalievsky &amp; Jungerman (2024)</td><td><span class="priority-tag tag-high">High</span></td><td>Move</td><td>Add to Section 2</td></tr>
+  <tr><td>Chan &amp; Salgado (JoLE 2024)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 2 or 3</td></tr>
+  <tr><td>Acemoglu, Kong &amp; Restrepo (2024)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 2</td></tr>
+  <tr><td>Cui, Rajagopalan &amp; Ward (2021)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 2 or 3</td></tr>
+  <tr><td>Jarosch, Oberfield &amp; Rossi-Hansberg (2021+)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 6.3 / conclusion</td></tr>
+  <tr><td>Baum-Snow et al. (Econometrica 2024)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 6.3</td></tr>
+  <tr><td>Bonhomme et al. (JoLE 2023)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 5</td></tr>
+  <tr><td>Competing to Commit (AER 2024)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Appendix A.1</td></tr>
+  <tr><td>Bresnahan, Brynjolfsson &amp; Hitt (2002)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 3 (data)</td></tr>
+  <tr><td>Foster, Haltiwanger &amp; Krizan (2006)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 7 (counterfactuals)</td></tr>
+  <tr><td>Caliendo et al. (2020)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>Deepen</td><td>Section 2, vertical vs. horizontal</td></tr>
+  <tr><td>Schulz (2024)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Conclusion</td></tr>
+  <tr><td>Gibbons &amp; Waldman (1999)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Section 2, internal labor markets</td></tr>
+  <tr><td>Eloundou et al. (2023)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Conclusion (AI extension)</td></tr>
+  <tr><td>Brynjolfsson, Li &amp; Raymond (2023)</td><td><span class="priority-tag tag-medium">Medium</span></td><td>New</td><td>Conclusion (AI extension)</td></tr>
+  <tr><td>L&ouml;ffler &amp; Schmid (2024)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Only if moral hazard raised</td></tr>
+  <tr><td>Bircan, Friebel &amp; Stahl (2025)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Only if gender discussion</td></tr>
+  <tr><td>Endogenous Reorganization (2024)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Only if dynamics raised</td></tr>
+  <tr><td>Partially Directed Search (2024)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Appendix A.1</td></tr>
+  <tr><td>Experimental Tests of RI (2023)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Limitations</td></tr>
+  <tr><td>Akerman, Gaarder &amp; Mogstad (2015)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Only if IT/software selection</td></tr>
+  <tr><td>Ji &amp; Vong (2026)</td><td><span class="priority-tag tag-low">Low</span></td><td>New</td><td>Only if dynamic incentives</td></tr>
+  <tr><td>Kuhn et al. (2023)</td><td><span class="priority-tag tag-low">Low</span></td><td>Deepen</td><td>Conclusion (resilience)</td></tr>
+</table>
+
+
+<!-- ============================================================= -->
+<!-- BIBTEX -->
+<!-- ============================================================= -->
+<div class="bibtex-section">
+<h2 id="bibtex">BibTeX Citations</h2>
+<p>All recommended papers. Select all and copy into your <code>.bib</code> file.</p>
+
+<div class="bibtex-block"><span class="copy-hint">Select All &rarr; Copy</span>
+% ===========================================================================
+% STRAND 1: Division of Labor & Task Bundling within Firms
+% ===========================================================================
+
+@techreport{becker2025division,
+  title={Division of Labor in the Global Economy},
+  author={Becker, Sascha O. and Egger, Hartmut and Koch, Michael and Muendler, Marc-Andreas},
+  year={2025},
+  institution={CEPR Discussion Paper No. 20860 / NBER Working Paper No. 34549},
+  month={November}
+}
+
+@techreport{adenbaum2025endogenous,
+  title={Endogenous Firm Structure and Worker Specialization},
+  author={Adenbaum, Jacob},
+  year={2025},
+  institution={CUNEF Universidad},
+  note={Updated October 2025; presented at SED 2025}
+}
+
+@article{adhvaryu2024assortative,
+  title={No Line Left Behind: Assortative Matching Inside the Firm},
+  author={Adhvaryu, Achyuta and Bassi, Vittorio and Nyshadham, Anant and Tamayo, Jorge},
+  journal={Review of Economic Studies},
+  year={2024},
+  note={Forthcoming}
+}
+
+@article{chan2024geography,
+  title={The Geography of Job Tasks},
+  author={Chan, Mons and Salgado, Sergio},
+  journal={Journal of Labor Economics},
+  volume={42},
+  number={4},
+  year={2024}
+}
+
+@techreport{acemoglu2024tasks,
+  title={Tasks at Work: Comparative Advantage, Technology and Labor Demand},
+  author={Acemoglu, Daron and Kong, Fredric and Restrepo, Pascual},
+  year={2024},
+  institution={NBER Working Paper No. 32872},
+  note={Handbook of Labor Economics chapter}
+}
+
+@article{cui2021impact,
+  title={Impact of Task-Level Worker Specialization, Workload, and Product Personalization on Consumer Returns},
+  author={Cui, Hailong and Rajagopalan, S. and Ward, A.R.},
+  journal={Manufacturing \& Service Operations Management},
+  volume={23},
+  number={2},
+  pages={346--366},
+  year={2021},
+  publisher={INFORMS}
+}
+
+@article{loffler2024task,
+  title={Task Assignment and Pay Dispersion under Moral Hazard},
+  author={L{\"o}ffler, Clemens and Schmid, Christian},
+  journal={Management Accounting Research},
+  volume={64},
+  pages={100866},
+  year={2024},
+  publisher={Elsevier}
+}
+
+% ===========================================================================
+% STRAND 2: Coworker Complementarities & Team Production
+% ===========================================================================
+
+@article{herkenhoff2024production,
+  title={Production and Learning in Teams},
+  author={Herkenhoff, Kyle and Lise, Jeremy and Menzio, Guido and Phillips, Gordon M.},
+  journal={Econometrica},
+  volume={92},
+  number={2},
+  pages={467--504},
+  year={2024}
+}
+
+@techreport{freund2025superstar,
+  title={Superstar Teams: The Micro Origins and Macro Implications of Coworker Complementarities},
+  author={Freund, Lukas B.},
+  year={2025},
+  institution={University of Cambridge},
+  month={June},
+  note={Updated version of Freund (2022)}
+}
+
+@article{jarosch2021learning,
+  title={Learning from Coworkers},
+  author={Jarosch, Gregor and Oberfield, Ezra and Rossi-Hansberg, Esteban},
+  journal={Econometrica},
+  volume={89},
+  number={2},
+  pages={647--676},
+  year={2021}
+}
+
+@article{baumsnow2024propagation,
+  title={Propagation and Amplification of Local Productivity Spillovers},
+  author={Baum-Snow, Nathaniel and Gendron-Carrier, Nicolas and Pavan, Ronni},
+  journal={Econometrica},
+  year={2024},
+  month={September}
+}
+
+@techreport{bircan2025gender,
+  title={Gender Promotion Gaps in Knowledge Work: The Role of Task Assignment in Teams},
+  author={Bircan, Cagatay and Friebel, Guido and Stahl, Tristan},
+  year={2025},
+  institution={RF Berlin Working Paper}
+}
+
+% ===========================================================================
+% STRAND 3: Organizational Economics & Information Costs
+% ===========================================================================
+
+@article{mackowiak2023rational,
+  title={Rational Inattention: A Review},
+  author={Ma{\'c}kowiak, Bartosz and Matejka, Filip and Wiederholt, Mirko},
+  journal={Journal of Economic Literature},
+  year={2023}
+}
+
+@article{dessein2022organizational,
+  title={Organizational Capital, Corporate Leadership, and Firm Dynamics},
+  author={Dessein, Wouter and Prat, Andrea},
+  journal={Journal of Political Economy},
+  volume={130},
+  number={6},
+  year={2022}
+}
+
+@article{competing2024commit,
+  title={Competing to Commit: Markets with Rational Inattention},
+  author={Matejka, Filip and others},
+  journal={American Economic Review},
+  volume={114},
+  number={1},
+  pages={285--306},
+  year={2024}
+}
+
+@article{bresnahan2002information,
+  title={Information Technology, Workplace Organization, and the Demand for Skilled Labor: Firm-Level Evidence},
+  author={Bresnahan, Timothy F. and Brynjolfsson, Erik and Hitt, Lorin M.},
+  journal={The Quarterly Journal of Economics},
+  volume={117},
+  number={1},
+  pages={339--376},
+  year={2002},
+  publisher={MIT Press}
+}
+
+% ===========================================================================
+% STRAND 4: Labor Market Sorting & Assignment Models
+% ===========================================================================
+
+@article{haanwinckel2025supply,
+  title={Supply, Demand, Institutions, and Firms: A Theory of Labor Market Sorting and the Wage Distribution},
+  author={Haanwinckel, Daniel},
+  journal={American Economic Review},
+  volume={115},
+  number={12},
+  pages={4137--4182},
+  year={2025},
+  month={December}
+}
+
+@article{lindenlaub2023multidimensional,
+  title={Multidimensional Sorting Under Random Search},
+  author={Lindenlaub, Ilse and Postel-Vinay, Fabien},
+  journal={Journal of Political Economy},
+  year={2023}
+}
+
+@article{borovickova2024high,
+  title={High Wage Workers Work for High Wage Firms},
+  author={Borovickova, Katarina and Shimer, Robert},
+  journal={Econometrica},
+  year={2024},
+  note={Forthcoming}
+}
+
+@article{bonhomme2023trust,
+  title={How Much Should We Trust Estimates of Firm Effects and Worker Sorting?},
+  author={Bonhomme, Stephane and Holzheu, Kerstin and Lamadon, Thibaut and Manresa, Elena and Mogstad, Magne and Setzler, Bradley},
+  journal={Journal of Labor Economics},
+  year={2023}
+}
+
+@techreport{adenbaum2024learning,
+  title={Learning on the Job},
+  author={Adenbaum, Jacob and Babalievsky, Fil and Jungerman, William},
+  year={2024},
+  institution={University of Edinburgh School of Economics}
+}
+
+@article{gibbons1999theory,
+  title={A Theory of Wage and Promotion Dynamics Inside Firms},
+  author={Gibbons, Robert and Waldman, Michael},
+  journal={The Quarterly Journal of Economics},
+  volume={114},
+  number={4},
+  pages={1321--1358},
+  year={1999},
+  publisher={MIT Press}
+}
+
+% ===========================================================================
+% STRAND 5: Management Practices & Firm Productivity
+% ===========================================================================
+
+@article{foster2006market,
+  title={Market Selection, Reallocation, and Restructuring in the {US} Retail Trade Sector in the 1990s},
+  author={Foster, Lucia and Haltiwanger, John and Krizan, Cornell J.},
+  journal={Review of Economics and Statistics},
+  volume={88},
+  number={4},
+  pages={748--758},
+  year={2006},
+  publisher={MIT Press}
+}
+
+% ===========================================================================
+% STRAND 6: Empirical Methods
+% ===========================================================================
+
+@article{akerman2015skill,
+  title={The Skill Complementarity of Broadband Internet},
+  author={Akerman, Anders and Gaarder, Ingvil and Mogstad, Magne},
+  journal={The Quarterly Journal of Economics},
+  volume={130},
+  number={4},
+  pages={1781--1824},
+  year={2015},
+  publisher={Oxford University Press}
+}
+
+% ===========================================================================
+% STRAND 7: AI, Technology & Task Reallocation
+% ===========================================================================
+
+@techreport{atalay2025job,
+  title={Job Transformation, Specialization, and the Labor Market Effects of {AI}},
+  author={Atalay, Enghin and Phongthiengtham, Phai and Sotelo, Sebastian and Tannenbaum, Daniel},
+  year={2025},
+  institution={Minneapolis Fed Institute Working Paper No. 114},
+  month={September}
+}
+
+@techreport{eloundou2023gpts,
+  title={{GPTs} are {GPTs}: An Early Look at the Labor Market Impact Potential of Large Language Models},
+  author={Eloundou, Tyna and Manning, Sam and Mishkin, Pamela and Rock, Daniel},
+  year={2023},
+  institution={arXiv preprint arXiv:2303.10130}
+}
+
+@techreport{brynjolfsson2023generative,
+  title={Generative {AI} at Work},
+  author={Brynjolfsson, Erik and Li, Danielle and Raymond, Lindsey R.},
+  year={2023},
+  institution={NBER Working Paper No. w31161}
+}
+
+@techreport{ji2026task,
+  title={Task Assignment as Dynamic Incentives},
+  author={Ji, Yonghang and Vong, Allen},
+  year={2026},
+  institution={arXiv preprint arXiv:2511.05338}
+}
+</div>
+</div>
+
+<div class="footer">
+  Generated March 2026. Sources: Claude web search, background research agent, and Gemini analysis.<br>
+  Based on the June 2025 draft of "The Inner Beauty of Firms" by Jacob Kohlhepp.
+</div>
+
+</body>
+</html>

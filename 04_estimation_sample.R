@@ -4,8 +4,8 @@
 #' Produces two artifacts used downstream:
 #'
 #'   A. mkdata/data/04_estimation_sample.rds
-#'        Estimation-ready list consumed by 05_estimation.R and
-#'        06_iv_spec_comparison.R. Augments 01_working.rds with PPI, minimum
+#'        Estimation-ready list consumed by 05_iv_spec_comparison.R and
+#'        06_estimation.R. Augments 01_working.rds with PPI, minimum
 #'        wage, instruments (dye_instrument, labor_instrument,
 #'        hausman_other_price), organizational cost, and the estim_matrix
 #'        projection used by the GMM routines.
@@ -64,8 +64,8 @@ setorder(working_data, "location_id", "quarter_year")
 working_data[, dye_instrument := get(paste0("task_mix_", CONFIG$dye_task_index)) * ppi_inputs]
 
 ## Hausman price instrument: leave-own-county-out mean customer price in the
-## same quarter. Constructed here so both 05_estimation.R and
-## 06_iv_spec_comparison.R read it from estim_matrix.
+## same quarter. Constructed here so both 05_iv_spec_comparison.R and
+## 06_estimation.R read it from estim_matrix.
 working_data[, row_id := .I]
 quarter_totals <- working_data[, .(
   quarter_sum_price = sum(cust_price),

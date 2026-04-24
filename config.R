@@ -127,6 +127,38 @@ CONFIG <- list(
   # Outer optimization objective tolerance
   obj_tol = 1e-04,
 
+  # The structural wage-parameter solve is expensive. 06_estimation.R runs the
+  # full BBsolve pass by default; set JMP_SKIP_STRUCTURAL_OPTIMIZER=true only for
+  # refactor smoke tests that need to validate downstream assembly quickly.
+  skip_structural_optimizer = tolower(Sys.getenv("JMP_SKIP_STRUCTURAL_OPTIMIZER", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  structural_optimizer_maxit = as.integer(Sys.getenv("JMP_STRUCTURAL_OPTIMIZER_MAXIT", unset = "1000000")),
+  check_structural_start = tolower(Sys.getenv("JMP_CHECK_STRUCTURAL_START", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+
+  # ---------------------------------------------------------------------------
+  # Shared structural solver speed controls
+  # ---------------------------------------------------------------------------
+  # The wage estimator and counterfactual solvers both solve the same inner
+  # entropy-regularized assignment problem. These switches keep speed-oriented
+  # behavior explicit and reusable.
+  use_solver_cache = tolower(Sys.getenv("JMP_USE_SOLVER_CACHE", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  solver_cache_round_digits = as.integer(Sys.getenv("JMP_SOLVER_CACHE_ROUND_DIGITS", unset = "12")),
+  use_solver_warm_starts = tolower(Sys.getenv("JMP_USE_SOLVER_WARM_STARTS", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  use_fixedpoint_warm_starts = tolower(Sys.getenv("JMP_USE_FIXEDPOINT_WARM_STARTS", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  use_staged_solver_tolerances = tolower(Sys.getenv("JMP_USE_STAGED_SOLVER_TOLERANCES", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  coarse_innertol = as.numeric(Sys.getenv("JMP_COARSE_INNERTOL", unset = "1e-5")),
+  coarse_outertol = as.numeric(Sys.getenv("JMP_COARSE_OUTERTOL", unset = "1e-3")),
+  staged_tolerance_switch_norm = as.numeric(Sys.getenv("JMP_STAGED_TOLERANCE_SWITCH_NORM", unset = "1e-3")),
+  use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "county"),
+  county_optimizer_rounds = as.integer(Sys.getenv("JMP_COUNTY_OPTIMIZER_ROUNDS", unset = "1")),
+
   # Whether to use parallel processing
   pl_on = TRUE,
 

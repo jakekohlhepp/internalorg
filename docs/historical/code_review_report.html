@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Review Report: Estimation Inversion</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        h1 {
+            color: #1a1a2e;
+            border-bottom: 3px solid #e94560;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #16213e;
+            margin-top: 30px;
+            border-left: 4px solid #e94560;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #0f3460;
+        }
+        .severity-severe {
+            background-color: #ffebee;
+            border-left: 4px solid #c62828;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .severity-moderate {
+            background-color: #fff3e0;
+            border-left: 4px solid #ef6c00;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .severity-minor {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1565c0;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .fix-applied {
+            background-color: #e8f5e9;
+            border-left: 4px solid #2e7d32;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .not-fixed {
+            background-color: #fce4ec;
+            border-left: 4px solid #ad1457;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        code {
+            background-color: #263238;
+            color: #aed581;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        pre {
+            background-color: #263238;
+            color: #eceff1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #1a1a2e;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .tag-severe { background-color: #c62828; color: white; }
+        .tag-moderate { background-color: #ef6c00; color: white; }
+        .tag-minor { background-color: #1565c0; color: white; }
+        .tag-fixed { background-color: #2e7d32; color: white; }
+        .tag-deferred { background-color: #6a1b9a; color: white; }
+        .summary-box {
+            background-color: #1a1a2e;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .summary-box h3 {
+            color: #e94560;
+            margin-top: 0;
+        }
+        .rationale {
+            font-style: italic;
+            color: #555;
+            margin-top: 10px;
+            padding-left: 20px;
+            border-left: 2px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Code Review Report: Estimation Inversion Pipeline</h1>
+
+<p><strong>Date:</strong> January 14, 2026<br>
+<strong>Reviewer:</strong> Claude (Critical Analysis Mode)<br>
+<strong>Files Reviewed:</strong></p>
+<ul>
+    <li><code>preamble.R</code> (494 lines)</li>
+    <li><code>02_00_estimation_inversion.R</code> (98 lines)</li>
+    <li><code>01_00_build_data.R</code> (206 lines)</li>
+</ul>
+
+<div class="summary-box">
+    <h3>Executive Summary</h3>
+    <table>
+        <tr>
+            <th>Severity</th>
+            <th>Count</th>
+            <th>Fixed</th>
+            <th>Deferred</th>
+        </tr>
+        <tr>
+            <td><span class="tag tag-severe">SEVERE</span></td>
+            <td>6</td>
+            <td>3</td>
+            <td>3 (require refactoring)</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-moderate">MODERATE</span></td>
+            <td>9</td>
+            <td>4</td>
+            <td>5 (require refactoring)</td>
+        </tr>
+        <tr>
+            <td><span class="tag tag-minor">MINOR</span></td>
+            <td>3</td>
+            <td>0</td>
+            <td>3 (style/documentation)</td>
+        </tr>
+    </table>
+</div>
+
+<h2>Data Verification Results</h2>
+
+<div class="fix-applied">
+    <h3>minwage.xlsx: VERIFIED CORRECT</h3>
+    <ul>
+        <li><strong>Dimensions:</strong> 45 rows x 5 columns</li>
+        <li><strong>Counties:</strong> 17031 (Cook), 6037 (LA), 36061 (Manhattan) - numeric format</li>
+        <li><strong>Quarter Coverage:</strong> 2018.1 - 2021.3 (covers all quarters in working data)</li>
+        <li><strong>Min wage range:</strong> $6.10 - $8.40 (tipped worker wages, reasonable)</li>
+    </ul>
+</div>
+
+<h2>Issues Fixed in This Review</h2>
+
+<!-- ISSUE 1 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-severe">SEVERE</span> <span class="tag tag-fixed">FIXED</span> Issue #1: Incorrect File Paths</h3>
+
+    <p><strong>Location:</strong> <code>02_00_estimation_inversion.R</code> lines 5, 24, 97; <code>preamble.R</code> lines 95, 109</p>
+
+    <p><strong>Problem:</strong> Paths reference <code>analysis_final/</code> which doesn't exist in the refactored directory structure.</p>
+
+    <pre><code># BEFORE (02_00_estimation_inversion.R:5)
+working_data&lt;-data.table(readRDS('analysis_final/data/01_01_working.rds'))
+
+# AFTER
+working_data&lt;-data.table(readRDS('data/01_01_working.rds'))</code></pre>
+
+    <p><strong>Files Changed:</strong></p>
+    <ul>
+        <li><code>02_00_estimation_inversion.R</code>: Lines 5, 24, 97</li>
+        <li><code>preamble.R</code>: Lines 95, 109</li>
+    </ul>
+
+    <p class="rationale"><strong>Rationale:</strong> The code would crash immediately on execution. Updated all paths to use <code>data/</code> subdirectory within current working directory.</p>
+</div>
+
+<!-- ISSUE 2 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-severe">SEVERE</span> <span class="tag tag-fixed">FIXED</span> Issue #2: Broken Error Handling with <code>next</code></h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> line 188</p>
+
+    <p><strong>Problem:</strong> The <code>next</code> statement is used outside of any loop. In R, this causes undefined behavior - either an error or silent continuation with undefined variables.</p>
+
+    <pre><code># BEFORE
+tryCatch({
+  beta&lt;-solve(...)
+  ...
+}, error = function(e) { skip_to_next &lt;- TRUE})
+
+if(skip_to_next) { next }   # BUG: 'next' outside loop!
+
+# AFTER
+tryCatch({
+  beta&lt;-solve(...)
+  ...
+}, error = function(e) {
+  stop("Analytic estimator failed. Check for collinearity in instruments.")
+})</code></pre>
+
+    <p class="rationale"><strong>Rationale:</strong> If the analytic IV estimator fails (e.g., due to singular matrices), the code should stop with a clear error message rather than silently continuing with undefined <code>beta</code> and <code>beta_2</code> variables, which would cause cryptic errors later.</p>
+</div>
+
+<!-- ISSUE 3 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-fixed">FIXED</span> Issue #3: No Convergence Checking After Optimization</h3>
+
+    <p><strong>Location:</strong> <code>02_00_estimation_inversion.R</code> lines 39-42, 89-91</p>
+
+    <p><strong>Problem:</strong> Results from <code>BBsolve</code> and <code>optim</code> are used without checking if optimization converged.</p>
+
+    <pre><code># BEFORE
+res_store&lt;-BBsolve(beta_2_subset, objective_vect, control=list(trace=TRUE, tol=obj_tol, maxit=1000000))
+print(res_store)
+coef_vect&lt;-res_store$par
+
+# AFTER
+res_store&lt;-BBsolve(beta_2_subset, objective_vect, control=list(trace=TRUE, tol=obj_tol, maxit=1000000))
+print(res_store)
+if (res_store$convergence != 0) {
+  warning("BBsolve did not converge. Convergence code: ", res_store$convergence,
+          "\nResults may be unreliable.")
+}
+coef_vect&lt;-res_store$par</code></pre>
+
+    <p class="rationale"><strong>Rationale:</strong> Using non-converged optimization results produces garbage estimates. Added warnings (not errors) to alert the user while still allowing inspection of partial results.</p>
+</div>
+
+<!-- ISSUE 4 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-fixed">FIXED</span> Issue #4: Inefficient Repeated Matrix Inversion</h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> lines 179-183</p>
+
+    <p><strong>Problem:</strong> <code>solve(t(z_mm_1)%*%z_mm_1)</code> is computed twice in the same expression.</p>
+
+    <pre><code># BEFORE
+beta&lt;-solve(t(mm_1)%*%z_mm_1%*%solve(t(z_mm_1)%*%z_mm_1)%*%t(z_mm_1)%*%mm_1)%*%
+      (t(mm_1)%*%z_mm_1%*%solve(t(z_mm_1)%*%z_mm_1)%*%t(z_mm_1)%*%as.matrix(estim_matrix[,"log_rel_mkt"]))
+
+# AFTER
+ZtZ_inv &lt;- solve(t(z_mm_1) %*% z_mm_1)
+Zt &lt;- t(z_mm_1)
+proj_z &lt;- z_mm_1 %*% ZtZ_inv %*% Zt  # Projection matrix
+beta &lt;- solve(t(mm_1) %*% proj_z %*% mm_1) %*%
+        (t(mm_1) %*% proj_z %*% as.matrix(estim_matrix[,"log_rel_mkt"]))</code></pre>
+
+    <p class="rationale"><strong>Rationale:</strong> Matrix inversion is O(n³). Precomputing saves one full inversion per execution. With large matrices, this is a measurable performance improvement.</p>
+</div>
+
+<!-- ISSUE 5 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-fixed">FIXED</span> Issue #5: Missing Cluster Cleanup</h3>
+
+    <p><strong>Location:</strong> <code>02_00_estimation_inversion.R</code> line 32-35</p>
+
+    <p><strong>Problem:</strong> Parallel cluster is created but never explicitly stopped, causing potential resource leaks.</p>
+
+    <pre><code># BEFORE
+if (get_os()=="windows"){
+  clust &lt;- makeCluster(core_count)
+  clusterExport(clust, ls())
+  clusterEvalQ(clust, library("SQUAREM"))
+}
+# ... code runs ...
+# cluster never stopped!
+
+# AFTER
+if (get_os()=="windows"){
+  clust &lt;- makeCluster(core_count)
+  on.exit(stopCluster(clust), add = TRUE)  # Ensure cleanup
+  clusterExport(clust, ls())
+  clusterEvalQ(clust, library("SQUAREM"))
+}</code></pre>
+
+    <p class="rationale"><strong>Rationale:</strong> <code>on.exit()</code> ensures the cluster is stopped even if the script errors out, preventing orphaned R processes from consuming system resources.</p>
+</div>
+
+<!-- ISSUE 6 -->
+<div class="fix-applied">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-fixed">FIXED</span> Issue #6: Inconsistent Tolerance Levels</h3>
+
+    <p><strong>Location:</strong> <code>02_00_estimation_inversion.R</code> lines 16-18</p>
+
+    <p><strong>Problem:</strong> Inner tolerance (1e-08) is much tighter than outer tolerance (1e-02), wasting computation on precision that doesn't affect final results.</p>
+
+    <pre><code># BEFORE
+innertol&lt;-1e-08
+outertol&lt;-1e-04
+obj_tol&lt;-1e-02
+
+# AFTER
+innertol&lt;-1e-06   # Relaxed: no point being more precise than outer loop
+outertol&lt;-1e-04   # Unchanged
+obj_tol&lt;-1e-04    # Tightened: was too loose for reliable convergence</code></pre>
+
+    <p class="rationale"><strong>Rationale:</strong> The inner fixed-point iteration was solving to 1e-08 precision, but the outer bisection only needed 1e-04 precision, and the final objective only checked 1e-02. This wastes computation. Rebalanced tolerances for efficiency while tightening the final objective tolerance for more reliable results.</p>
+</div>
+
+<h2>Issues Deferred to Refactoring Phase</h2>
+
+<p>The following issues require architectural changes that should be addressed in the refactoring phase, not quick fixes:</p>
+
+<!-- DEFERRED 1 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-severe">SEVERE</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D1: Massive Code Duplication</h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> lines 195-294, 302-407, 413-493</p>
+
+    <p><strong>Problem:</strong> Three functions (<code>objective_gmm</code>, <code>eval_moments</code>, <code>get_gammas</code>) contain nearly identical logic (~100 lines each), differing only in what they return.</p>
+
+    <p><strong>Deferred Solution:</strong> Create a single core function with a <code>return_type</code> parameter:</p>
+
+    <pre><code>compute_model &lt;- function(theta, data, return_type = c("moments", "evaluation", "gammas")) {
+  return_type &lt;- match.arg(return_type)
+  # ... shared computation logic ...
+  switch(return_type,
+    moments = return(E_mat),
+    evaluation = return(cbind(colMeans(E_model), colMeans(E_raw))),
+    gammas = return(gamma_values)
+  )
+}</code></pre>
+
+    <p class="rationale"><strong>Why Deferred:</strong> This is a structural change that affects the entire estimation pipeline. Should be done as part of the systematic refactoring to ensure nothing breaks.</p>
+</div>
+
+<!-- DEFERRED 2 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-severe">SEVERE</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D2: Hardcoded County and Type Counts</h3>
+
+    <p><strong>Location:</strong> Multiple locations in <code>preamble.R</code></p>
+
+    <p><strong>Problem:</strong> County list and worker/task type count (5) are hardcoded in ~15 places:</p>
+    <ul>
+        <li>Lines 201-202: <code>names(tild_theta)&lt;-list("17031", "36061", "6037")</code></li>
+        <li>Line 205: <code>matrix(..., ncol=5, nrow=5)</code></li>
+        <li>Line 211: <code>alpha&lt;-c(a1, a2, a3, a4, a5)</code></li>
+    </ul>
+
+    <p><strong>Deferred Solution:</strong> Create configuration object at top of file:</p>
+
+    <pre><code>CONFIG &lt;- list(
+  counties = c("17031", "36061", "6037"),
+  n_types = 5,
+  n_tasks = 5
+)
+# Then reference CONFIG throughout</code></pre>
+
+    <p class="rationale"><strong>Why Deferred:</strong> Changing this requires updating all references and ensuring the model algebra still works with variable dimensions. Core refactoring task.</p>
+</div>
+
+<!-- DEFERRED 3 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-severe">SEVERE</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D3: Global Variable Dependencies</h3>
+
+    <p><strong>Location:</strong> Throughout <code>preamble.R</code></p>
+
+    <p><strong>Problem:</strong> Functions silently depend on 7+ global variables: <code>beta</code>, <code>beta_2_subset</code>, <code>innertol</code>, <code>outertol</code>, <code>pl_on</code>, <code>clust</code>, <code>core_count</code></p>
+
+    <p><strong>Deferred Solution:</strong> Pass all dependencies explicitly as function arguments or use a configuration/context object:</p>
+
+    <pre><code>objective_gmm &lt;- function(theta, data, config) {
+  # Access config$innertol, config$beta, etc.
+}</code></pre>
+
+    <p class="rationale"><strong>Why Deferred:</strong> This is a fundamental API change that affects all function signatures. Part of the refactoring plan.</p>
+</div>
+
+<!-- DEFERRED 4 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D4: Hardcoded Column References</h3>
+
+    <p><strong>Location:</strong> <code>02_00_estimation_inversion.R</code> lines 48-53</p>
+
+    <p><strong>Problem:</strong> Worker types 2-5 are explicitly written out instead of looped:</p>
+
+    <pre><code>working_data[, wb_2:=coef_vect[...]*E_raw_2*avg_labor]
+working_data[, wb_3:=coef_vect[...]*E_raw_3*avg_labor]
+working_data[, wb_4:=coef_vect[...]*E_raw_4*avg_labor]
+working_data[, wb_5:=coef_vect[...]*E_raw_5*avg_labor]</code></pre>
+
+    <p><strong>Deferred Solution:</strong> Generate dynamically based on <code>n_types</code> configuration.</p>
+</div>
+
+<!-- DEFERRED 5 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-moderate">MODERATE</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D5: Magic Numbers</h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> lines 21, 24, 32, 38, 85, 229-230, 246</p>
+
+    <p><strong>Problem:</strong> Unexplained constants like <code>40</code>, <code>10</code>, <code>0.005</code>, <code>75</code>, <code>1e16</code>, <code>10000</code></p>
+
+    <p><strong>Deferred Solution:</strong> Define as named constants with documentation:</p>
+
+    <pre><code>BISECTION_INITIAL_UPPER &lt;- 40      # Starting upper bound when f(0.1) > 0
+BISECTION_STEP_SIZE &lt;- 0.005      # Step size for bracket adjustment
+NUMERIC_CEILING &lt;- 1e16           # Replace Inf to avoid numerical issues
+GAMMA_SEARCH_UPPER &lt;- 10000       # Upper bound for gamma bisection</code></pre>
+</div>
+
+<!-- DEFERRED 6 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-minor">MINOR</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D6: Duplicate Function Definition</h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> line 14, <code>01_00_build_data.R</code> line 87, 136</p>
+
+    <p><strong>Problem:</strong> <code>spec_log</code> function is defined identically in multiple files.</p>
+
+    <p><strong>Deferred Solution:</strong> Define once in a shared utilities file.</p>
+</div>
+
+<!-- DEFERRED 7 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-minor">MINOR</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D7: Commented-Out Code</h3>
+
+    <p><strong>Location:</strong> <code>preamble.R</code> lines 237-239, 342-346, 453-457</p>
+
+    <p><strong>Problem:</strong> Dead code from previous implementations clutters the file.</p>
+
+    <p><strong>Deferred Solution:</strong> Remove in refactoring. If historical reference needed, use git history.</p>
+</div>
+
+<!-- DEFERRED 8 -->
+<div class="not-fixed">
+    <h3><span class="tag tag-minor">MINOR</span> <span class="tag tag-deferred">DEFERRED</span> Issue #D8: No Function Documentation</h3>
+
+    <p><strong>Location:</strong> All functions</p>
+
+    <p><strong>Problem:</strong> No docstrings explaining function purpose, parameters, or return values.</p>
+
+    <p><strong>Deferred Solution:</strong> Add roxygen2-style documentation during refactoring.</p>
+</div>
+
+<h2>Data Consistency Check</h2>
+
+<div class="fix-applied">
+    <h3>County Code Consistency: VERIFIED</h3>
+    <p>Initial concern was raised about <code>"06037"</code> vs <code>"6037"</code>. Investigation revealed:</p>
+    <ul>
+        <li><code>01_01_working.rds</code>: County is <strong>integer</strong> (6037, 17031, 36061)</li>
+        <li><code>minwage.xlsx</code>: County is <strong>numeric</strong> (6037, 17031, 36061)</li>
+        <li><code>preamble.R</code>: Converts to <strong>character</strong> on line 133</li>
+        <li><code>01_00_build_data.R</code> line 152: Uses <code>"06037"</code> <strong>BUT</strong> this operates on raw data before saving, so the saved file has correct integer format</li>
+    </ul>
+    <p><strong>Conclusion:</strong> No bug in production data. The string <code>"06037"</code> in build_data.R should still be changed to <code>"6037"</code> for clarity, but it works because R's <code>%in%</code> does type coercion.</p>
+</div>
+
+<h2>Verification Notes</h2>
+
+<ul>
+    <li><strong>minwage.xlsx</strong>: All 12 quarters in working data (2018.1-2021.2) are covered by minwage data</li>
+    <li><strong>ppi.rds</strong>: Covers 2001.2-2023.4, sufficient for all estimation periods</li>
+    <li><strong>seeit_bb.rds</strong>: Contains 12 starting values (3 counties x 4 E_raw types), correctly formatted</li>
+    <li><strong>Working data</strong>: 446 observations, 82 columns, all required columns present</li>
+</ul>
+
+<h2>Recommended Next Steps</h2>
+
+<ol>
+    <li><strong>Apply the fixes</strong> documented above to make the code runnable</li>
+    <li><strong>Test execution</strong> with a small subset or short iteration limit to verify fixes</li>
+    <li><strong>Proceed with refactoring</strong> to address deferred issues and add extensibility</li>
+</ol>
+
+</body>
+</html>

@@ -172,14 +172,38 @@ solve_equilibrium <- function(cost_matrix, alpha, gamma, innertol, config = CONF
     return(p * update_factors)
   }
 
-  # Run SQUAREM accelerated fixed-point iteration
-  result <- squarem(E,
-                    fixptfn = fxpt,
-                    control = list(maxiter = config$fixedpoint_max_iter,
-                                   tol = innertol))
+  # Run SQUAREM accelerated fixed-point iteration. Some high-specialization
+  # observations can make the accelerator step fail even though the underlying
+  # fixed-point map is well-defined, so fall back to conservative iteration.
+  result <- tryCatch(
+    squarem(
+      E,
+      fixptfn = fxpt,
+      control = list(maxiter = config$fixedpoint_max_iter, tol = innertol)
+    ),
+    error = function(e) NULL
+  )
 
-  E <- result$par
-  converged <- (result$convergence == 0)
+  if (!is.null(result) && all(is.finite(result$par))) {
+    E <- result$par
+    converged <- (result$convergence == 0)
+  } else {
+    converged <- FALSE
+    for (iter in seq_len(config$fixedpoint_max_iter)) {
+      E_next <- fxpt(E)
+      if (!all(is.finite(E_next))) {
+        break
+      }
+      E_next <- pmax(E_next, config$numeric_floor)
+      E_next <- E_next / sum(E_next)
+      if (max(abs(E_next - E)) < innertol) {
+        E <- E_next
+        converged <- TRUE
+        break
+      }
+      E <- E_next
+    }
+  }
 
   # Ensure E is positive (clamp before normalization)
   E <- pmax(E, config$numeric_floor)
@@ -453,8 +477,8 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG) {
 
 
 ####### shared setup for estimation equations
-## 04_estimation_sample.R owns the data assembly. 05_estimation.R and
-## 06_iv_spec_comparison.R pass those saved objects into this helper so
+## 04_estimation_sample.R owns the data assembly. 05_iv_spec_comparison.R and
+## 06_estimation.R pass those saved objects into this helper so
 ## sourcing preamble.R no longer mutates ambient session state.
 build_estimation_setup <- function(working_data, estim_matrix, config = CONFIG) {
   stopifnot(all(!is.na(estim_matrix)))
@@ -715,3 +739,8 @@ get_gammas <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust = N
 
   return(temp_res$V1)
 }
+
+## Shared accelerated solver overrides used by estimation and, going forward,
+## counterfactual solvers. Kept in a separate file so the reusable numerical
+## layer is easier to test and document apart from legacy estimation formulas.
+source(project_path("utils", "structural_solver.R"))
