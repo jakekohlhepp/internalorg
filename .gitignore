@@ -51,6 +51,8 @@ Thumbs.db
 .Renviron.R
 .Rprofile
 
+# Local-only scratch / notes (not for public repo)
+portable_skills/
 
 # Local archive of superseded scripts (not for public repo)
 archive/
