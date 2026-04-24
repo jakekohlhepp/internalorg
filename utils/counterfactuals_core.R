@@ -98,7 +98,7 @@ read_first_existing_rds <- function(paths, description = "RDS input") {
 read_counterfactual_parameters <- function(config = CONFIG) {
   read_first_existing_rds(
     c(
-      project_path("results", "data", "05_parameters.rds"),
+      project_path("results", "data", "06_parameters.rds"),
       legacy_counterfactual_data_path("02_00_parameters.rds", config)
     ),
     description = "counterfactual parameter file"

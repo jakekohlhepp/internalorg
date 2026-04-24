@@ -16,11 +16,17 @@
 #'   1. Setup environment (packages from fixed snapshot date)
 #'   2. Build data (01_build_data.R)
 #'   3. Assemble estimation sample (04_estimation_sample.R)
-#'   4. Run estimation (05_estimation.R)
-#'   5. Demand IV spec comparison (06_iv_spec_comparison.R)
-#'   6. Counterfactual pipeline (run_counterfactuals.R)
+#'   4. Demand IV spec comparison (05_iv_spec_comparison.R)
+#'   5. Run estimation (06_estimation.R)
+#'   6. Bayesian bootstrap (07_bootstrap.R)
+#'   7. Display estimates (08_display_estimates.R)
+#'   8. Invert gammas (09_invert_gammas.R)
+#'   9. Substitution patterns (10_substitution.R)
+#'  10. Productivity substitution patterns (11_substitution_prod.R)
+#'  11. Validate model (12_validate.R)
+#'  12. Counterfactual pipeline (run_counterfactuals.R)
 #'
-#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/05_parameters.rds; results/out/tables/06_standard_iv_comparison.tex; results/out/tables/06_standard_hausman_fe_comparison.tex; results/out/tables/06_nested_fe_comparison.tex; results/data/counterfactuals/*
+#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_bootstrap.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/tables/10_*.tex; results/out/tables/11_substitute_prod.tex; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*
 #' =============================================================================
 
 # Clear environment
@@ -54,6 +60,12 @@ RUN_BUILD_DATA <- TRUE
 RUN_ESTIMATION_SAMPLE <- TRUE
 RUN_ESTIMATION <- TRUE
 RUN_IV_SPEC_COMPARISON <- TRUE
+RUN_BOOTSTRAP <- TRUE
+RUN_DISPLAY_ESTIMATES <- TRUE
+RUN_INVERT_GAMMAS <- TRUE
+RUN_SUBSTITUTION <- TRUE
+RUN_SUBSTITUTION_PROD <- TRUE
+RUN_VALIDATE <- TRUE
 RUN_COUNTERFACTUALS <- TRUE
 
 # Track whether downstream steps should be forced due to upstream changes
@@ -395,15 +407,82 @@ if (RUN_ESTIMATION_SAMPLE) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 4: Run Estimation (05_estimation.R)
+#' STEP 4: Demand IV Specification Comparison (05_iv_spec_comparison.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_IV_SPEC_COMPARISON) {
+  message("\n", strrep("-", 70))
+  message("STEP 4: Checking 05_iv_spec_comparison.R")
+  message(strrep("-", 70))
+
+  if (!file.exists("mkdata/data/04_estimation_sample.rds")) {
+    stop("Required data file mkdata/data/04_estimation_sample.rds not found. ",
+         "Run 04_estimation_sample.R first or check data paths.")
+  }
+
+  # Dependencies: config.R
+  step4_deps <- c(
+    "config.R",
+    "mkdata/data/04_estimation_sample.rds"
+  )
+
+  if (force_downstream || needs_rerun("05_iv_spec_comparison.R", step4_deps)) {
+    step4_start <- Sys.time()
+    step4_outputs <- c(
+      "results/out/tables/05_standard_iv_comparison.tex",
+      "results/out/tables/05_standard_hausman_fe_comparison.tex",
+      "results/out/tables/05_nested_fe_comparison.tex"
+    )
+
+    log_init("05_iv_spec_comparison.R")
+    log_message("Starting demand IV specification comparison")
+
+    tryCatch({
+      source("05_iv_spec_comparison.R")
+      assert_required_files(step4_outputs)
+      log_message("Demand IV specification comparison completed successfully")
+      log_message(paste("Outputs:", paste(step4_outputs, collapse = "; ")))
+      log_complete(success = TRUE)
+
+      step4_time <- difftime(Sys.time(), step4_start, units = "mins")
+      message("STEP 4 complete (", round(step4_time, 2), " minutes)")
+
+      pipeline_results[["05_iv_spec_comparison.R"]] <- list(
+        ran = TRUE, success = TRUE, duration = as.numeric(step4_time),
+        error = NULL, skipped = FALSE
+      )
+
+      force_downstream <- TRUE
+
+    }, error = function(e) {
+      log_message(paste("ERROR:", e$message), "ERROR")
+      log_complete(success = FALSE)
+
+      pipeline_results[["05_iv_spec_comparison.R"]] <<- list(
+        ran = TRUE, success = FALSE, duration = 0,
+        error = e$message, skipped = FALSE
+      )
+
+      stop("Demand IV specification comparison failed: ", e$message)
+    })
+  } else {
+    message("STEP 4 skipped (no changes detected)")
+    pipeline_results[["05_iv_spec_comparison.R"]] <- list(
+      ran = FALSE, success = TRUE, duration = 0,
+      error = NULL, skipped = TRUE
+    )
+  }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 5: Run Estimation (06_estimation.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_ESTIMATION) {
   message("\n", strrep("-", 70))
-  message("STEP 4: Checking 05_estimation.R")
+  message("STEP 5: Checking 06_estimation.R")
   message(strrep("-", 70))
 
-  # Check if required data exists
   if (!file.exists("mkdata/data/04_estimation_sample.rds")) {
     stop("Required data file mkdata/data/04_estimation_sample.rds not found. ",
          "Run 04_estimation_sample.R first or check data paths.")
@@ -413,44 +492,42 @@ if (RUN_ESTIMATION) {
     stop("Starting values file mkdata/data/seeit_bb.rds not found.")
   }
 
-  # Dependencies: config.R, preamble.R
-  step4_deps <- c(
+  step5_deps <- c(
     "config.R",
     "preamble.R",
     "mkdata/data/04_estimation_sample.rds",
     "mkdata/data/seeit_bb.rds"
   )
 
-  if (force_downstream || needs_rerun("05_estimation.R", step4_deps)) {
-    step4_start <- Sys.time()
-    step4_output <- "results/data/05_parameters.rds"
+  if (force_downstream || needs_rerun("06_estimation.R", step5_deps)) {
+    step5_start <- Sys.time()
+    step5_output <- "results/data/06_parameters.rds"
 
-    log_init("05_estimation.R")
+    log_init("06_estimation.R")
     log_message("Starting estimation")
 
     tryCatch({
-      source("05_estimation.R")
-      assert_required_files(step4_output)
+      source("06_estimation.R")
+      assert_required_files(step5_output)
       log_message("Estimation completed successfully")
-      log_message(paste("Output:", step4_output))
+      log_message(paste("Output:", step5_output))
       log_complete(success = TRUE)
 
-      step4_time <- difftime(Sys.time(), step4_start, units = "mins")
-      message("STEP 4 complete (", round(step4_time, 2), " minutes)")
+      step5_time <- difftime(Sys.time(), step5_start, units = "mins")
+      message("STEP 5 complete (", round(step5_time, 2), " minutes)")
 
-      pipeline_results[["05_estimation.R"]] <- list(
-        ran = TRUE, success = TRUE, duration = as.numeric(step4_time),
+      pipeline_results[["06_estimation.R"]] <- list(
+        ran = TRUE, success = TRUE, duration = as.numeric(step5_time),
         error = NULL, skipped = FALSE
       )
 
-      # Force downstream steps since this step ran
       force_downstream <- TRUE
 
     }, error = function(e) {
       log_message(paste("ERROR:", e$message), "ERROR")
       log_complete(success = FALSE)
 
-      pipeline_results[["05_estimation.R"]] <<- list(
+      pipeline_results[["06_estimation.R"]] <<- list(
         ran = TRUE, success = FALSE, duration = 0,
         error = e$message, skipped = FALSE
       )
@@ -458,8 +535,8 @@ if (RUN_ESTIMATION) {
       stop("Estimation failed: ", e$message)
     })
   } else {
-    message("STEP 4 skipped (no changes detected)")
-    pipeline_results[["05_estimation.R"]] <- list(
+    message("STEP 5 skipped (no changes detected)")
+    pipeline_results[["06_estimation.R"]] <- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
     )
@@ -467,82 +544,197 @@ if (RUN_ESTIMATION) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 5: Demand IV Specification Comparison (06_iv_spec_comparison.R)
+#' Helper: run a standard pipeline step
 #' -----------------------------------------------------------------------------
 
-if (RUN_IV_SPEC_COMPARISON) {
+run_pipeline_step <- function(step_label, script_name, deps, outputs,
+                              required_inputs = character(0),
+                              description = script_name) {
   message("\n", strrep("-", 70))
-  message("STEP 5: Checking 06_iv_spec_comparison.R")
+  message(step_label, ": Checking ", script_name)
   message(strrep("-", 70))
 
-  if (!file.exists("mkdata/data/04_estimation_sample.rds")) {
-    stop("Required data file mkdata/data/04_estimation_sample.rds not found. ",
-         "Run 04_estimation_sample.R first or check data paths.")
+  missing_inputs <- required_inputs[!file.exists(required_inputs)]
+  if (length(missing_inputs) > 0) {
+    stop(step_label, " missing required inputs: ",
+         paste(missing_inputs, collapse = ", "))
   }
 
-  # Dependencies: config.R
-  step5_deps <- c(
-    "config.R",
-    "mkdata/data/04_estimation_sample.rds"
-  )
+  missing_outputs <- outputs[!file.exists(outputs)]
+  force_step <- length(missing_outputs) > 0
 
-  if (force_downstream || needs_rerun("06_iv_spec_comparison.R", step5_deps)) {
-    step5_start <- Sys.time()
-    step5_outputs <- c(
-      "results/out/tables/06_standard_iv_comparison.tex",
-      "results/out/tables/06_standard_hausman_fe_comparison.tex",
-      "results/out/tables/06_nested_fe_comparison.tex"
-    )
-
-    log_init("06_iv_spec_comparison.R")
-    log_message("Starting demand IV specification comparison")
-
-    tryCatch({
-      source("06_iv_spec_comparison.R")
-      assert_required_files(step5_outputs)
-      log_message("Demand IV specification comparison completed successfully")
-      log_message(paste("Outputs:", paste(step5_outputs, collapse = "; ")))
-      log_complete(success = TRUE)
-
-      step5_time <- difftime(Sys.time(), step5_start, units = "mins")
-      message("STEP 5 complete (", round(step5_time, 2), " minutes)")
-
-      pipeline_results[["06_iv_spec_comparison.R"]] <- list(
-        ran = TRUE, success = TRUE, duration = as.numeric(step5_time),
-        error = NULL, skipped = FALSE
-      )
-
-    }, error = function(e) {
-      log_message(paste("ERROR:", e$message), "ERROR")
-      log_complete(success = FALSE)
-
-      pipeline_results[["06_iv_spec_comparison.R"]] <<- list(
-        ran = TRUE, success = FALSE, duration = 0,
-        error = e$message, skipped = FALSE
-      )
-
-      stop("Demand IV specification comparison failed: ", e$message)
-    })
-  } else {
-    message("STEP 5 skipped (no changes detected)")
-    pipeline_results[["06_iv_spec_comparison.R"]] <- list(
+  if (!force_step && !force_downstream && !needs_rerun(script_name, deps)) {
+    message(step_label, " skipped (no changes detected)")
+    pipeline_results[[script_name]] <<- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
     )
+    return(invisible(NULL))
   }
+
+  step_start <- Sys.time()
+  log_init(script_name)
+  log_message(paste("Starting", description))
+
+  tryCatch({
+    source(script_name, local = new.env(parent = globalenv()))
+    assert_required_files(outputs)
+    log_message(paste(description, "completed successfully"))
+    log_message(paste("Outputs:", paste(outputs, collapse = "; ")))
+    log_complete(success = TRUE)
+
+    step_time <- difftime(Sys.time(), step_start, units = "mins")
+    message(step_label, " complete (", round(step_time, 2), " minutes)")
+
+    pipeline_results[[script_name]] <<- list(
+      ran = TRUE, success = TRUE, duration = as.numeric(step_time),
+      error = NULL, skipped = FALSE
+    )
+
+    force_downstream <<- TRUE
+  }, error = function(e) {
+    log_message(paste("ERROR:", e$message), "ERROR")
+    log_complete(success = FALSE)
+    pipeline_results[[script_name]] <<- list(
+      ran = TRUE, success = FALSE, duration = 0,
+      error = e$message, skipped = FALSE
+    )
+    stop(description, " failed: ", e$message)
+  })
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 6: Counterfactual Pipeline (run_counterfactuals.R)
+#' STEP 6: Bayesian Bootstrap (07_bootstrap.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_BOOTSTRAP) {
+  run_pipeline_step(
+    step_label = "STEP 6",
+    script_name = "07_bootstrap.R",
+    deps = c("config.R", "preamble.R", "boot_settings.R",
+             "mkdata/data/04_estimation_sample.rds",
+             "results/data/06_parameters.rds"),
+    outputs = c("results/data/07_boot_weights.rds",
+                "results/data/07_bootstrap.rds"),
+    required_inputs = c("mkdata/data/04_estimation_sample.rds",
+                        "results/data/06_parameters.rds"),
+    description = "Bayesian bootstrap"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 7: Display Estimates (08_display_estimates.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_DISPLAY_ESTIMATES) {
+  run_pipeline_step(
+    step_label = "STEP 7",
+    script_name = "08_display_estimates.R",
+    deps = c("config.R", "preamble.R",
+             "mkdata/data/01_keytask.rds",
+             "mkdata/data/04_estimation_sample.rds",
+             "results/data/06_parameters.rds"),
+    outputs = c("results/out/tables/08_org_price.tex",
+                "results/out/tables/08_time_effects.tex",
+                "results/out/tables/08_model_fit.tex"),
+    required_inputs = c("mkdata/data/01_keytask.rds",
+                        "mkdata/data/04_estimation_sample.rds",
+                        "results/data/06_parameters.rds"),
+    description = "display estimates"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 8: Invert Gammas (09_invert_gammas.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_INVERT_GAMMAS) {
+  run_pipeline_step(
+    step_label = "STEP 8",
+    script_name = "09_invert_gammas.R",
+    deps = c("config.R", "preamble.R",
+             "mkdata/data/01_staff_task.rds",
+             "mkdata/data/01_staff_task_full.rds",
+             "mkdata/data/04_estimation_sample.rds",
+             "results/data/06_parameters.rds"),
+    outputs = c("results/data/09_withgammas.rds",
+                "results/out/figures/09_gamma_dist.png"),
+    required_inputs = c("mkdata/data/01_staff_task.rds",
+                        "mkdata/data/01_staff_task_full.rds",
+                        "mkdata/data/04_estimation_sample.rds",
+                        "results/data/06_parameters.rds"),
+    description = "gamma inversion"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 9: Substitution Patterns (10_substitution.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_SUBSTITUTION) {
+  run_pipeline_step(
+    step_label = "STEP 9",
+    script_name = "10_substitution.R",
+    deps = c("config.R",
+             "results/data/06_parameters.rds",
+             "results/data/09_withgammas.rds"),
+    outputs = c("results/out/tables/10_substitute.tex"),
+    required_inputs = c("results/data/06_parameters.rds",
+                        "results/data/09_withgammas.rds"),
+    description = "substitution patterns"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 10: Productivity Substitution Patterns (11_substitution_prod.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_SUBSTITUTION_PROD) {
+  run_pipeline_step(
+    step_label = "STEP 10",
+    script_name = "11_substitution_prod.R",
+    deps = c("config.R",
+             "results/data/06_parameters.rds",
+             "results/data/09_withgammas.rds"),
+    outputs = c("results/out/tables/11_substitute_prod.tex"),
+    required_inputs = c("results/data/06_parameters.rds",
+                        "results/data/09_withgammas.rds"),
+    description = "productivity substitution patterns"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 11: Validate Model (12_validate.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_VALIDATE) {
+  run_pipeline_step(
+    step_label = "STEP 11",
+    script_name = "12_validate.R",
+    deps = c("config.R",
+             "results/data/06_parameters.rds",
+             "results/data/09_withgammas.rds",
+             "mkdata/data/01_staff_task_full.rds"),
+    outputs = c("results/data/12_data_for_counterfactuals.rds",
+                "results/out/tables/12_validate_corr.tex"),
+    required_inputs = c("results/data/06_parameters.rds",
+                        "results/data/09_withgammas.rds",
+                        "mkdata/data/01_staff_task_full.rds"),
+    description = "model validation"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 12: Counterfactual Pipeline (run_counterfactuals.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_COUNTERFACTUALS) {
   message("\n", strrep("-", 70))
-  message("STEP 6: Checking run_counterfactuals.R")
+  message("STEP 12: Checking run_counterfactuals.R")
   message(strrep("-", 70))
 
-  if (!file.exists("results/data/05_parameters.rds")) {
-    warning("Counterfactual pipeline skipped because results/data/05_parameters.rds is missing.")
+  if (!file.exists("results/data/06_parameters.rds")) {
+    warning("Counterfactual pipeline skipped because results/data/06_parameters.rds is missing.")
     pipeline_results[["run_counterfactuals.R"]] <- list(
       ran = FALSE, success = TRUE, duration = 0,
       error = NULL, skipped = TRUE
@@ -567,7 +759,7 @@ if (RUN_COUNTERFACTUALS) {
         log_complete(success = TRUE)
 
         step6_time <- difftime(Sys.time(), step6_start, units = "mins")
-        message("STEP 6 complete (", round(step6_time, 2), " minutes)")
+        message("STEP 12 complete (", round(step6_time, 2), " minutes)")
 
         pipeline_results[["run_counterfactuals.R"]] <- list(
           ran = TRUE, success = TRUE, duration = as.numeric(step6_time),
@@ -586,7 +778,7 @@ if (RUN_COUNTERFACTUALS) {
         stop("Counterfactual pipeline failed: ", e$message)
       })
     } else {
-      message("STEP 6 skipped (no changes detected)")
+      message("STEP 12 skipped (no changes detected)")
       pipeline_results[["run_counterfactuals.R"]] <- list(
         ran = FALSE, success = TRUE, duration = 0,
         error = NULL, skipped = TRUE

@@ -1,0 +1,120 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Current Pipeline Schematic</title>
+<style>
+  body {
+    font-family: Segoe UI, Arial, sans-serif;
+    margin: 0;
+    padding: 32px 20px 48px;
+    background: #f6f8fb;
+    color: #1f2937;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 30px;
+  }
+  .subtitle {
+    color: #4b5563;
+    margin: 0 0 28px;
+  }
+  .section {
+    background: #ffffff;
+    border: 1px solid #d9e2ec;
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  h2 {
+    margin: 0 0 14px;
+    font-size: 20px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+  }
+  .prep { background: #f3e8ff; border-color: #c084fc; }
+  .main { background: #dbeafe; border-color: #60a5fa; }
+  .manual { background: #fce7f3; border-color: #f472b6; }
+  .archive { background: #ecfccb; border-color: #84cc16; }
+  .title {
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  code {
+    background: #eef2ff;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  ul {
+    margin: 10px 0 0 20px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Current Pipeline Schematic</h1>
+  <p class="subtitle">Active workflow as of 2026-04-20</p>
+
+  <div class="section">
+    <h2>Prep Runner</h2>
+    <div class="grid">
+      <div class="card prep"><div class="title">run_prep_data.R</div>Orchestrates all prep scripts and writes <code>logs/run_prep_data.log</code>.</div>
+      <div class="card prep"><div class="title">prep_00_compile_transactions.R</div><code>&lt;raw_data_base&gt;/compiled_trxns.rds</code></div>
+      <div class="card prep"><div class="title">prep_01_cosmo_classify.R</div><code>mkdata/data/classified_descriptions.rds</code></div>
+      <div class="card prep"><div class="title">prep_02_censuspop.R</div><code>mkdata/data/county_census_pop.rds</code></div>
+      <div class="card prep"><div class="title">prep_03_county_msa_xwalk.R</div><code>mkdata/data/county_msa_xwalk.rds</code></div>
+      <div class="card prep"><div class="title">prep_04_consumerexpenditure.R</div><code>mkdata/data/cex_outside.rds</code></div>
+      <div class="card prep"><div class="title">prep_05_ppi.R</div><code>mkdata/data/ppi.rds</code></div>
+      <div class="card prep"><div class="title">prep_06_qcew.R</div><code>mkdata/data/qcew_county.rds</code></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Main Runner</h2>
+    <div class="grid">
+      <div class="card main"><div class="title">run_all.R</div>Manages package restore, logging, and step-by-step execution.</div>
+      <div class="card main"><div class="title">Step 0: 00_mk_tasks_cosmo.R</div><code>mkdata/data/00_tasks_cosmo.rds</code></div>
+      <div class="card main"><div class="title">Step 1: package restore/setup</div><code>renv</code> state restored inside <code>run_all.R</code></div>
+      <div class="card main"><div class="title">Step 2: 01_build_data.R + cluster.R</div><code>mkdata/data/01_working.rds</code></div>
+      <div class="card main"><div class="title">Step 3: 02_estimation.R + preamble.R</div><code>results/data/02_parameters.rds</code></div>
+      <div class="card main"><div class="title">Step 4: 02_iv_spec_comparison.R + preamble.R</div><code>results/out/tables/02_demand_iv_spec_comparison.tex</code><br><code>results/out/tables/02_nested_iv_spec_comparison.tex</code></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Manual Analysis Scripts</h2>
+    <div class="grid">
+      <div class="card manual"><div class="title">01_01_stylized_facts.R</div>Standalone for now. Reads task-level and staff-task data.</div>
+      <div class="card manual"><div class="title">01_02_spatial_corr.R</div>Standalone for now. Reads <code>results/data/01_01_stylized_facts_data.rds</code>.</div>
+      <div class="card manual"><div class="title">01_03_summary_stats_esample.R</div>Standalone for now. Reads <code>mkdata/data/01_staff_task_full.rds</code>.</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Archived Material</h2>
+    <div class="grid">
+      <div class="card archive"><div class="title">archive/experimental/</div>One-off diagnostics and replication checks that are not part of the pipeline.</div>
+      <div class="card archive"><div class="title">docs/historical/</div>Superseded review notes, refactor plans, and dated session logs.</div>
+    </div>
+    <ul>
+      <li>Current source of truth: <code>README.md</code>, <code>docs/README.md</code>, <code>docs/prep_data_pipeline.md</code>, and <code>docs/data_dependencies.md</code>.</li>
+      <li>The manual analysis scripts are intentionally unchanged in this cleanup pass.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
