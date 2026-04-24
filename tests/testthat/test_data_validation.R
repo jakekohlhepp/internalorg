@@ -156,14 +156,15 @@ test_that("04 estimation sample has required enriched columns", {
 
   required_working_cols <- c(
     "ppi_inputs", "min_wage", "dye_instrument", "labor_instrument",
-    "org_cost", "log_rel_mkt", "mk_piece"
+    "hausman_other_price", "org_cost", "log_rel_mkt", "mk_piece"
   )
   for (col in required_working_cols) {
     expect_true(col %in% names(working_data),
                 info = paste("Missing enriched working_data column:", col))
   }
 
-  required_estim_cols <- c("location_id", "county", "quarter_year", "cust_price", "log_rel_mkt")
+  required_estim_cols <- c("location_id", "county", "quarter_year", "cust_price",
+                           "log_rel_mkt", "hausman_other_price")
   for (col in required_estim_cols) {
     expect_true(col %in% names(estim_matrix),
                 info = paste("Missing estim_matrix column:", col))
@@ -172,6 +173,8 @@ test_that("04 estimation sample has required enriched columns", {
   expect_true(all(!is.na(working_data$ppi_inputs)), info = "ppi_inputs contains missing values")
   expect_true(all(!is.na(working_data$min_wage)), info = "min_wage contains missing values")
   expect_true(all(!is.na(working_data$org_cost)), info = "org_cost contains missing values")
+  expect_true(all(is.finite(working_data$hausman_other_price)),
+              info = "hausman_other_price contains non-finite values")
   expect_true(all(working_data$cust_price > 0), info = "04 working_data contains nonpositive prices")
   expect_equal(nrow(working_data), nrow(estim_matrix))
 })

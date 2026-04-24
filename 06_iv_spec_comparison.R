@@ -342,38 +342,20 @@ weak_iv_row_name <- function(cnty, suffix) {
 }
 
 # -----------------------------------------------------------------------------
-# Nested-logit variables and Hausman instrument
+# Nested-logit variables
 # -----------------------------------------------------------------------------
+## hausman_other_price is constructed in 04_estimation_sample.R and read
+## directly from estim_matrix. log_within_share is a nested-logit-only
+## variable, so it is still built here.
 
-working_data[, row_id := .I]
-## warning: because not all salons are sampled, within share should be
-## 1 - outside_share.
+stopifnot("hausman_other_price" %in% names(estim_matrix))
+stopifnot(all(is.finite(estim_matrix$hausman_other_price)))
+
 working_data[, within_share := salon_share_subdiv / (1 - outside_share)]
 working_data[, log_within_share := log(within_share)]
-
-quarter_totals <- working_data[, .(
-  quarter_sum_price = sum(cust_price),
-  quarter_n = .N
-), by = quarter_year]
-county_quarter_totals <- working_data[, .(
-  county_q_sum_price = sum(cust_price),
-  county_q_n = .N
-), by = .(county, quarter_year)]
-
-working_data <- merge(working_data, quarter_totals,
-                      by = "quarter_year", all.x = TRUE, sort = FALSE)
-working_data <- merge(working_data, county_quarter_totals,
-                      by = c("county", "quarter_year"), all.x = TRUE, sort = FALSE)
-setorder(working_data, row_id)
-
-stopifnot(all(working_data$quarter_n > working_data$county_q_n))
-working_data[, hausman_other_price :=
-               (quarter_sum_price - county_q_sum_price) / (quarter_n - county_q_n)]
 stopifnot(all(is.finite(working_data$log_within_share)))
-stopifnot(all(is.finite(working_data$hausman_other_price)))
 
 estim_matrix$log_within_share <- working_data$log_within_share
-estim_matrix$hausman_other_price <- working_data$hausman_other_price
 
 # -----------------------------------------------------------------------------
 # Generic table builder

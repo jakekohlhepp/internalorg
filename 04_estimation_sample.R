@@ -6,8 +6,9 @@
 #'   A. mkdata/data/04_estimation_sample.rds
 #'        Estimation-ready list consumed by 05_estimation.R and
 #'        06_iv_spec_comparison.R. Augments 01_working.rds with PPI, minimum
-#'        wage, instruments (dye_instrument, labor_instrument), organizational
-#'        cost, and the estim_matrix projection used by the GMM routines.
+#'        wage, instruments (dye_instrument, labor_instrument,
+#'        hausman_other_price), organizational cost, and the estim_matrix
+#'        projection used by the GMM routines.
 #'
 #'   B. results/out/tables/04_summary_stats_structural.tex
 #'        LaTeX summary-stats table for the structural estimation sample
@@ -61,6 +62,31 @@ working_data[, mk_piece    := 1 / (1 - salon_share_subdiv)]
 working_data[, org_cost    := gamma_normalized * s_index * avg_labor]
 setorder(working_data, "location_id", "quarter_year")
 working_data[, dye_instrument := get(paste0("task_mix_", CONFIG$dye_task_index)) * ppi_inputs]
+
+## Hausman price instrument: leave-own-county-out mean customer price in the
+## same quarter. Constructed here so both 05_estimation.R and
+## 06_iv_spec_comparison.R read it from estim_matrix.
+working_data[, row_id := .I]
+quarter_totals <- working_data[, .(
+  quarter_sum_price = sum(cust_price),
+  quarter_n = .N
+), by = quarter_year]
+county_quarter_totals <- working_data[, .(
+  county_q_sum_price = sum(cust_price),
+  county_q_n = .N
+), by = .(county, quarter_year)]
+working_data <- merge(working_data, quarter_totals,
+                      by = "quarter_year", all.x = TRUE, sort = FALSE)
+working_data <- merge(working_data, county_quarter_totals,
+                      by = c("county", "quarter_year"), all.x = TRUE, sort = FALSE)
+setorder(working_data, row_id)
+stopifnot(all(working_data$quarter_n > working_data$county_q_n))
+working_data[, hausman_other_price :=
+               (quarter_sum_price - county_q_sum_price) / (quarter_n - county_q_n)]
+stopifnot(all(is.finite(working_data$hausman_other_price)))
+working_data[, c("row_id", "quarter_sum_price", "quarter_n",
+                 "county_q_sum_price", "county_q_n") := NULL]
+
 stopifnot(nrow(working_data[is.na(org_cost)]) == 0)
 
 ## no situations where worker type is not observed
@@ -80,7 +106,8 @@ min_wage_levels <- unique(working_data[, .(county, quarter_year, min_wage)])
 stopifnot(uniqueN(min_wage_levels[, .(county, quarter_year)]) == nrow(min_wage_levels))
 
 estim_matrix <- as.data.frame(working_data[, .SD, .SDcols = c(
-  "location_id", "avg_labor", "dye_instrument", "county", "quarter_year", "log_rel_mkt", "cust_price",
+  "location_id", "avg_labor", "dye_instrument", "hausman_other_price",
+  "county", "quarter_year", "log_rel_mkt", "cust_price",
   names(working_data)[grep("^B_raw_[0-9]_", names(working_data))],
   "org_cost", "mk_piece",
   names(working_data)[grep("^E_raw_[0-9]", names(working_data))],
