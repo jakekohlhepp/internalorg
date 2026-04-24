@@ -29,7 +29,8 @@ spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
 
 ## need to get back employee count
 staff_task<-data.table(read_first_existing_rds(
-  legacy_counterfactual_data_path("01_00_staff_task.rds"),
+  c(project_path(CONFIG$prep_output_dir, "01_staff_task.rds"),
+    legacy_counterfactual_data_path("01_00_staff_task.rds")),
   "counterfactual staff-task input"
 ))
 has_emps<-unique(staff_task[, c("emps", "location_id", "quarter_year")])
@@ -37,7 +38,8 @@ has_emps<-unique(staff_task[, c("emps", "location_id", "quarter_year")])
 
 ## market parameters
 working_data<-read_first_existing_rds(
-  legacy_counterfactual_data_path("02_06_data_for_counterfactuals.rds"),
+  c(project_path("results", "data", "12_data_for_counterfactuals.rds"),
+    legacy_counterfactual_data_path("02_06_data_for_counterfactuals.rds")),
   "counterfactual working-data input"
 )
 working_data<-merge(working_data, has_emps, by=c("location_id", "quarter_year"), all.x=TRUE)
@@ -76,7 +78,8 @@ for (col in gsub("^B_raw_","",names(working_data)[grep("^B_raw_", names(working_
 
 
 addition_info<-read_first_existing_rds(
-  legacy_counterfactual_data_path("01_00_staff_task_full.rds"),
+  c(project_path(CONFIG$prep_output_dir, "01_staff_task_full.rds"),
+    legacy_counterfactual_data_path("01_00_staff_task_full.rds")),
   "counterfactual staff-task full input"
 )
 addition_info<-unique(addition_info[,.SD, .SDcols=c("location_id", "quarter_year", "cust_count", "CSPOP", "revenue")])
