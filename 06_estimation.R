@@ -77,8 +77,14 @@ if (isTRUE(CONFIG$check_structural_start)) {
 
 if (!isTRUE(CONFIG$skip_structural_optimizer)) {
   ## tolerance for the outerloop
-  res_store<-BBsolve(beta_2_subset,
-                     objective_vect, control=list(trace=TRUE, tol=CONFIG$obj_tol, maxit=CONFIG$structural_optimizer_maxit))
+  res_store<-estimate_wage_parameters(
+    beta_2_subset,
+    estim_matrix,
+    beta,
+    beta_2_subset,
+    config = CONFIG,
+    clust = clust
+  )
   print(res_store)
 
   # Check convergence

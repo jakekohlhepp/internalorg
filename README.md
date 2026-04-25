@@ -36,8 +36,8 @@ source("run_all.R")
 | 1 | package restore/setup inside `run_all.R` | local `renv` library state | Restore pinned package versions when needed. |
 | 2 | `01_build_data.R` + `cluster.R` | `mkdata/data/01_working.rds`, `mkdata/data/01_staff_task_full.rds` | Build worker-task objects, cluster worker types, and assemble the pre-filter firm-quarter panel. |
 | 3 | `04_estimation_sample.R` | `mkdata/data/04_estimation_sample.rds`, `results/out/tables/04_summary_stats_structural.tex` | Augment the working sample with PPI, minimum wage, instruments, and the GMM `estim_matrix`; write the estimation-sample summary-stats table. |
-| 4 | `05_estimation.R` + `preamble.R` | `results/data/05_parameters.rds` | Estimate the structural model from `04_estimation_sample.rds`. |
-| 5 | `06_iv_spec_comparison.R` + `preamble.R` | `results/out/tables/06_standard_iv_comparison.tex`, `results/out/tables/06_standard_hausman_fe_comparison.tex`, `results/out/tables/06_nested_fe_comparison.tex` | Produce demand-side IV specification comparison tables. |
+| 4 | `06_estimation.R` + `preamble.R` | `results/data/06_parameters.rds` | Estimate the structural model from `04_estimation_sample.rds`. |
+| 5 | `05_iv_spec_comparison.R` + `preamble.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex` | Produce demand-side IV specification comparison tables. |
 | 6 | `run_counterfactuals.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/*.rds`, `results/out/tables/05_06_*.tex`, `results/out/figures/05_07_*.png` | Run the post-estimation counterfactual series using a shared setup/output layer. |
 
 ### Manual Analysis Scripts
@@ -69,8 +69,8 @@ refactor_estimation/
 |-- cluster.R
 |-- preamble.R
 |-- 04_estimation_sample.R
-|-- 05_estimation.R
-|-- 06_iv_spec_comparison.R
+|-- 05_iv_spec_comparison.R
+|-- 06_estimation.R
 |-- run_counterfactuals.R
 |-- utils/counterfactuals_core.R
 |-- 01_01_stylized_facts.R
