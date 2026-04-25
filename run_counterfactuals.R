@@ -1,7 +1,7 @@
 # =============================================================================
 # RUN COUNTERFACTUAL SCRIPTS
 # =============================================================================
-# Runs the 13_* through 22_* counterfactual scripts after estimation artifacts are available.
+# Runs the 13_* through 19_* counterfactual scripts after estimation artifacts are available.
 # Usage: source("run_counterfactuals.R")
 # =============================================================================
 
@@ -143,12 +143,9 @@ message("Start time: ", counterfactual_start)
 message("Working directory: ", getwd())
 
 RUN_CF_00_BASELINE <- TRUE
-RUN_CF_01_AUTOMATION <- TRUE
-RUN_CF_01_NO_VARIANCE <- TRUE
 RUN_CF_02_DIFFUSION <- TRUE
 RUN_CF_03_SALES_TAX <- TRUE
 RUN_CF_04_IMMIGRATION <- TRUE
-RUN_CF_05_NO_FRICTIONS <- TRUE
 RUN_CF_06_MERGER <- TRUE
 RUN_CF_06_SUMMARY <- TRUE
 RUN_CF_07_FIGURES <- TRUE
@@ -184,23 +181,10 @@ counterfactual_steps <- list(
     skip_if_inputs_missing = TRUE
   ),
   list(
-    label = "CF 01A: Automation",
-    script_name = "14_counterfactual_automation.R",
-    enabled = RUN_CF_01_AUTOMATION,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "14_counterfactual_automation.R"),
-    required_inputs_any = list(
-      parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
-    ),
-    outputs = c(counterfactual_data_path("05_01_wages_automation.rds")),
-    skip_if_inputs_missing = TRUE
-  ),
-  list(
     label = "CF 02: Management Diffusion",
-    script_name = "16_counterfactual_diffusion.R",
+    script_name = "14_counterfactual_diffusion.R",
     enabled = RUN_CF_02_DIFFUSION,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "16_counterfactual_diffusion.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "14_counterfactual_diffusion.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -214,9 +198,9 @@ counterfactual_steps <- list(
   ),
   list(
     label = "CF 03: Sales Tax",
-    script_name = "17_counterfactual_sales_tax.R",
+    script_name = "15_counterfactual_sales_tax.R",
     enabled = RUN_CF_03_SALES_TAX,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "17_counterfactual_sales_tax.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "15_counterfactual_sales_tax.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -230,27 +214,10 @@ counterfactual_steps <- list(
     skip_if_inputs_missing = TRUE
   ),
   list(
-    label = "CF 01B: No Within-Market Variance",
-    script_name = "15_counterfactual_no_variance.R",
-    enabled = RUN_CF_01_NO_VARIANCE,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "15_counterfactual_no_variance.R"),
-    required_inputs_any = list(
-      parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds"),
-      counterfactual_data_path("05_03_prod_initial.rds")
-    ),
-    outputs = c(
-      counterfactual_data_path("05_01_remove_variance.rds"),
-      counterfactual_data_path("05_01_prod_remove_variance.rds")
-    ),
-    skip_if_inputs_missing = TRUE
-  ),
-  list(
     label = "CF 04: Immigration",
-    script_name = "18_counterfactual_immigration.R",
+    script_name = "16_counterfactual_immigration.R",
     enabled = RUN_CF_04_IMMIGRATION,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "18_counterfactual_immigration.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "16_counterfactual_immigration.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -263,23 +230,10 @@ counterfactual_steps <- list(
     skip_if_inputs_missing = TRUE
   ),
   list(
-    label = "CF 05: No Frictions",
-    script_name = "19_counterfactual_no_frictions.R",
-    enabled = RUN_CF_05_NO_FRICTIONS,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "19_counterfactual_no_frictions.R"),
-    required_inputs_any = list(
-      parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
-    ),
-    outputs = c(counterfactual_data_path("05_05_nofriction.rds")),
-    skip_if_inputs_missing = TRUE
-  ),
-  list(
     label = "CF 06A: Merger / Increased Concentration",
-    script_name = "20_counterfactual_merger.R",
+    script_name = "17_counterfactual_merger.R",
     enabled = RUN_CF_06_MERGER,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "20_counterfactual_merger.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "17_counterfactual_merger.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -293,9 +247,9 @@ counterfactual_steps <- list(
   ),
   list(
     label = "CF 06B: Counterfactual Summary Tables",
-    script_name = "21_counterfactual_summary.R",
+    script_name = "18_counterfactual_summary.R",
     enabled = RUN_CF_06_SUMMARY,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "21_counterfactual_summary.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "18_counterfactual_summary.R"),
     required_inputs_any = list(
       counterfactual_data_path("05_00_initial_wages.rds"),
       counterfactual_data_path("05_03_prod_initial.rds"),
@@ -316,9 +270,9 @@ counterfactual_steps <- list(
   ),
   list(
     label = "CF 07: Counterfactual Figures",
-    script_name = "22_counterfactual_figures.R",
+    script_name = "19_counterfactual_figures.R",
     enabled = RUN_CF_07_FIGURES,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "22_counterfactual_figures.R"),
+    dependencies = c("config.R", "utils/counterfactuals_core.R", "19_counterfactual_figures.R"),
     required_inputs_any = list(
       counterfactual_data_path("05_00_initial_wages.rds"),
       counterfactual_data_path("05_00_working_data.rds"),

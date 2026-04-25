@@ -17,7 +17,7 @@ The main data split is explicit:
 - `07_bootstrap.R` through `12_validate.R` produce post-estimation artifacts
   (bootstrap draws, display tables, inverted gammas, substitution patterns,
   validation outputs, and the counterfactual input `12_data_for_counterfactuals.rds`)
-- `run_counterfactuals.R` orchestrates the `13_*.R` through `22_*.R` scenario
+- `run_counterfactuals.R` orchestrates the `13_*.R` through `19_*.R` scenario
   scripts on top of `results/data/06_parameters.rds`
 
 ## Flowchart
@@ -105,10 +105,10 @@ flowchart TD
     cf --> cf13[13_counterfactual_prep.R]
     cf13 --> cfwages[counterfactuals/05_00_initial_wages.rds]
     cf13 --> cfdata[counterfactuals/05_00_working_data.rds]
-    cfwages --> cfscen[14..20 scenario scripts]
+    cfwages --> cfscen[14..17 scenario scripts]
     cfdata --> cfscen
-    cfscen --> cfsum[21_counterfactual_summary.R]
-    cfscen --> cfplot[22_counterfactual_figures.R]
+    cfscen --> cfsum[18_counterfactual_summary.R]
+    cfscen --> cfplot[19_counterfactual_figures.R]
     cfsum --> cftables[results/out/tables/05_06_*.tex]
     cfplot --> cffigs[results/out/figures/05_07_*.png]
 ```
@@ -148,22 +148,19 @@ flowchart TD
 
 ### Counterfactual runner: `run_counterfactuals.R`
 
-Orchestrates the `13_*.R` through `22_*.R` scenario scripts on top of
+Orchestrates the `13_*.R` through `19_*.R` scenario scripts on top of
 `results/data/06_parameters.rds` and `results/data/12_data_for_counterfactuals.rds`.
 Shared helpers live in `utils/counterfactuals_core.R`.
 
 | Step | Script | Primary output |
 |------|--------|----------------|
 | CF 00 | `13_counterfactual_prep.R` | `counterfactuals/05_00_initial_wages.rds`, `counterfactuals/05_00_working_data.rds` |
-| CF 01A | `14_counterfactual_automation.R` | `counterfactuals/05_01_wages_automation.rds` |
-| CF 01B | `15_counterfactual_no_variance.R` | `counterfactuals/05_01_remove_variance.rds`, `counterfactuals/05_01_prod_remove_variance.rds` |
-| CF 02 | `16_counterfactual_diffusion.R` | `counterfactuals/05_02_wages_diffusion.rds`, `counterfactuals/05_02_prod_diffusion.rds` |
-| CF 03 | `17_counterfactual_sales_tax.R` | `counterfactuals/05_03_wages_salestax.rds`, `counterfactuals/05_03_prod_salestax.rds`, `counterfactuals/05_03_prod_initial.rds` |
-| CF 04 | `18_counterfactual_immigration.R` | `counterfactuals/05_04_wages_immigration.rds`, `counterfactuals/05_04_prod_immigration.rds` |
-| CF 05 | `19_counterfactual_no_frictions.R` | `counterfactuals/05_05_nofriction.rds` |
-| CF 06A | `20_counterfactual_merger.R` | `counterfactuals/05_06_wages_merger.rds`, `counterfactuals/05_06_prod_merger.rds` |
-| CF 06B | `21_counterfactual_summary.R` | `results/out/tables/05_06_tot_counterfactuals.tex`, `results/out/tables/05_06_bytype_counterfactuals.tex` |
-| CF 07 | `22_counterfactual_figures.R` | `results/out/figures/05_07_*.png` |
+| CF 02 | `14_counterfactual_diffusion.R` | `counterfactuals/05_02_wages_diffusion.rds`, `counterfactuals/05_02_prod_diffusion.rds` |
+| CF 03 | `15_counterfactual_sales_tax.R` | `counterfactuals/05_03_wages_salestax.rds`, `counterfactuals/05_03_prod_salestax.rds`, `counterfactuals/05_03_prod_initial.rds` |
+| CF 04 | `16_counterfactual_immigration.R` | `counterfactuals/05_04_wages_immigration.rds`, `counterfactuals/05_04_prod_immigration.rds` |
+| CF 06A | `17_counterfactual_merger.R` | `counterfactuals/05_06_wages_merger.rds`, `counterfactuals/05_06_prod_merger.rds` |
+| CF 06B | `18_counterfactual_summary.R` | `results/out/tables/05_06_tot_counterfactuals.tex`, `results/out/tables/05_06_bytype_counterfactuals.tex` |
+| CF 07 | `19_counterfactual_figures.R` | `results/out/figures/05_07_*.png` |
 
 ## Standalone Analysis Scripts
 
