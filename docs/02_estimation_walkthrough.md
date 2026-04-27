@@ -1,15 +1,15 @@
-# `05_estimation.R` Walkthrough
+# `06_estimation.R` Walkthrough
 
 ## Purpose
 
-`05_estimation.R` is the structural-estimation stage of the active pipeline. It
+`06_estimation.R` is the structural-estimation stage of the active pipeline. It
 takes the estimation-ready artifact assembled by `04_estimation_sample.R` and
 estimates model parameters so that:
 
 - the demand side matches observed market shares, and
 - the assignment side matches observed worker-type shares across salons.
 
-The script saves its final parameter table to `results/data/05_parameters.rds`.
+The script saves its final parameter table to `results/data/06_parameters.rds`.
 
 ## Main Inputs
 
@@ -41,7 +41,7 @@ The main structural split is:
    - adds estimation-only enrichments such as PPI, minimum wages,
      `dye_instrument`, `org_cost`, and `log_rel_mkt`
    - writes `04_estimation_sample.rds`
-3. `05_estimation.R`
+3. `06_estimation.R`
    - reads the saved 04 artifact
    - calls `build_estimation_setup(...)`
    - runs the nonlinear and constrained estimation blocks
@@ -53,7 +53,7 @@ sourcing `preamble.R`.
 
 ### 1. Load the saved estimation sample
 
-`05_estimation.R` starts by reading `mkdata/data/04_estimation_sample.rds`.
+`06_estimation.R` starts by reading `mkdata/data/04_estimation_sample.rds`.
 This gives it:
 
 - `working_data`
@@ -94,7 +94,7 @@ has 12 unknowns.
 
 The main nonlinear estimation uses:
 
-- `BBsolve(...)` as the outer solver
+- `estimate_wage_parameters(...)` as the configured outer solver wrapper
 - `objective_gmm(...)` as the moment function
 
 For any candidate parameter vector `theta`, `objective_gmm(...)` does the
@@ -108,7 +108,9 @@ following:
 5. Compare model-implied `E` to observed `E_raw_*`
 6. Return the county-by-worker-type moment matrix
 
-`BBsolve` then searches for the `theta` that drives the mean moments to zero.
+The wrapper then searches for the `theta` that drives the mean moments to zero.
+By default it uses the county-by-county mode configured in `config.R`; the
+joint `BBsolve(...)` path remains available through `JMP_WAGE_OPTIMIZER_MODE`.
 
 ## The Numerical Core
 
@@ -175,12 +177,12 @@ The output of this step is the second coefficient block, stored in `coef_vect2`.
 
 ## Final Output
 
-The saved output `results/data/05_parameters.rds` is a long table with:
+The saved output `results/data/06_parameters.rds` is a long table with:
 
 - `demand = TRUE`
   - coefficients from the analytic demand estimate `beta`
 - `demand = FALSE`
-  - nonlinear wage-premium estimates from `BBsolve`
+  - nonlinear wage-premium estimates from the configured wage solver
   - bounded auxiliary-regression estimates from `optim`
 
 ## What To Read First In The Code
@@ -196,15 +198,15 @@ If reading the source directly, this order is usually easiest:
    - `find_gamma_for_sindex(...)`
    - `objective_gmm(...)`
    - `get_gammas(...)`
-4. `05_estimation.R`
+4. `06_estimation.R`
 
 ## Serious Issues And Risks
 
 ### 1. Non-convergence still does not stop the pipeline
 
-`05_estimation.R` warns when `BBsolve` fails to converge, then continues using
+`06_estimation.R` warns when the wage solver fails to converge, then continues using
 `res_store$par` anyway. It does the same after the bounded `optim(...)` call.
-That means `results/data/05_parameters.rds` can still be written even when one
+That means `results/data/06_parameters.rds` can still be written even when one
 of the estimation stages failed.
 
 ### 2. Starting values are still an external artifact
@@ -215,7 +217,7 @@ specification.
 
 ## Bottom Line
 
-Conceptually, `05_estimation.R` now does three things:
+Conceptually, `06_estimation.R` now does three things:
 
 1. load the explicit estimation artifact written by `04_estimation_sample.R`
 2. estimate demand-side and assignment-side coefficient blocks

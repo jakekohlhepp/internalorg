@@ -763,10 +763,43 @@ get_gammas <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust = N
   solved$gamma
 }
 
+normalize_moment_weights <- function(weights, n) {
+  if (is.null(weights)) {
+    return(NULL)
+  }
+
+  weights <- as.numeric(weights)
+  if (length(weights) != n) {
+    stop("Moment weights length (", length(weights), ") does not match row count (", n, ").")
+  }
+  if (anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
+    stop("Moment weights must be finite, non-missing, and non-negative.")
+  }
+
+  weight_sum <- sum(weights)
+  if (!is.finite(weight_sum) || weight_sum <= 0) {
+    stop("Moment weights must have a positive finite sum.")
+  }
+
+  weights / weight_sum
+}
+
+weighted_col_means <- function(x, weights = NULL) {
+  x <- as.matrix(x)
+  weights <- normalize_moment_weights(weights, nrow(x))
+
+  if (is.null(weights)) {
+    return(colMeans(x))
+  }
+
+  colSums(sweep(x, MARGIN = 1, weights, `*`))
+}
+
 estimate_wage_parameters_joint <- function(start, x, beta, beta_2_subset, config = CONFIG,
-                                           clust = NULL, solver_state = NULL) {
+                                           clust = NULL, solver_state = NULL,
+                                           moment_weights = NULL) {
   objective_vect <- function(parms) {
-    colMeans(objective_gmm(
+    weighted_col_means(objective_gmm(
       theta = parms,
       x = x,
       beta = beta,
@@ -774,7 +807,7 @@ estimate_wage_parameters_joint <- function(start, x, beta, beta_2_subset, config
       config = config,
       clust = clust,
       solver_state = solver_state
-    ))
+    ), moment_weights)
   }
 
   BBsolve(
@@ -785,12 +818,14 @@ estimate_wage_parameters_joint <- function(start, x, beta, beta_2_subset, config
 }
 
 estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, config = CONFIG,
-                                               clust = NULL, solver_state = NULL) {
+                                               clust = NULL, solver_state = NULL,
+                                               moment_weights = NULL) {
   data <- as.data.frame(x)
   full_par <- start
   names(full_par) <- names(beta_2_subset)
   county_results <- list()
   rounds <- max(1L, solver_value(config, "county_optimizer_rounds", 1L))
+  moment_weights <- normalize_moment_weights(moment_weights, nrow(data))
 
   for (round_id in seq_len(rounds)) {
     for (cnty in config$counties) {
@@ -803,10 +838,11 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
       }
 
       x_county <- data[row_idx, , drop = FALSE]
+      county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
       objective_county <- function(parms) {
         candidate <- full_par
         candidate[par_idx] <- parms
-        moments <- colMeans(objective_gmm(
+        moments <- weighted_col_means(objective_gmm(
           theta = candidate,
           x = x_county,
           beta = beta,
@@ -814,7 +850,7 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
           config = config,
           clust = clust,
           solver_state = solver_state
-        ))
+        ), county_weights)
         county_moments <- grepl(paste0("county", cnty, ":E_"), names(moments), fixed = TRUE)
         as.numeric(moments[county_moments])
       }
@@ -829,7 +865,7 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
     }
   }
 
-  final_moments <- colMeans(objective_gmm(
+  final_moments <- weighted_col_means(objective_gmm(
     theta = full_par,
     x = x,
     beta = beta,
@@ -837,7 +873,7 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
     config = config,
     clust = clust,
     solver_state = solver_state
-  ))
+  ), moment_weights)
 
   list(
     par = full_par,
@@ -855,18 +891,23 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
 #' on that county's four wage parameters. Joint mode remains available for exact
 #' parity checks or future specifications with cross-county coupling.
 estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CONFIG,
-                                     clust = NULL, solver_state = NULL) {
+                                     clust = NULL, solver_state = NULL,
+                                     moment_weights = NULL) {
   mode <- tolower(solver_value(config, "wage_optimizer_mode", "county"))
   if (is.null(solver_state) && solver_flag(config, "use_solver_warm_starts", TRUE)) {
     solver_state <- get_default_solver_state(reset = TRUE)
   }
 
   if (identical(mode, "joint")) {
-    return(estimate_wage_parameters_joint(start, x, beta, beta_2_subset, config, clust, solver_state))
+    return(estimate_wage_parameters_joint(
+      start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+    ))
   }
 
   if (identical(mode, "county")) {
-    return(estimate_wage_parameters_by_county(start, x, beta, beta_2_subset, config, clust, solver_state))
+    return(estimate_wage_parameters_by_county(
+      start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+    ))
   }
 
   stop("Unknown wage_optimizer_mode: ", mode, ". Use 'county' or 'joint'.")

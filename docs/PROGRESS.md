@@ -13,10 +13,10 @@ counterfactual pipeline is now wired into `run_all.R`:
 2. `04_estimation_sample.R` enriches the estimation-base branch with PPI,
    minimum wages, and instruments, then writes
    `mkdata/data/04_estimation_sample.rds`
-3. `05_estimation.R` and `06_iv_spec_comparison.R` consume the saved 04
+3. `05_iv_spec_comparison.R` and `06_estimation.R` consume the saved 04
    artifact. `preamble.R` exposes `build_estimation_setup()` and no longer
    mutates ambient session state when sourced.
-4. `run_counterfactuals.R` loads `results/data/05_parameters.rds` via
+4. `run_counterfactuals.R` loads `results/data/06_parameters.rds` via
    `utils/counterfactuals_core.R` helpers and orchestrates the
    `05_00`–`05_07` scenario scripts.
 
@@ -49,9 +49,15 @@ This keeps the stylized-facts architecture clear:
 2. package restore/setup through `renv`
 3. `01_build_data.R`
 4. `04_estimation_sample.R`
-5. `05_estimation.R`
-6. `06_iv_spec_comparison.R`
-7. `run_counterfactuals.R`
+5. `05_iv_spec_comparison.R`
+6. `06_estimation.R`
+7. `07_bootstrap.R`
+8. `08_display_estimates.R`
+9. `09_invert_gammas.R`
+10. `10_substitution.R`
+11. `11_substitution_prod.R`
+12. `12_validate.R`
+13. `run_counterfactuals.R`
 
 ### Counterfactual runner
 
@@ -74,10 +80,10 @@ The automated workflow writes:
 
 - `mkdata/data/04_estimation_sample.rds`
 - `results/out/tables/04_summary_stats_structural.tex`
-- `results/data/05_parameters.rds`
-- `results/out/tables/06_standard_iv_comparison.tex`
-- `results/out/tables/06_standard_hausman_fe_comparison.tex`
-- `results/out/tables/06_nested_fe_comparison.tex`
+- `results/data/06_parameters.rds`
+- `results/out/tables/05_standard_iv_comparison.tex`
+- `results/out/tables/05_standard_hausman_fe_comparison.tex`
+- `results/out/tables/05_nested_fe_comparison.tex`
 - `counterfactuals/05_00_*.rds` and `counterfactuals/05_0[1-6]_*.rds`
 - `results/out/tables/05_06_tot_counterfactuals.tex`
 - `results/out/tables/05_06_bytype_counterfactuals.tex`
