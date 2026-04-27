@@ -1,3 +1,167 @@
+rank_aware_solve <- function(a, b, tolerance = sqrt(.Machine$double.eps),
+                             context = "linear system", warn = TRUE) {
+  a <- as.matrix(a)
+  b <- as.matrix(b)
+  decomp <- svd(a)
+
+  if (length(decomp$d) == 0 || max(decomp$d) == 0) {
+    stop("Cannot solve ", context, ": coefficient matrix has zero rank.")
+  }
+
+  threshold <- max(dim(a)) * max(decomp$d) * tolerance
+  keep <- decomp$d > threshold
+  rank <- sum(keep)
+
+  if (rank == 0) {
+    stop("Cannot solve ", context, ": coefficient matrix has zero numerical rank.")
+  }
+
+  full_rank <- min(dim(a))
+  if (warn && rank < full_rank) {
+    warning(
+      context, " is rank deficient (rank ", rank, " of ", full_rank,
+      "); using SVD minimum-norm solution.",
+      call. = FALSE
+    )
+  }
+
+  u_keep <- decomp$u[, keep, drop = FALSE]
+  v_keep <- decomp$v[, keep, drop = FALSE]
+  scaled_rhs <- sweep(crossprod(u_keep, b), 1, decomp$d[keep], "/")
+  solution <- v_keep %*% scaled_rhs
+
+  rownames(solution) <- colnames(a)
+  colnames(solution) <- colnames(b)
+  solution
+}
+
+rank_aware_projection <- function(z, x, tolerance = sqrt(.Machine$double.eps),
+                                  context = "projection") {
+  z %*% rank_aware_solve(
+    crossprod(z),
+    crossprod(z, x),
+    tolerance = tolerance,
+    context = paste(context, "normal equations")
+  )
+}
+
+rank_aware_2sls <- function(x, z, y, tolerance = sqrt(.Machine$double.eps),
+                            context = "2SLS") {
+  x_hat <- rank_aware_projection(z, x, tolerance, context)
+  coef <- rank_aware_solve(
+    crossprod(x, x_hat),
+    crossprod(x_hat, as.matrix(y)),
+    tolerance = tolerance,
+    context = paste(context, "second stage")
+  )
+  rownames(coef) <- colnames(x)
+  coef
+}
+
+rank_aware_ols <- function(x, y, tolerance = sqrt(.Machine$double.eps),
+                           context = "OLS") {
+  coef <- rank_aware_solve(
+    crossprod(x),
+    crossprod(x, as.matrix(y)),
+    tolerance = tolerance,
+    context = context
+  )
+  rownames(coef) <- colnames(x)
+  coef
+}
+
+build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
+                                              config = CONFIG,
+                                              tolerance = sqrt(.Machine$double.eps)) {
+  stopifnot(all(!is.na(estim_matrix)))
+
+  xnam <- c(
+    "factor(county):cust_price",
+    "factor(county):factor(quarter_year)",
+    paste0("factor(county):avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
+  )
+  xnam <- as.formula(paste0("~", paste0(xnam, collapse = "+"), "-1"))
+  mm_1 <- model.matrix(xnam, data = estim_matrix)
+
+  xnam2 <- paste0("factor(quarter_year):", names(working_data)[grep("^task_mix", names(working_data))])
+  xnam3 <- paste0("factor(county):avg_labor:", names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
+  xnam4 <- c(xnam2, xnam3)
+  xnam4 <- as.formula(paste0(
+    "~factor(county):mk_piece+factor(county):org_cost+",
+    paste0(xnam4, collapse = "+"),
+    "+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"
+  ))
+  mm_2 <- model.matrix(xnam4, data = estim_matrix)
+
+  xnam <- c(
+    "hausman_other_price",
+    "factor(quarter_year)",
+    paste0("avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
+  )
+  xnam <- as.formula(paste0("~", paste0(paste0("factor(county):", xnam), collapse = "+"), "-1"))
+  z_mm_1 <- model.matrix(xnam, data = estim_matrix)
+
+  xnam2 <- paste0("factor(quarter_year):", names(working_data)[grep("^task_mix", names(working_data))])
+  xnam3 <- paste0("factor(county):avg_labor:", names(working_data)[grep("^E_raw_[0-9]", names(working_data))])
+  xnam4 <- c(xnam2, xnam3)
+  xnam4 <- as.formula(paste0(
+    "~factor(county):org_cost+",
+    paste0(xnam4, collapse = "+"),
+    "+factor(county):factor(quarter_year):avg_labor+factor(county):factor(quarter_year)-1"
+  ))
+  z_mm_2 <- model.matrix(xnam4, data = estim_matrix)
+
+  e_raw_cols_no_first <- paste0("E_raw_", 2:config$n_worker_types)
+  e_match <- data.frame(as.matrix(estim_matrix[, c(e_raw_cols_no_first, "s_index")]),
+                        factor(estim_matrix[, "county"]))
+  e_col_names <- paste0("E_", 2:config$n_worker_types)
+  colnames(e_match) <- c(e_col_names, "s_index", "county")
+  e_mat <- model.matrix(build_E_formula(2:config$n_worker_types, include_s_index = TRUE),
+                        data = e_match)
+
+  beta <- rank_aware_2sls(
+    mm_1,
+    z_mm_1,
+    estim_matrix[, "log_rel_mkt"],
+    tolerance = tolerance,
+    context = "demand IV estimator"
+  )
+
+  p_adj <- estim_matrix[, "cust_price"]
+  for (cnty in config$counties) {
+    price_idx <- grep(paste0(cnty, ":cust_price"), rownames(beta))
+    if (length(price_idx) != 1) {
+      stop("Expected one price coefficient for county ", cnty,
+           "; found ", length(price_idx), ".")
+    }
+    p_adj <- p_adj + estim_matrix[, "mk_piece"] *
+      (1 / beta[price_idx, 1]) *
+      (estim_matrix$county == cnty)
+  }
+
+  beta_2 <- rank_aware_ols(
+    z_mm_2,
+    p_adj,
+    tolerance = tolerance,
+    context = "price adjustment estimator"
+  )
+
+  list(
+    beta = beta,
+    beta_2 = beta_2,
+    mm_1 = mm_1,
+    mm_2 = mm_2,
+    z_mm_1 = z_mm_1,
+    z_mm_2 = z_mm_2,
+    e_mat = e_mat,
+    diagnostics = list(
+      mm_1_rank = qr(mm_1, tol = tolerance)$rank,
+      z_mm_1_rank = qr(z_mm_1, tol = tolerance)$rank,
+      z_mm_2_rank = qr(z_mm_2, tol = tolerance)$rank
+    )
+  )
+}
+
 build_demand_iv_formula <- function(data, config = CONFIG) {
   b_cols <- names(data)[grep("^B_raw_[0-9]_", names(data))]
   exog_terms <- c(
