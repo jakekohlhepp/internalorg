@@ -744,3 +744,4 @@ get_gammas <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust = N
 ## counterfactual solvers. Kept in a separate file so the reusable numerical
 ## layer is easier to test and document apart from legacy estimation formulas.
 source(project_path("utils", "structural_solver.R"))
+source(project_path("utils", "estimation_pipeline.R"))

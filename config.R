@@ -156,8 +156,28 @@ CONFIG <- list(
   staged_tolerance_switch_norm = as.numeric(Sys.getenv("JMP_STAGED_TOLERANCE_SWITCH_NORM", unset = "1e-3")),
   use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
-  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "county"),
+  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "joint"),
   county_optimizer_rounds = as.integer(Sys.getenv("JMP_COUNTY_OPTIMIZER_ROUNDS", unset = "1")),
+  price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
+  price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
+
+  # ---------------------------------------------------------------------------
+  # Bootstrap execution
+  # ---------------------------------------------------------------------------
+  bootstrap_reps = as.integer(Sys.getenv("JMP_BOOTSTRAP_REPS", unset = "200")),
+  bootstrap_seed = as.integer(Sys.getenv("JMP_BOOTSTRAP_SEED", unset = "833927")),
+  bootstrap_backend = Sys.getenv("JMP_BOOTSTRAP_BACKEND", unset = "auto"),
+  bootstrap_workers = as.integer(Sys.getenv("JMP_BOOTSTRAP_WORKERS", unset = NA_character_)),
+  bootstrap_results_dir = Sys.getenv(
+    "JMP_BOOTSTRAP_RESULTS_DIR",
+    unset = file.path("results", "data", "bootstrap_reps")
+  ),
+  bootstrap_iteration = as.integer(Sys.getenv("JMP_BOOTSTRAP_ITERATION", unset = NA_character_)),
+  bootstrap_iteration_start = as.integer(Sys.getenv("JMP_BOOTSTRAP_ITERATION_START", unset = NA_character_)),
+  bootstrap_iteration_end = as.integer(Sys.getenv("JMP_BOOTSTRAP_ITERATION_END", unset = NA_character_)),
+  bootstrap_combine_only = tolower(Sys.getenv("JMP_BOOTSTRAP_COMBINE_ONLY", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  slurm_array_task_id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", unset = NA_character_)),
 
   # Whether to use parallel processing
   pl_on = TRUE,
@@ -225,13 +245,16 @@ get_os <- function() {
     if (grepl("linux-gnu", R.version$os))
       os <- "linux"
   }
-  tolower(os)
+  unname(tolower(os))
 }
 
 #' Get core count for parallel processing
 #'
-#' Returns either the configured core count or auto-detects based on OS.
-#' On Windows, uses detectCores()-1. On other systems, defaults to 75.
+#' Returns cores in the following priority:
+#' 1. CONFIG$core_count (if explicitly set)
+#' 2. SLURM_CPUS_PER_TASK environment variable (if on a cluster)
+#' 3. MC_CORES environment variable
+#' 4. OS-specific auto-detection (Windows: detectCores()-1, Linux/Mac: 1)
 #'
 #' @param config Configuration list
 #' @return Integer number of cores to use
@@ -239,10 +262,25 @@ get_core_count <- function(config = CONFIG) {
   if (!is.null(config$core_count)) {
     return(config$core_count)
   }
+
+  # Check environment variables
+  slurm_cores <- Sys.getenv("SLURM_CPUS_PER_TASK")
+  if (slurm_cores != "") {
+    return(as.integer(slurm_cores))
+  }
+
+  mc_cores <- Sys.getenv("MC_CORES")
+  if (mc_cores != "") {
+    return(as.integer(mc_cores))
+  }
+
+  # Fallback to auto-detection
   if (get_os() == "windows") {
     return(parallel::detectCores() - 1)
   } else {
-    return(75)
+    # On Linux/Unix, default to 1 core unless explicitly told otherwise.
+    # This prevents 'core-bombing' shared login nodes or cluster nodes.
+    return(1)
   }
 }
 
