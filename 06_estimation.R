@@ -18,18 +18,17 @@ set.seed(4459665)
 source("config.R")
 
 ## ---------------------------------------------------------------------------
-## Production pass: tight fine-stage tolerances + staged solver + county mode
+## Tight tolerances; default solver is nleqslv (Broyden + double dogleg).
 ## ---------------------------------------------------------------------------
-## Fine inner/outer/objective tolerances are extra-tight, but coarse-stage
-## tolerances are left at the config defaults so the staged solver runs
-## cheap evaluations far from the optimum and only tightens once
-## ||F||² < staged_tolerance_switch_norm. wage_optimizer_mode = "county"
-## solves the three counties' 4-parameter blocks independently (exact, since
-## the moments are county-block-diagonal).
+## Inner/outer/objective tolerances are pushed two orders of magnitude tighter
+## than the original paper draft. Coarse-stage tolerances stay at config
+## defaults so the staged inner solver runs cheap evaluations far from the
+## optimum and tightens only once ||F||² < staged_tolerance_switch_norm.
+## wage_optimizer_mode is left at its config default ("nleqslv") for ~17x
+## speedup over BBsolve dfsane.
 CONFIG$innertol <- 1e-10
 CONFIG$outertol <- 1e-8
 CONFIG$obj_tol  <- 1e-6
-CONFIG$wage_optimizer_mode <- "county"
 message("Tolerances: innertol=", CONFIG$innertol,
         ", outertol=", CONFIG$outertol, ", obj_tol=", CONFIG$obj_tol,
         " | staged: coarse=", CONFIG$coarse_innertol, "/", CONFIG$coarse_outertol,

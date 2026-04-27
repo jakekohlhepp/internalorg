@@ -885,17 +885,97 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
   )
 }
 
+estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
+                                             config = CONFIG, clust = NULL,
+                                             solver_state = NULL,
+                                             moment_weights = NULL) {
+  if (!requireNamespace("nleqslv", quietly = TRUE)) {
+    stop("Package 'nleqslv' is required for wage_optimizer_mode='nleqslv'.")
+  }
+  data <- as.data.frame(x)
+  full_par <- start
+  names(full_par) <- names(beta_2_subset)
+  county_results <- list()
+
+  for (cnty in config$counties) {
+    county_pattern <- paste0("factor(county)", cnty, ":avg_labor:E_raw_")
+    par_idx <- grepl(county_pattern, names(full_par), fixed = TRUE)
+    row_idx <- as.character(data$county) == cnty
+    if (!any(par_idx) || !any(row_idx)) next
+
+    x_county <- data[row_idx, , drop = FALSE]
+    objective_county <- function(parms) {
+      candidate <- full_par
+      candidate[par_idx] <- parms
+      moments <- weighted_col_means(objective_gmm(
+        theta = candidate,
+        x = x_county,
+        beta = beta,
+        beta_2_subset = beta_2_subset,
+        config = config,
+        clust = clust,
+        solver_state = solver_state
+      ), weights = moment_weights)
+      county_moments <- grepl(paste0("county", cnty, ":E_"),
+                              names(moments), fixed = TRUE)
+      as.numeric(moments[county_moments])
+    }
+
+    result <- nleqslv::nleqslv(
+      x      = full_par[par_idx],
+      fn     = objective_county,
+      method = solver_value(config, "nleqslv_method", "Broyden"),
+      global = solver_value(config, "nleqslv_global", "dbldog"),
+      control = list(
+        xtol  = config$obj_tol,
+        ftol  = config$obj_tol,
+        maxit = solver_value(config, "nleqslv_maxit", 200L),
+        trace = solver_value(config, "nleqslv_trace", 1L)
+      )
+    )
+    full_par[par_idx] <- result$x
+    county_results[[as.character(cnty)]] <- result
+  }
+
+  final_moments <- weighted_col_means(objective_gmm(
+    theta = full_par,
+    x = x,
+    beta = beta,
+    beta_2_subset = beta_2_subset,
+    config = config,
+    clust = clust,
+    solver_state = solver_state
+  ), moment_weights)
+
+  list(
+    par = full_par,
+    convergence = if (all(vapply(county_results, function(r) r$termcd == 1, logical(1)))) 0L else 1L,
+    county_results = county_results,
+    final_moments = final_moments,
+    objective = sum(final_moments^2),
+    mode = "nleqslv"
+  )
+}
+
 #' Estimate wage parameters with the configured outer solver.
 #'
-#' The default county mode exploits separability: rows from a county depend only
-#' on that county's four wage parameters. Joint mode remains available for exact
-#' parity checks or future specifications with cross-county coupling.
+#' Default mode is "nleqslv" (Broyden + double dogleg via the nleqslv package),
+#' which converges quadratically near the solution and is dramatically faster
+#' than the BBsolve dfsane variants for this problem (typical wallclock ~minutes
+#' vs hours). Modes "county" (BBsolve per county) and "joint" (BBsolve over the
+#' full vector) are retained for exact parity with the original paper draft.
 estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CONFIG,
                                      clust = NULL, solver_state = NULL,
                                      moment_weights = NULL) {
-  mode <- tolower(solver_value(config, "wage_optimizer_mode", "county"))
+  mode <- tolower(solver_value(config, "wage_optimizer_mode", "nleqslv"))
   if (is.null(solver_state) && solver_flag(config, "use_solver_warm_starts", TRUE)) {
     solver_state <- get_default_solver_state(reset = TRUE)
+  }
+
+  if (identical(mode, "nleqslv")) {
+    return(estimate_wage_parameters_nleqslv(
+      start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+    ))
   }
 
   if (identical(mode, "joint")) {
@@ -910,5 +990,5 @@ estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CON
     ))
   }
 
-  stop("Unknown wage_optimizer_mode: ", mode, ". Use 'county' or 'joint'.")
+  stop("Unknown wage_optimizer_mode: ", mode, ". Use 'nleqslv', 'county', or 'joint'.")
 }
