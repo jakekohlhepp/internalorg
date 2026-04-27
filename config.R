@@ -156,7 +156,11 @@ CONFIG <- list(
   staged_tolerance_switch_norm = as.numeric(Sys.getenv("JMP_STAGED_TOLERANCE_SWITCH_NORM", unset = "1e-3")),
   use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
-  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "joint"),
+  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "nleqslv"),
+  nleqslv_method = Sys.getenv("JMP_NLEQSLV_METHOD", unset = "Broyden"),
+  nleqslv_global = Sys.getenv("JMP_NLEQSLV_GLOBAL", unset = "dbldog"),
+  nleqslv_maxit = as.integer(Sys.getenv("JMP_NLEQSLV_MAXIT", unset = "200")),
+  nleqslv_trace = as.integer(Sys.getenv("JMP_NLEQSLV_TRACE", unset = "1")),
   county_optimizer_rounds = as.integer(Sys.getenv("JMP_COUNTY_OPTIMIZER_ROUNDS", unset = "1")),
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
