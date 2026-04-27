@@ -311,7 +311,13 @@ load_counterfactual_context <- function(extra_packages = NULL, config = CONFIG) 
 }
 
 attach_counterfactual_context <- function(context, env = parent.frame()) {
-  invisible(list2env(context, envir = env))
+  warning(
+    "attach_counterfactual_context() is deprecated because it hides variable ",
+    "provenance. Assign the needed context fields explicitly, e.g. ",
+    "working_data <- context$working_data.",
+    call. = FALSE
+  )
+  invisible(context)
 }
 
 get_counterfactual_focus_quarter <- function(config = CONFIG) {

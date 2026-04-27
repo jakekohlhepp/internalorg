@@ -23,7 +23,15 @@ source("config.R")
 source("utils/counterfactuals_core.R")
 
 counterfactual_context <- load_counterfactual_context()
-attach_counterfactual_context(counterfactual_context)
+working_data <- counterfactual_context$working_data
+initial_wages <- counterfactual_context$initial_wages
+all_results <- counterfactual_context$all_results
+market_parms <- counterfactual_context$market_parms
+total_labor <- counterfactual_context$total_labor
+total_labor_orig <- counterfactual_context$total_labor_orig
+initial_guess <- counterfactual_context$initial_guess
+rho <- counterfactual_context$rho
+tild_theta <- counterfactual_context$tild_theta
 spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
 
 get_everything<-function(wage_guess, cnty, qy){
