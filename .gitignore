@@ -1,6 +1,8 @@
 # Data files (large, generated, or confidential)
 *.rds
 *.csv
+!mkdata/manual_rules/price_unit_corrections.csv
+!mkdata/manual_rules/service_classification_overrides.csv
 *.xlsx
 *.fst
 *.qs

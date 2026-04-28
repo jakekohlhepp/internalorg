@@ -202,7 +202,13 @@ findgamma <- function(i) {
 if (pl_on) {
   if (get_os() == "windows") {
     clust <- makeCluster(get_core_count(CONFIG))
-    clusterExport(clust, ls())
+    clusterExport(
+      clust,
+      c("CONFIG", "full_unsmoothed", "tild_theta", "start_gamma_found",
+        "max_gamma_found", "innertol", "outertol", "findgamma",
+        "bisection", "spec_log"),
+      envir = environment()
+    )
     clusterEvalQ(clust, library("data.table"))
     clusterEvalQ(clust, library("SQUAREM"))
 

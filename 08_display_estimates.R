@@ -171,10 +171,8 @@ names(final_coefs) <- names(point_estimates)[(nrow(beta) + 13):length(point_esti
 
 
 if (get_os() == "windows") {
-  clust <- makeCluster(get_core_count(CONFIG))
+  clust <- make_windows_solver_cluster(CONFIG)
   on.exit(stopCluster(clust), add = TRUE)
-  clusterExport(clust, ls())
-  invisible(clusterEvalQ(clust, library("SQUAREM")))
 } else {
   clust <- NULL
 }

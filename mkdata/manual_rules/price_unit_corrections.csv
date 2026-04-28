@@ -1,0 +1,3 @@
+business_id,min_price,divisor,reason
+eee49809-aae1-4a5f-be32-d2015dd5bd25,2000,100,Legacy import appears to record selected prices in cents rather than dollars.
+9bea0ea3-8fba-4b09-9762-8793cbdfa66f,1000,100,Legacy import appears to record selected prices in cents rather than dollars.

@@ -65,14 +65,18 @@ if (file.exists(bb_warmstart_path)) {
   }
 }
 
-.bb_orig_objective_gmm <- objective_gmm
-objective_gmm <- function(theta, ...) {
-  tryCatch(saveRDS(theta, bb_warmstart_path),
-           error = function(e) warning("BBsolve checkpoint write failed: ", e$message))
-  .bb_orig_objective_gmm(theta, ...)
+if (tolower(CONFIG$wage_optimizer_mode) %in% c("joint", "county")) {
+  .bb_orig_objective_gmm <- objective_gmm
+  objective_gmm <- function(theta, ...) {
+    tryCatch(saveRDS(theta, bb_warmstart_path),
+             error = function(e) warning("BBsolve checkpoint write failed: ", e$message))
+    .bb_orig_objective_gmm(theta, ...)
+  }
 }
 
+message("Starting Windows solver cluster...")
 clust <- make_windows_solver_cluster(CONFIG)
+message("Windows solver cluster ready.")
 if (!is.null(clust)) {
   on.exit(parallel::stopCluster(clust), add = TRUE)
 }

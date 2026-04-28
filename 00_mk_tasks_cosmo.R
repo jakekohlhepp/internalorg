@@ -64,14 +64,23 @@ stopifnot(tasks[price>999999]$raword==3538640)
 tasks<-tasks[raword!=3538640,]
 
 ## one business appears to have incorrect unit input (potentially legacy system import issue)
-## prices jump from under 1000USD for extension to 2000USD for trim.
-## change units from cents to dollars.
-tasks[business_id=='eee49809-aae1-4a5f-be32-d2015dd5bd25' & price>=2000, price:=price/100]
-
-## one business appears to have incorrect unit input (potentially legacy system import issue)
-## prices jump from 160USD to 1000USD
-## change units from cents to dollars.
-tasks[business_id=='9bea0ea3-8fba-4b09-9762-8793cbdfa66f' & price>=1000, price:=price/100]
+## change units from cents to dollars using auditable manifest rules.
+price_rule_path <- project_path("mkdata", "manual_rules", "price_unit_corrections.csv")
+assert_required_files(price_rule_path)
+price_rules <- fread(price_rule_path)
+assert_required_columns(
+  price_rules,
+  c("business_id", "min_price", "divisor", "reason"),
+  "price unit correction rules"
+)
+stopifnot(!anyDuplicated(price_rules$business_id))
+for (rule_idx in seq_len(nrow(price_rules))) {
+  rule <- price_rules[rule_idx]
+  tasks[
+    business_id == rule$business_id & price >= rule$min_price,
+    price := price / rule$divisor
+  ]
+}
 stopifnot(tasks$price<10000)
 
 # Standardize service names by adding spaces where the original data had concatenated names
@@ -149,30 +158,34 @@ tasks <- merge(tasks, classified, by = "service_performed", all.x = TRUE)
 # Create a unique row identifier for later grouping operations
 tasks[, helper_id := 1:.N]
 
-# Fix character encoding issues for specific service_ids
-# Define columns to overwrite for problematic service_ids (columns 1 and 6-11 from classified)
-# This fixes encoding/character issues where the merge didn't work properly
+# Fix character encoding issues for specific service_ids.
+# Define columns to overwrite for problematic service_ids (columns 1 and 6-11 from classified).
+# The source classifications live in a manifest keyed by stable raw_id, not by
+# mutable row position in the classified table.
 col <- colnames(classified)[c(1, 6:11)]
 
-# For service_id "ec581975-...", copy values from row 6 of classified
-n_fix <- nrow(tasks[service_id == "ec581975-a08a-42a5-9eae-4cefe23627bf"])
-if (n_fix > 0) {
-  tasks[service_id == "ec581975-a08a-42a5-9eae-4cefe23627bf",
-        (col) := classified[rep(6, n_fix), .SD, .SDcols = col]]
-}
+classification_rule_path <- project_path("mkdata", "manual_rules", "service_classification_overrides.csv")
+assert_required_files(classification_rule_path)
+classification_rules <- fread(classification_rule_path)
+assert_required_columns(
+  classification_rules,
+  c("service_id", "classified_raw_id", "reason"),
+  "service classification override rules"
+)
+stopifnot(!anyDuplicated(classification_rules$service_id))
 
-# For service_id "3a15cd78-...", copy values from row 20363 of classified
-n_fix <- nrow(tasks[service_id == "3a15cd78-dbea-4379-ae2d-13ed26c6d228"])
-if (n_fix > 0) {
-  tasks[service_id == "3a15cd78-dbea-4379-ae2d-13ed26c6d228",
-        (col) := classified[rep(20363, n_fix), .SD, .SDcols = col]]
-}
+for (rule_idx in seq_len(nrow(classification_rules))) {
+  rule <- classification_rules[rule_idx]
+  source_classification <- classified[raw_id == rule$classified_raw_id, .SD, .SDcols = col]
+  stopifnot(nrow(source_classification) == 1)
 
-# For service_id "001cb7db-...", copy values from row 9900 of classified
-n_fix <- nrow(tasks[service_id == "001cb7db-72b8-4744-8fe2-157441ed8e30"])
-if (n_fix > 0) {
-  tasks[service_id == "001cb7db-72b8-4744-8fe2-157441ed8e30",
-        (col) := classified[rep(9900, n_fix), .SD, .SDcols = col]]
+  n_fix <- nrow(tasks[service_id == rule$service_id])
+  if (n_fix > 0) {
+    tasks[
+      service_id == rule$service_id,
+      (col) := source_classification[rep(1, n_fix), .SD, .SDcols = col]
+    ]
+  }
 }
 
 # Verify that only 1 row has NA for service_performed after the merge (expected data quality check)
