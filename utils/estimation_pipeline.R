@@ -429,7 +429,28 @@ make_windows_solver_cluster <- function(config = CONFIG) {
   }
 
   clust <- parallel::makeCluster(get_core_count(config))
-  parallel::clusterExport(clust, ls(envir = .GlobalEnv), envir = .GlobalEnv)
+  worker_exports <- c(
+    "CONFIG",
+    "get_initial_E",
+    "get_task_mix_cols",
+    "get_E_raw_cols",
+    "get_os",
+    "get_core_count",
+    "build_E_formula",
+    "build_task_mix_sum",
+    "build_cost_matrix",
+    "compute_corner_solution",
+    "spec_log",
+    "normalize_worker_share",
+    "solver_flag",
+    "solver_value",
+    "ensure_rcpp_equilibrium_solver",
+    "solve_equilibrium",
+    "bisection",
+    "find_gamma_for_sindex",
+    "get_worker_allocation"
+  )
+  parallel::clusterExport(clust, worker_exports, envir = .GlobalEnv)
   invisible(parallel::clusterEvalQ(clust, {
     library("data.table")
     library("SQUAREM")
