@@ -119,13 +119,13 @@ CONFIG <- list(
   # Tolerance and control parameters
   # ---------------------------------------------------------------------------
   # Inner fixed-point tolerance
-  innertol = 1e-06,
+  innertol = 1e-10,
 
   # Bisection tolerance for gamma
-  outertol = 1e-04,
+  outertol = 1e-08,
 
   # Outer optimization objective tolerance
-  obj_tol = 1e-04,
+  obj_tol = 1e-06,
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
   # full BBsolve pass by default; set JMP_SKIP_STRUCTURAL_OPTIMIZER=true only for
