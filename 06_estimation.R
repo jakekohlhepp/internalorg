@@ -44,10 +44,11 @@ rm(estimation_objects)
 
 ## get starting point.
 beta_2_subset <- readRDS(file.path(CONFIG$prep_output_dir, "seeit_bb.rds"))
-names(beta_2_subset) <- rownames(beta_2)[grep(
-  "avg_labor:E_raw_[2-9]{1}\\d{0,3}",
-  rownames(beta_2)
-)]
+wage_terms <- paste0(":avg_labor:E_raw_", 2:CONFIG$n_worker_types, "$")
+wage_idx <- Reduce(`|`, lapply(wage_terms, grepl, rownames(beta_2)))
+names(beta_2_subset) <- rownames(beta_2)[wage_idx]
+stopifnot(length(beta_2_subset) == sum(wage_idx),
+          length(beta_2_subset) > 0)
 
 ## ---------------------------------------------------------------------------
 ## BBsolve warm-restart checkpoint
@@ -65,13 +66,24 @@ if (file.exists(bb_warmstart_path)) {
   }
 }
 
-if (tolower(CONFIG$wage_optimizer_mode) %in% c("joint", "county")) {
+if (isTRUE(CONFIG$bb_checkpoint_enabled) &&
+    tolower(CONFIG$wage_optimizer_mode) %in% c("joint", "county")) {
   .bb_orig_objective_gmm <- objective_gmm
+  .bb_checkpoint_call_count <- 0L
+  .bb_checkpoint_every <- max(1L, as.integer(CONFIG$bb_checkpoint_every))
   objective_gmm <- function(theta, ...) {
-    tryCatch(saveRDS(theta, bb_warmstart_path),
-             error = function(e) warning("BBsolve checkpoint write failed: ", e$message))
+    .bb_checkpoint_call_count <<- .bb_checkpoint_call_count + 1L
+    if (.bb_checkpoint_call_count %% .bb_checkpoint_every == 1L) {
+      tryCatch({
+        tmp_path <- paste0(bb_warmstart_path, ".tmp")
+        saveRDS(theta, tmp_path)
+        file.rename(tmp_path, bb_warmstart_path)
+      }, error = function(e) warning("BBsolve checkpoint write failed: ", e$message))
+    }
     .bb_orig_objective_gmm(theta, ...)
   }
+  message("BBsolve checkpoint enabled: writing every ",
+          .bb_checkpoint_every, " call(s) to ", bb_warmstart_path)
 }
 
 message("Starting Windows solver cluster...")

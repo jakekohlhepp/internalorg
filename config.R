@@ -166,6 +166,18 @@ CONFIG <- list(
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
 
   # ---------------------------------------------------------------------------
+  # BBsolve warm-restart checkpoint (debugging only)
+  # ---------------------------------------------------------------------------
+  # When TRUE and wage_optimizer_mode is "joint" or "county", every Nth call to
+  # objective_gmm writes the current theta to mkdata/data/06_bb_warmstart.rds via
+  # an atomic temp-rename, so an interrupted BBsolve run can be resumed from the
+  # last checkpoint. Default is FALSE because the per-evaluation disk I/O is
+  # only useful when actively debugging long BB runs.
+  bb_checkpoint_enabled = tolower(Sys.getenv("JMP_BB_CHECKPOINT_ENABLED", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  bb_checkpoint_every = as.integer(Sys.getenv("JMP_BB_CHECKPOINT_EVERY", unset = "10")),
+
+  # ---------------------------------------------------------------------------
   # Bootstrap execution
   # ---------------------------------------------------------------------------
   bootstrap_reps = as.integer(Sys.getenv("JMP_BOOTSTRAP_REPS", unset = "200")),

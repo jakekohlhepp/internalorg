@@ -896,6 +896,7 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
   full_par <- start
   names(full_par) <- names(beta_2_subset)
   county_results <- list()
+  moment_weights <- normalize_moment_weights(moment_weights, nrow(data))
 
   for (cnty in config$counties) {
     county_pattern <- paste0("factor(county)", cnty, ":avg_labor:E_raw_")
@@ -904,6 +905,7 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
     if (!any(par_idx) || !any(row_idx)) next
 
     x_county <- data[row_idx, , drop = FALSE]
+    county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
     objective_county <- function(parms) {
       candidate <- full_par
       candidate[par_idx] <- parms
@@ -915,7 +917,7 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
         config = config,
         clust = clust,
         solver_state = solver_state
-      ), weights = moment_weights)
+      ), weights = county_weights)
       county_moments <- grepl(paste0("county", cnty, ":E_"),
                               names(moments), fixed = TRUE)
       as.numeric(moments[county_moments])
