@@ -20,11 +20,15 @@ innertol<-1e-08
 outertol<-1e-04
 
 source("config.R")
+source("utils/logging.R")
 source("utils/counterfactuals_core.R")
+
+log_init("13_counterfactual_prep.R")
+script_success <- FALSE
+on.exit(log_complete(script_success), add = TRUE)
 
 load_counterfactual_packages()
 ensure_counterfactual_dirs()
-spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
 
 
 ## need to get back employee count
@@ -120,41 +124,13 @@ working_data[, org_cost:=ifelse(is.finite(gamma_invert),gamma_invert*s_index*avg
 
 ## Compute amount of each type.
 get_demands<-function(a1, a2, a3, a4, a5, county,quarter_year,gamma){
-  alpha<-c(a1, a2, a3, a4,a5)
-  if (is.finite(gamma) & gamma>0 & !is.na(gamma)){
-    
-    alpha<-c(a1, a2, a3, a4,a5)
-    ## this function will return matrix given gamma
-    A<-exp(-1/gamma*(tild_theta[[county]][[as.character(quarter_year)]]) )
-    E<-rep(0.2, 5)
-    A[A>=Inf]<-1e16
-    A[A<=0]<-1e-16
-    fxpt<-function(p){
-      C<-colSums(t(A)*alpha/colSums(A*p))
-      return(p*C)
-    }
-    for (i in 1:1000000){
-      E_old<-E
-      E<-fxpt(E_old)
-      if (all(abs(E-E_old)<innertol)) break
-    }
-    B<-t(t(A)*alpha/colSums(A*E))*E
-  } else if (is.infinite(gamma) | is.na(gamma) | is.nan(gamma)){
-    # max frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    B[which.min(rowSums(t(t(tild_theta[[county]][[as.character(quarter_year)]])*alpha ))),]<-alpha
-  } else{
-    # no frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    for (col in 1:5){
-      B[which.min(tild_theta[[county]][[as.character(quarter_year)]][,col]),col]<-alpha[col]
-    }
-  }
-  
-  E<-rowSums(B)
-  B[abs(B)<1e-16]<-0
-  Brel<-t(t(B/E)/alpha)
-  return(c(E,sum(B*spec_log(Brel))) )
+  counterfactual_assignment_vector(
+    c(a1, a2, a3, a4, a5),
+    tild_theta[[county]][[as.character(quarter_year)]],
+    gamma,
+    innertol,
+    include_s_index = TRUE
+  )
 }
 for (i in 1:nrow(working_data)){
   working_data[i,c("E_1", "E_2", "E_3", "E_4", "E_5", "s_pred") := as.list(get_demands(task_mix_1, task_mix_2, task_mix_3, task_mix_4, task_mix_5, county,quarter_year, gamma_invert)) ]
@@ -225,57 +201,24 @@ solve_wages<-function(wage_guess){
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
   ## swepe ere, because it improve snumericla performance. undo when calcing quality.
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
   
   solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-    alpha<-c(a1, a2, a3, a4,a5)
-    if (is.finite(gamma) & gamma>0){
-      
-      alpha<-c(a1, a2, a3, a4,a5)
-      ## this function will return matrix given gamma
-      A<-exp(-1/gamma*(new_tild_theta) )
-      E<-rep(0.2, 5)
-      A[A>=Inf]<-1e16
-      A[A<=0]<-1e-16
-      fxpt<-function(p){
-        C<-colSums(t(A)*alpha/colSums(A*p))
-        return(p*C)
-      }
-      #for (i in 1:1000000){
-        #E_old<-E
-        #E<-fxpt(E_old)
-        #if (all(abs(E-E_old)<innertol)) break
-      #}
-      E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-      
-      B<-t(t(A)*alpha/colSums(A*E))*E
-    } else if (gamma==0){
-      # no frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      for (col in 1:5){
-        B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-      }
-    } else{
-      # max frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-    }
-    E<-rowSums(B)
-    B[abs(B)<1e-16]<-0
-    Brel<-t(t(B/E)/alpha)
-    ## compute endogenous cost and quality components.
-    # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
-                                     0)
-    qendog<-sum(B*new_theta)
-    return(list(c_endog=cendog,q_endog=qendog,E_1=E[1],
-                E_2=E[2], E_3=E[3], E_4=E[4], E_5=E[5]))
+    counterfactual_org_values(
+      c(a1, a2, a3, a4, a5),
+      gamma,
+      new_tild_theta,
+      new_theta,
+      wage_guess,
+      innertol
+    )
   })
   
   counter_res[, c("c_endog", "q_endog",
@@ -288,15 +231,6 @@ solve_wages<-function(wage_guess){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   ## from conlon
   old_p<-counter_res$cust_price
@@ -311,7 +245,7 @@ solve_wages<-function(wage_guess){
     #old_p<-new_p
   #}
   #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   
   
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
@@ -321,20 +255,7 @@ solve_wages<-function(wage_guess){
                                    tot_3=sum(weight*new_share*CSPOP*E_3*avg_labor),tot_4=sum(weight*new_share*CSPOP*E_4*avg_labor),
                                    tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
   
-  stopifnot(nrow(new_total_labor)==1)
-  names_mat<-copy(new_total_labor)
-  names_mat[, tot_1:=paste0(cnty,"-", qy, "-", "1")]
-  names_mat[, tot_2:=paste0(cnty,"-", qy, "-", "2")]
-  names_mat[, tot_3:=paste0(cnty,"-", qy, "-", "3")]
-  names_mat[, tot_4:=paste0(cnty,"-", qy, "-", "4")]
-  names_mat[, tot_5:=paste0(cnty,"-", qy, "-", "5")]
-  labor_clearing<-as.numeric(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")]))
-  names_clearing<-as.character(as.matrix(names_mat))
-  #labor_clearing<-sum(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")])^2)
-  
-  names(labor_clearing)<-names_clearing
-  
-  return(labor_clearing)
+  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
 }
 
 solve_wage_abs<-function(x){
@@ -349,192 +270,24 @@ res_wages<-new_counterfactual_wages_grid(
 
 
 
-for (cnty in c('36061') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))],
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=10000, M=c(10,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
+for (cnty in c("36061", "6037", "17031")) {
+  for (qy in 2021.2) {
+    print(paste("*******", cnty, qy, "- nleqslv wage solve"))
+    start_wages <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
+    quad_wages <- counterfactual_solve_wage_market(
+      solve_wages,
+      start_wages,
+      label = paste("13", cnty, qy)
+    )
 
-for (cnty in c('36061')){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  Refine"))
-    quad_wages<-broyden(solve_wages, as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),maxiter=1000 )
-    if (all(quad_wages$zero>0)){
-      print("Successful final refine first try.")
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$zero)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$fnorm]
-    } else{
-      
-    }
-    
-    
-    
-    
-  }
-}
-
-for (cnty in c('36061') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1, M=c(10,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-## for los angeles, use higher threshold
-
-
-
-for (cnty in c('6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))],
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=500000, M=c(5,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-for (cnty in c('6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=100000, M=c(10,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-
-for (cnty in c('6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=50000, M=c(50,5,10,20,100)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-
-for (cnty in c('6037')){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  Refine"))
-    quad_wages<-broyden(solve_wages, as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),maxiter=1000 )
-    if (all(quad_wages$zero>0)){
-      print("Successful final refine first try.")
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$zero)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$fnorm]
-    } else{
-      
-    }
-    
-    
-    
-    
-  }
-}
-
-
-for (cnty in c('6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=30, tol=1, M=c(2,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-
-for (cnty in c('17031') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))],
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=50, tol=500000, M=c(100,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-for (cnty in c('17031') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=10000, M=c(100,20,5,50)))
-    if (all(quad_wages$par>0)){
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$residual]
-    } else{
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))])]
-      res_wages[quarter_year==qy & county==cnty, fval:=sqrt(sum((solve_wages(initial_guess[grep(paste0("^",cnty,"-",qy), names(initial_guess))]))^2))]
-    }
-    
-  }
-}
-
-for (cnty in c('17031')){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  Refine"))
-    quad_wages<-broyden(solve_wages, as.numeric(res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4","w5")]),maxiter=1000 )
-    if (quad_wages$fnorm<=40 & all(quad_wages$zero>0)){
-      print("Successful final refine first try.")
-      res_wages[quarter_year==qy & county==cnty, c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$zero)]
-      res_wages[quarter_year==qy & county==cnty, fval:=quad_wages$fnorm]
-    } else{
-      
-    }
-    
-    
-    
-    
+    res_wages[
+      quarter_year == qy & county == cnty,
+      c("w1", "w2", "w3", "w4", "w5") := as.list(quad_wages$par)
+    ]
+    res_wages[
+      quarter_year == qy & county == cnty,
+      fval := quad_wages$residual
+    ]
   }
 }
 
@@ -548,3 +301,5 @@ save_counterfactual_rds(
   "05_00_working_data.rds",
   legacy_filename = "05_00_working_data.rds"
 )
+
+script_success <- TRUE

@@ -20,7 +20,12 @@ innertol<-1e-08
 outertol<-1e-04
 
 source("config.R")
+source("utils/logging.R")
 source("utils/counterfactuals_core.R")
+
+log_init("18_counterfactual_summary.R")
+script_success <- FALSE
+on.exit(log_complete(script_success), add = TRUE)
 
 counterfactual_context <- load_counterfactual_context(extra_packages = c("kableExtra"))
 working_data <- counterfactual_context$working_data
@@ -33,7 +38,6 @@ initial_guess <- counterfactual_context$initial_guess
 rho <- counterfactual_context$rho
 tild_theta <- counterfactual_context$tild_theta
 
-spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
 
 get_everything<-function(wage_guess, cnty, qy){
   
@@ -43,56 +47,28 @@ get_everything<-function(wage_guess, cnty, qy){
                                                                     "CSPOP")])
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
   
   solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-    alpha<-c(a1, a2, a3, a4,a5)
-    if (is.finite(gamma) & gamma>0){
-      
-      alpha<-c(a1, a2, a3, a4,a5)
-      ## this function will return matrix given gamma
-      A<-exp(-1/gamma*(new_tild_theta) )
-      E<-rep(0.2, 5)
-      A[A>=Inf]<-1e16
-      A[A<=0]<-1e-16
-      fxpt<-function(p){
-        C<-colSums(t(A)*alpha/colSums(A*p))
-        return(p*C)
-      }
-      #for (i in 1:1000000){
-      # E_old<-E
-      # E<-fxpt(E_old)
-      #if (all(abs(E-E_old)<innertol)) break
-      #}
-      E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-      
-      B<-t(t(A)*alpha/colSums(A*E))*E
-    } else if (gamma==0){
-      # no frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      for (col in 1:5){
-        B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-      }
-    } else{
-      # max frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-    }
-    E<-rowSums(B)
-    B[abs(B)<1e-16]<-0
-    Brel<-t(t(B/E)/alpha)
+    allocation <- counterfactual_assignment(new_tild_theta, c(a1, a2, a3, a4, a5), gamma, innertol)
+
+    E <- allocation$E
+
+    B <- allocation$B
+
     ## compute endogenous cost and quality components.
     # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                      0)
     qendog<-sum(B*new_theta)
-    return(list(c_endog=cendog,q_endog=qendog,s_index=sum(B*spec_log(Brel)),
+    return(list(c_endog=cendog,q_endog=qendog,s_index=counterfactual_entropy(B),
                 B_1_1=B[1,1], B_1_2=B[2,1], B_1_3=B[3,1], B_1_4=B[4,1], B_1_5=B[5,1],
                 B_2_1=B[1,2], B_2_2=B[2,2], B_2_3=B[3,2], B_2_4=B[4,2], B_2_5=B[5,2],
                 B_3_1=B[1,3], B_3_2=B[2,3], B_3_3=B[3,3], B_3_4=B[4,3], B_3_5=B[5,3],
@@ -115,18 +91,9 @@ get_everything<-function(wage_guess, cnty, qy){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -359,3 +326,6 @@ write_counterfactual_text(
   type = "tables",
   legacy_filename = "05_06_bytype_counterfactuals.tex"
 )
+
+
+script_success <- TRUE

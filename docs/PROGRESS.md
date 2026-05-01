@@ -1,6 +1,19 @@
 # Project Status
 
-Last updated: 2026-04-23
+Last updated: 2026-04-30
+
+## 2026-04-30 Counterfactual Refactor
+
+`12_validate.R` and `13_*.R` through `19_*.R` are point-estimate post-estimation
+programs. They read `results/data/06_parameters.rds` plus their upstream point
+estimate artifacts and do not consume bootstrap draws, standard errors, or any
+`07_bootstrap.R` output.
+
+The counterfactual scripts now share assignment, entropy, wage-adjusted skill
+matrix, and best-response price helpers from `utils/counterfactuals_core.R`.
+Those helpers call the same `solve_equilibrium()` implementation used earlier
+in the structural pipeline, so the core counterfactual allocation logic is
+defined once.
 
 ## Current State
 

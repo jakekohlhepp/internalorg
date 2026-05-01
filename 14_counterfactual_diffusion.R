@@ -20,7 +20,12 @@ innertol<-1e-08
 outertol<-1e-04
 
 source("config.R")
+source("utils/logging.R")
 source("utils/counterfactuals_core.R")
+
+log_init("14_counterfactual_diffusion.R")
+script_success <- FALSE
+on.exit(log_complete(script_success), add = TRUE)
 
 counterfactual_context <- load_counterfactual_context()
 working_data <- counterfactual_context$working_data
@@ -32,7 +37,6 @@ total_labor_orig <- counterfactual_context$total_labor_orig
 initial_guess <- counterfactual_context$initial_guess
 rho <- counterfactual_context$rho
 tild_theta <- counterfactual_context$tild_theta
-spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
 
 get_everything<-function(wage_guess, cnty, qy){
   
@@ -42,56 +46,28 @@ get_everything<-function(wage_guess, cnty, qy){
                                                                     "CSPOP")])
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
   
   solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-    alpha<-c(a1, a2, a3, a4,a5)
-    if (is.finite(gamma) & gamma>0){
-      
-      alpha<-c(a1, a2, a3, a4,a5)
-      ## this function will return matrix given gamma
-      A<-exp(-1/gamma*(new_tild_theta) )
-      E<-rep(0.2, 5)
-      A[A>=Inf]<-1e16
-      A[A<=0]<-1e-16
-      fxpt<-function(p){
-        C<-colSums(t(A)*alpha/colSums(A*p))
-        return(p*C)
-      }
-      #for (i in 1:1000000){
-      # E_old<-E
-      # E<-fxpt(E_old)
-      #if (all(abs(E-E_old)<innertol)) break
-      #}
-      E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-      
-      B<-t(t(A)*alpha/colSums(A*E))*E
-    } else if (gamma==0){
-      # no frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      for (col in 1:5){
-        B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-      }
-    } else{
-      # max frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-    }
-    E<-rowSums(B)
-    B[abs(B)<1e-16]<-0
-    Brel<-t(t(B/E)/alpha)
+    allocation <- counterfactual_assignment(new_tild_theta, c(a1, a2, a3, a4, a5), gamma, innertol)
+
+    E <- allocation$E
+
+    B <- allocation$B
+
     ## compute endogenous cost and quality components.
     # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                      0)
     qendog<-sum(B*new_theta)
-    return(list(c_endog=cendog,q_endog=qendog,s_index=sum(B*spec_log(Brel)),
+    return(list(c_endog=cendog,q_endog=qendog,s_index=counterfactual_entropy(B),
                 B_1_1=B[1,1], B_1_2=B[2,1], B_1_3=B[3,1], B_1_4=B[4,1], B_1_5=B[5,1],
                 B_2_1=B[1,2], B_2_2=B[2,2], B_2_3=B[3,2], B_2_4=B[4,2], B_2_5=B[5,2],
                 B_3_1=B[1,3], B_3_2=B[2,3], B_3_3=B[3,3], B_3_4=B[4,3], B_3_5=B[5,3],
@@ -114,18 +90,9 @@ get_everything<-function(wage_guess, cnty, qy){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -156,10 +123,11 @@ solve_reloc<-function(wage_guess){
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
   ## swepe ere, because it improve snumericla performance. undo when calcing quality.
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
@@ -170,7 +138,7 @@ solve_reloc<-function(wage_guess){
     Brel<-t(t(B/E)/colSums(B))
     ## compute endogenous cost and quality components.
     # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                      0)
     qendog<-sum(B*new_theta)
     return(list(c_endog=cendog,q_endog=qendog,E_1=E[1],
@@ -186,15 +154,6 @@ solve_reloc<-function(wage_guess){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   ## from conlon
   old_p<-counter_res$cust_price
@@ -209,7 +168,7 @@ solve_reloc<-function(wage_guess){
   #old_p<-new_p
   #}
   #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   
   
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
@@ -219,32 +178,16 @@ solve_reloc<-function(wage_guess){
                                    tot_3=sum(weight*new_share*CSPOP*E_3*avg_labor),tot_4=sum(weight*new_share*CSPOP*E_4*avg_labor),
                                    tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
   
-  stopifnot(nrow(new_total_labor)==1)
-  names_mat<-copy(new_total_labor)
-  names_mat[, tot_1:=paste0(cnty,"-", qy, "-", "1")]
-  names_mat[, tot_2:=paste0(cnty,"-", qy, "-", "2")]
-  names_mat[, tot_3:=paste0(cnty,"-", qy, "-", "3")]
-  names_mat[, tot_4:=paste0(cnty,"-", qy, "-", "4")]
-  names_mat[, tot_5:=paste0(cnty,"-", qy, "-", "5")]
-  labor_clearing<-as.numeric(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")]))
-  names_clearing<-as.character(as.matrix(names_mat))
-  #labor_clearing<-sum(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")])^2)
-  
-  names(labor_clearing)<-names_clearing
-  
-  return(labor_clearing)
+  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
 }
 for (cnty in c('36061','17031', '6037') ){
   for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_reloc, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=300000, M=c(10,20,5,50)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_reloc, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=100000, M=c(10,2,200,100,15)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_reloc, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1000, M=c(10,2,200,100,15)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_reloc, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1, M=c(10,2,200,100,15)))
+    print(paste("*******",cnty, qy, " -  Realloc nleqslv"))
+    quad_wages<-counterfactual_solve_wage_market(
+      solve_reloc,
+      as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
+      label = paste("14 realloc", cnty, qy)
+    )
     res_wages[quarter_year==qy & county==cnty & sol_type=="realloc", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
     res_wages[quarter_year==qy & county==cnty& sol_type=="realloc", fval:=quad_wages$residual]
     
@@ -261,53 +204,25 @@ solve_wages<-function(wage_guess){
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
   ## swepe ere, because it improve snumericla performance. undo when calcing quality.
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
   
   solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-    alpha<-c(a1, a2, a3, a4,a5)
-    if (is.finite(gamma) & gamma>0){
-      
-      alpha<-c(a1, a2, a3, a4,a5)
-      ## this function will return matrix given gamma
-      A<-exp(-1/gamma*(new_tild_theta) )
-      E<-rep(0.2, 5)
-      A[A>=Inf]<-1e16
-      A[A<=0]<-1e-16
-      fxpt<-function(p){
-        C<-colSums(t(A)*alpha/colSums(A*p))
-        return(p*C)
-      }
-      #for (i in 1:1000000){
-      #E_old<-E
-      #E<-fxpt(E_old)
-      #if (all(abs(E-E_old)<innertol)) break
-      #}
-      E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-      
-      B<-t(t(A)*alpha/colSums(A*E))*E
-    } else if (gamma==0){
-      # no frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      for (col in 1:5){
-        B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-      }
-    } else{
-      # max frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-    }
-    E<-rowSums(B)
-    B[abs(B)<1e-16]<-0
-    Brel<-t(t(B/E)/alpha)
+    allocation <- counterfactual_assignment(new_tild_theta, c(a1, a2, a3, a4, a5), gamma, innertol)
+
+    E <- allocation$E
+
+    B <- allocation$B
+
     ## compute endogenous cost and quality components.
     # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                      0)
     qendog<-sum(B*new_theta)
     return(list(c_endog=cendog,q_endog=qendog,E_1=E[1],
@@ -324,15 +239,6 @@ solve_wages<-function(wage_guess){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   ## from conlon
   old_p<-counter_res$cust_price
@@ -347,7 +253,7 @@ solve_wages<-function(wage_guess){
   #old_p<-new_p
   #}
   #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   
   
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
@@ -357,30 +263,17 @@ solve_wages<-function(wage_guess){
                                    tot_3=sum(weight*new_share*CSPOP*E_3*avg_labor),tot_4=sum(weight*new_share*CSPOP*E_4*avg_labor),
                                    tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
   
-  stopifnot(nrow(new_total_labor)==1)
-  names_mat<-copy(new_total_labor)
-  names_mat[, tot_1:=paste0(cnty,"-", qy, "-", "1")]
-  names_mat[, tot_2:=paste0(cnty,"-", qy, "-", "2")]
-  names_mat[, tot_3:=paste0(cnty,"-", qy, "-", "3")]
-  names_mat[, tot_4:=paste0(cnty,"-", qy, "-", "4")]
-  names_mat[, tot_5:=paste0(cnty,"-", qy, "-", "5")]
-  labor_clearing<-as.numeric(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")]))
-  names_clearing<-as.character(as.matrix(names_mat))
-  #labor_clearing<-sum(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")])^2)
-  
-  names(labor_clearing)<-names_clearing
-  
-  return(labor_clearing)
+  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
 }
 
 for (cnty in c('36061','17031') ){
   for (qy in 2021.2 ){
-    print(paste("*******DIFFUSION***",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=1000, M=c(100,10,20,5,50)))
-    quad_wages<-broyden(solve_wages, quad_wages$par,maxiter=1000 )
-    quad_wages<-BBsolve(quad_wages$zero,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=1, M=c(10,2,200,100,15)))
+    print(paste("*******DIFFUSION***",cnty, qy, " -  Reorg nleqslv"))
+    quad_wages<-counterfactual_solve_wage_market(
+      solve_wages,
+      as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
+      label = paste("14 reorg", cnty, qy)
+    )
     
     res_wages[quarter_year==qy & county==cnty & sol_type=="reorg", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
     res_wages[quarter_year==qy & county==cnty& sol_type=="reorg", fval:=quad_wages$residual]
@@ -390,29 +283,12 @@ for (cnty in c('36061','17031') ){
 
 for (cnty in c('6037') ){
   for (qy in 2021.2 ){
-    print(paste("*******DIFFUSION***",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[county==cnty & quarter_year==qy &sol_type=="realloc", c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=500000, M=c(10,2,200,100,15)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=200000, M=c(10,2,200,100,15)))
-    
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=100000, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=50000, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=20000, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=10000, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=5000, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=100, M=c(10,2,15,5,20)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1, M=c(10,2,15,5,20)))
-    quad_wages<-broyden(solve_wages, quad_wages$par,maxiter=10000 )
-    quad_wages<-BBsolve(quad_wages$zero,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1, M=c(100,2,15,5,20)))
+    print(paste("*******DIFFUSION***",cnty, qy, " -  Reorg nleqslv"))
+    quad_wages<-counterfactual_solve_wage_market(
+      solve_wages,
+      as.numeric(res_wages[county==cnty & quarter_year==qy &sol_type=="realloc", c("w1", "w2", "w3", "w4", "w5")]),
+      label = paste("14 reorg", cnty, qy)
+    )
     res_wages[quarter_year==qy & county==cnty & sol_type=="reorg", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
     res_wages[quarter_year==qy & county==cnty& sol_type=="reorg", fval:=quad_wages$residual]
     
@@ -434,56 +310,28 @@ get_prod<-function(wage_guess, cnty, qy,stype){
                                                                     "CSPOP")])
   
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
+  skill_matrices <- counterfactual_skill_matrices(wage_guess, cnty, market_parms, rho)
+
+  new_theta <- skill_matrices$theta
+
+  new_tild_theta <- skill_matrices$cost_matrix
   
   ## solve internal org
   
   if (stype=="reorg"){
     solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-      alpha<-c(a1, a2, a3, a4,a5)
-      if (is.finite(gamma) & gamma>0){
-        
-        alpha<-c(a1, a2, a3, a4,a5)
-        ## this function will return matrix given gamma
-        A<-exp(-1/gamma*(new_tild_theta) )
-        E<-rep(0.2, 5)
-        A[A>=Inf]<-1e16
-        A[A<=0]<-1e-16
-        fxpt<-function(p){
-          C<-colSums(t(A)*alpha/colSums(A*p))
-          return(p*C)
-        }
-        #for (i in 1:1000000){
-        # E_old<-E
-        # E<-fxpt(E_old)
-        #if (all(abs(E-E_old)<innertol)) break
-        #}
-        E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-        
-        B<-t(t(A)*alpha/colSums(A*E))*E
-      } else if (gamma==0){
-        # no frictions
-        B<-matrix(0, ncol=5, nrow=5)
-        for (col in 1:5){
-          B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-        }
-      } else{
-        # max frictions
-        B<-matrix(0, ncol=5, nrow=5)
-        B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-      }
-      E<-rowSums(B)
-      B[abs(B)<1e-16]<-0
-      Brel<-t(t(B/E)/alpha)
+      allocation <- counterfactual_assignment(new_tild_theta, c(a1, a2, a3, a4, a5), gamma, innertol)
+
+      E <- allocation$E
+
+      B <- allocation$B
+
       ## compute endogenous cost and quality components.
       # cost is wages plus org cost.
-      cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+      cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                        0)
       qendog<-sum(B*new_theta)
-      s_hold<-sum(B*spec_log(Brel))
+      s_hold<-counterfactual_entropy(B)
       ## for this only
       swept_theta<-sweep(new_theta,2,apply(new_theta,2,min))
       B<- B*swept_theta
@@ -511,10 +359,10 @@ get_prod<-function(wage_guess, cnty, qy,stype){
       Brel<-t(t(B/E)/colSums(B))
       ## compute endogenous cost and quality components.
       # cost is wages plus org cost.
-      cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
+      cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*counterfactual_entropy(B),
                                        0)
       qendog<-sum(B*new_theta)
-      s_hold<-sum(B*spec_log(Brel))
+      s_hold<-counterfactual_entropy(B)
       swept_theta<-sweep(new_theta,2,apply(new_theta,2,min))
       
       B<- B*swept_theta
@@ -549,18 +397,9 @@ get_prod<-function(wage_guess, cnty, qy,stype){
   # be careful about sign
   # in original draft, rho is positive.
   # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
-  }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol)]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -583,3 +422,6 @@ save_counterfactual_rds(
   "05_02_prod_diffusion.rds",
   legacy_filename = "05_02_prod_diffusion.rds"
 )
+
+
+script_success <- TRUE

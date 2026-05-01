@@ -21,6 +21,7 @@ find_counterfactual_project_root <- function(start_dir = getwd()) {
   repeat {
     has_config <- file.exists(file.path(current_dir, "config.R"))
     has_project <- file.exists(file.path(current_dir, "refactor_estimation.Rproj")) |
+      file.exists(file.path(current_dir, ".git")) |
       dir.exists(file.path(current_dir, ".git"))
 
     if (has_config & has_project) {
@@ -122,7 +123,12 @@ if (!identical(current_dir, project_root)) {
 
 source("config.R")
 
-if (activate_project_renv(project_root)) {
+skip_renv <- tolower(Sys.getenv("JMP_SKIP_RENV", unset = "false")) %in%
+  c("1", "true", "yes")
+
+if (skip_renv) {
+  message("Skipping renv activation because JMP_SKIP_RENV is set.")
+} else if (activate_project_renv(project_root)) {
   message("Activated renv environment from ", file.path("renv", "activate.R"))
 } else {
   warning("renv/activate.R not found. Using current library paths.")
@@ -172,7 +178,7 @@ counterfactual_steps <- list(
     label = "CF 00: Baseline Counterfactual Prep",
     script_name = "13_counterfactual_prep.R",
     enabled = RUN_CF_00_BASELINE,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "13_counterfactual_prep.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "13_counterfactual_prep.R"),
     required_inputs_any = baseline_inputs,
     outputs = c(
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -184,7 +190,7 @@ counterfactual_steps <- list(
     label = "CF 02: Management Diffusion",
     script_name = "14_counterfactual_diffusion.R",
     enabled = RUN_CF_02_DIFFUSION,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "14_counterfactual_diffusion.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "14_counterfactual_diffusion.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -200,7 +206,7 @@ counterfactual_steps <- list(
     label = "CF 03: Sales Tax",
     script_name = "15_counterfactual_sales_tax.R",
     enabled = RUN_CF_03_SALES_TAX,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "15_counterfactual_sales_tax.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "15_counterfactual_sales_tax.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -217,7 +223,7 @@ counterfactual_steps <- list(
     label = "CF 04: Immigration",
     script_name = "16_counterfactual_immigration.R",
     enabled = RUN_CF_04_IMMIGRATION,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "16_counterfactual_immigration.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "16_counterfactual_immigration.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -233,7 +239,7 @@ counterfactual_steps <- list(
     label = "CF 06A: Merger / Increased Concentration",
     script_name = "17_counterfactual_merger.R",
     enabled = RUN_CF_06_MERGER,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "17_counterfactual_merger.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "17_counterfactual_merger.R"),
     required_inputs_any = list(
       parameter_inputs,
       counterfactual_data_path("05_00_initial_wages.rds"),
@@ -249,7 +255,7 @@ counterfactual_steps <- list(
     label = "CF 06B: Counterfactual Summary Tables",
     script_name = "18_counterfactual_summary.R",
     enabled = RUN_CF_06_SUMMARY,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "18_counterfactual_summary.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "18_counterfactual_summary.R"),
     required_inputs_any = list(
       counterfactual_data_path("05_00_initial_wages.rds"),
       counterfactual_data_path("05_03_prod_initial.rds"),
@@ -272,7 +278,7 @@ counterfactual_steps <- list(
     label = "CF 07: Counterfactual Figures",
     script_name = "19_counterfactual_figures.R",
     enabled = RUN_CF_07_FIGURES,
-    dependencies = c("config.R", "utils/counterfactuals_core.R", "19_counterfactual_figures.R"),
+    dependencies = c("config.R", "utils/logging.R", "utils/counterfactuals_core.R", "19_counterfactual_figures.R"),
     required_inputs_any = list(
       counterfactual_data_path("05_00_initial_wages.rds"),
       counterfactual_data_path("05_00_working_data.rds"),

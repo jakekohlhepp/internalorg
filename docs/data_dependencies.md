@@ -20,6 +20,14 @@ The main data split is explicit:
 - `run_counterfactuals.R` orchestrates the `13_*.R` through `19_*.R` scenario
   scripts on top of `results/data/06_parameters.rds`
 
+Steps `09_invert_gammas.R` through `19_counterfactual_figures.R` use point
+estimates only. They do not read bootstrap draws, standard errors, or any
+`07_bootstrap.R` output. In the counterfactual block, assignment, entropy,
+wage-adjusted skill matrices, and best-response pricing are shared through
+`utils/counterfactuals_core.R`; the assignment helper calls the same
+`solve_equilibrium()` implementation used by the structural estimation
+pipeline.
+
 ## Flowchart
 
 ```mermaid

@@ -321,6 +321,7 @@ get_project_root <- function(start_dir = getwd()) {
   repeat {
     has_config <- file.exists(file.path(current_dir, "config.R"))
     has_project <- file.exists(file.path(current_dir, "refactor_estimation.Rproj")) |
+      file.exists(file.path(current_dir, ".git")) |
       dir.exists(file.path(current_dir, ".git"))
 
     if (has_config & has_project) {

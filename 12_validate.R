@@ -30,48 +30,25 @@ library('kableExtra')
 library('matrixStats')
 
 source('config.R')
+source('utils/logging.R')
+source('utils/counterfactuals_core.R')
+
+log_init("12_validate.R")
+script_success <- FALSE
+on.exit(log_complete(script_success), add = TRUE)
+load_counterfactual_packages(c("ggplot2", "gridExtra", "kableExtra", "matrixStats"))
 
 ensure_directory(file.path('results','data'))
 ensure_directory(file.path('results','out','tables'))
 ensure_directory(file.path('results','out','figures'))
 
-spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
-
 get_internals<-function(a1, a2, a3, a4, a5, county,gamma){
-  alpha<-c(a1, a2, a3, a4,a5)
-  if (is.finite(gamma) & gamma>0){
-    
-    alpha<-c(a1, a2, a3, a4,a5)
-    ## this function will return matrix given gamma
-    A<-exp(-1/gamma*(tild_theta[[county]]) )
-    E<-rep(0.2, 5)
-    A[A>=Inf]<-1e16
-    A[A<=0]<-1e-16
-    fxpt<-function(p){
-      C<-colSums(t(A)*alpha/colSums(A*p))
-      return(p*C)
-    }
-    for (i in 1:1000000){
-      E_old<-E
-      E<-fxpt(E_old)
-      if (all(abs(E-E_old)<innertol)) break
-    }
-    B<-t(t(A)*alpha/colSums(A*E))*E
-  } else if (gamma==0){
-    # no frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    for (col in 1:5){
-      B[which.min(tild_theta[[county]][,col]),col]<-alpha[col]
-    }
-  } else{
-    # max frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    B[which.min(rowSums(t(t(tild_theta[[county]])*alpha ))),]<-alpha
-  }
-  #E<-rowSums(B)
-  
-  
-  return(as.vector(B))
+  counterfactual_assignment_vector(
+    c(a1, a2, a3, a4, a5),
+    tild_theta[[county]],
+    gamma,
+    innertol
+  )
 }
 
 
@@ -106,7 +83,9 @@ for (i in 1:nrow(full_unsmoothed)){
                       "B_3_1", "B_3_2", "B_3_3", "B_3_4", "B_3_5",
                       "B_4_1", "B_4_2", "B_4_3", "B_4_4", "B_4_5",
                       "B_5_1", "B_5_2", "B_5_3", "B_5_4", "B_5_5") := as.list(get_internals(task_mix_1, task_mix_2, task_mix_3, task_mix_4, task_mix_5, county, gamma_invert)) ]
-  print(i)
+  if (i %% 1000 == 0 || i == nrow(full_unsmoothed)) {
+    log_message(sprintf("Computed model internals for %s of %s rows.", i, nrow(full_unsmoothed)))
+  }
 }
 
 ## save out with internals
@@ -237,3 +216,4 @@ ggplot(toplot)+geom_density_2d(aes(x=job_2,y=comb_3),bins=50,color="black")+
   facet_wrap(~group)
 ggsave(file.path("results","out","figures","12_bivariate_color_other3.png"), width=10, height=6, units="in")
 
+script_success <- TRUE
