@@ -14,6 +14,12 @@ prefixed_suffixes <- function(dt, prefix) {
 spec_log <- function(x) ifelse(x == 0 | x == -Inf | is.nan(x), 0, log(x))
 
 #' Apply a column-wise transformation using a prefix-to-prefix mapping
+#'
+#' @param dt data.table
+#' @param in_prefix prefix for input columns
+#' @param out_prefix prefix for output columns
+#' @param fn function to apply to each column suffix
+#' @param by optional character vector of grouping columns
 transform_cols <- function(dt, in_prefix, out_prefix, fn, by = NULL) {
   cols <- prefixed_cols(dt, in_prefix)
   suffixes <- gsub(paste0("^", in_prefix), "", cols)
@@ -29,6 +35,11 @@ transform_cols <- function(dt, in_prefix, out_prefix, fn, by = NULL) {
 }
 
 #' Sum prefixed columns within each group into one target column
+#'
+#' @param dt data.table
+#' @param source_prefix prefix for source columns to sum
+#' @param target_col character name of the output column
+#' @param by character vector of grouping columns
 compute_group_total_from_prefix <- function(dt, source_prefix, target_col, by) {
   dt[, (target_col) := 0]
   for (source_col in prefixed_cols(dt, source_prefix)) {
@@ -38,6 +49,10 @@ compute_group_total_from_prefix <- function(dt, source_prefix, target_col, by) {
 }
 
 #' Sum prefixed columns row-wise into one target column
+#'
+#' @param dt data.table
+#' @param source_prefix prefix for source columns
+#' @param target_col character name of the output column
 compute_row_total_from_prefix <- function(dt, source_prefix, target_col) {
   cols <- prefixed_cols(dt, source_prefix)
   if (!length(cols)) {
@@ -49,6 +64,9 @@ compute_row_total_from_prefix <- function(dt, source_prefix, target_col) {
 }
 
 #' Build the binary service-mix signature for task support
+#'
+#' @param dt data.table
+#' @param mix_prefix prefix for task mix columns
 build_service_mix_id <- function(dt, mix_prefix = "task_mix_") {
   dt[, service_mix_id := ""]
   for (suffix in prefixed_suffixes(dt, mix_prefix)) {
@@ -59,6 +77,10 @@ build_service_mix_id <- function(dt, mix_prefix = "task_mix_") {
 }
 
 #' Reshape wide local-type assignments into a long worker-type lookup
+#'
+#' @param label_final data.table containing wide firm-specific type labels
+#' @param n_worker_types number of worker types in the model
+#' @return A long-format data.table with worker_type assignments
 reshape_label_assignments <- function(label_final, n_worker_types) {
   label_final <- data.table::melt(
     data.table::copy(label_final),
@@ -73,6 +95,10 @@ reshape_label_assignments <- function(label_final, n_worker_types) {
 }
 
 #' Smallest cut level that yields at most k clusters
+#'
+#' @param mat matrix of features to cluster
+#' @param k maximum number of clusters
+#' @return numeric cut height for hclust
 within_firm_min <- function(mat, k) {
   if (nrow(mat) <= k) {
     return(c(0))
@@ -82,6 +108,10 @@ within_firm_min <- function(mat, k) {
 }
 
 #' Cluster workers within a firm-quarter
+#'
+#' @param mat matrix of features
+#' @param cut_level height at which to cut the dendrogram
+#' @return integer vector of cluster assignments
 within_firm_clust <- function(mat, cut_level) {
   if (nrow(mat) <= 1) {
     return(c(1))
@@ -91,6 +121,10 @@ within_firm_clust <- function(mat, cut_level) {
 }
 
 #' Normalize cluster build options for baseline vs bootstrap runs
+#'
+#' @param mode character "baseline" or "bootstrap"
+#' @param options list of additional options
+#' @return A list of normalized cluster settings
 normalize_cluster_options <- function(mode = c("baseline", "bootstrap"), options = list()) {
   mode <- match.arg(mode)
   defaults <- list(
@@ -101,6 +135,11 @@ normalize_cluster_options <- function(mode = c("baseline", "bootstrap"), options
 }
 
 #' Expand one row per firm-quarter into one row per worker type
+#'
+#' @param dt data.table
+#' @param cols_tokeep columns to preserve during expansion
+#' @param n_worker_types number of worker types
+#' @return An expanded data.table
 expand_to_all_worker_types <- function(dt, cols_tokeep, n_worker_types) {
   base_rows <- unique(dt[, ..cols_tokeep])
   if (!nrow(base_rows)) {
@@ -113,6 +152,9 @@ expand_to_all_worker_types <- function(dt, cols_tokeep, n_worker_types) {
 }
 
 #' Resolve the saved baseline lookup artifact or a raw lookup table
+#'
+#' @param worker_type_lookup list or data.table containing worker assignments
+#' @return A cleaned data.table lookup
 resolve_worker_type_lookup <- function(worker_type_lookup) {
   if (is.list(worker_type_lookup) && !inherits(worker_type_lookup, "data.table")) {
     if (!("worker_type_lookup" %in% names(worker_type_lookup))) {
@@ -131,6 +173,11 @@ resolve_worker_type_lookup <- function(worker_type_lookup) {
 }
 
 #' Build the graph object and shortest paths used for gamma normalization
+#'
+#' @param county_gamma_dt data.table of firm-type gamma components
+#' @param plot_path optional path to save a network plot
+#' @param edge_color color for graph edges
+#' @return A list containing the graph, shortest paths, and adjacency matrix
 build_qgraph_paths <- function(county_gamma_dt, plot_path = NULL, edge_color = "blue") {
   if (!requireNamespace("qgraph", quietly = TRUE)) {
     stop("Package qgraph is required to build gamma normalization.")
@@ -184,6 +231,14 @@ build_qgraph_paths <- function(county_gamma_dt, plot_path = NULL, edge_color = "
 }
 
 #' Add gamma normalization to the wide working data
+#'
+#' @param forgamma_verywide wide data for gamma normalization
+#' @param verywide_expanded wide expanded data
+#' @param staff_merged_within long data merged at type level
+#' @param supported_quarter_count number of quarters required for anchor firms
+#' @param config Configuration list
+#' @param cluster_options list of normalized cluster settings
+#' @return Updated verywide_expanded data.table with gamma_normalized column
 add_gamma_normalization <- function(
   forgamma_verywide,
   verywide_expanded,
@@ -295,6 +350,11 @@ add_gamma_normalization <- function(
 }
 
 #' Build the staff-task feature tables used by the clustering pipeline
+#'
+#' @param working data.table of raw transactions or task-level data
+#' @param config Configuration list
+#' @param smooth_parm optional smoothing parameter for durations
+#' @return A list of staff-task data tables and crosswalks
 build_staff_task_features <- function(working, config, smooth_parm = NULL) {
   working <- data.table::as.data.table(data.table::copy(working))
 
@@ -443,6 +503,11 @@ build_staff_task_features <- function(working, config, smooth_parm = NULL) {
 }
 
 #' Assign baseline worker types once on the unweighted sample
+#'
+#' @param staff_task staff-task data table
+#' @param staffnum_xwalk worker ID crosswalk
+#' @param config Configuration list
+#' @return A list containing labeled data, lookups, and normalization anchors
 assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
   staff_task <- data.table::as.data.table(data.table::copy(staff_task))
   staffnum_xwalk <- data.table::as.data.table(data.table::copy(staffnum_xwalk))
@@ -603,6 +668,14 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
 }
 
 #' Build the final working data from fixed worker-type labels
+#'
+#' @param staff_task staff-task data table
+#' @param worker_type_lookup worker type lookup table or artifact
+#' @param aux_data list containing cex, qcew, and crosswalk data
+#' @param config Configuration list
+#' @param mode character "baseline" or "bootstrap"
+#' @param options list of additional options
+#' @return A list containing the final wide and long working data sets
 build_working_from_labels <- function(
   staff_task,
   worker_type_lookup,
