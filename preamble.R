@@ -17,6 +17,11 @@ source("config.R")
 #'
 #' Constructs the effective cost matrix that combines wage premiums and skill
 #' requirements. The cost matrix is normalized so the minimum in each column is 0.
+#'
+#' @param theta named numeric vector of wage-premium parameters
+#' @param beta matrix of demand-side coefficients (rows named by parameter)
+#' @param config Configuration list
+#' @return A named list of cost matrices (worker x task) keyed by county
 build_cost_matrix <- function(theta, beta, config = CONFIG) {
   n_counties <- length(config$counties)
   n_w <- config$n_worker_types
@@ -50,6 +55,14 @@ build_cost_matrix <- function(theta, beta, config = CONFIG) {
 }
 
 #' Compute corner solution (maximum specialization)
+#'
+#' Finds the allocation where tasks are assigned entirely to the lowest-cost
+#' worker type, ignoring entropy regularization.
+#'
+#' @param cost_matrix matrix of effective costs (worker x task)
+#' @param alpha vector of task shares
+#' @param config Configuration list
+#' @return A list containing E (worker shares), B (allocation matrix), and entropy_bound
 compute_corner_solution <- function(cost_matrix, alpha, config = CONFIG) {
   n_w <- nrow(cost_matrix)
   n_t <- ncol(cost_matrix)
@@ -70,6 +83,9 @@ compute_corner_solution <- function(cost_matrix, alpha, config = CONFIG) {
 }
 
 #' Safe logarithm with log(0) = 0 convention
+#'
+#' @param x numeric vector or matrix
+#' @return numeric vector or matrix of same dimensions as x
 spec_log <- function(x) ifelse(x == 0 | is.nan(x), 0, log(x))
 
 ## One production solver source of truth. This file owns solve_equilibrium(),
@@ -83,6 +99,16 @@ source(project_path("utils", "estimation_pipeline.R"))
 ## 06_estimation.R pass those saved objects into this helper so sourcing
 ## preamble.R no longer mutates ambient session state. The actual linear solves
 ## use the rank-aware implementation in utils/estimation_pipeline.R.
+
+#' Build shared estimation setup for linear components
+#'
+#' Prepares the model matrices and solves the demand-side and price-adjustment
+#' linear parameters using rank-aware SVD solvers.
+#'
+#' @param working_data data.table containing the full sample
+#' @param estim_matrix data.table containing the estimation-ready sample
+#' @param config Configuration list
+#' @return A list containing estimated coefficients (beta, beta_2) and model matrices
 build_estimation_setup <- function(working_data, estim_matrix, config = CONFIG) {
   build_estimation_setup_rank_aware(working_data, estim_matrix, config = config)
 }
