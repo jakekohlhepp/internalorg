@@ -30,7 +30,6 @@ library('data.table')
 library('fixest')
 library('sf')
 library('ggplot2')
-library('ggthemes')
 library('stringr')
 
 # -----------------------------------------------------------------------------
@@ -168,7 +167,7 @@ ggplot(state_data_count, aes(map_id = region)) +
   geom_map(aes(fill = salons), map = states_map, color = "black") +
   scale_fill_gradientn(colours = c("white", "black")) +
   expand_limits(x = states_map$long, y = states_map$lat) +
-  theme_map() +
+  theme_void() +
   theme(legend.text = element_text(size = 18),
         legend.title = element_text(size = 18))
 ggsave("results/out/figures/03_coverage.png", width = 12, height = 6, units = "in")

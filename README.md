@@ -45,8 +45,8 @@ source("run_all.R")
 These scripts are still standalone and are not called by `run_all.R` yet:
 
 ```r
-source("01_01_stylized_facts.R")
-source("01_02_spatial_corr.R")
+source("02_stylized_facts.R")
+source("03_spatial_corr.R")
 ```
 
 ## Repository Layout
@@ -73,8 +73,8 @@ refactor_estimation/
 |-- 06_estimation.R
 |-- run_counterfactuals.R
 |-- utils/counterfactuals_core.R
-|-- 01_01_stylized_facts.R
-|-- 01_02_spatial_corr.R
+|-- 02_stylized_facts.R
+|-- 03_spatial_corr.R
 |-- archive/experimental/        # archived exploratory scripts, not in pipeline
 |-- docs/                        # active docs and reference materials
 |   |-- historical/             # archived review and refactor notes
