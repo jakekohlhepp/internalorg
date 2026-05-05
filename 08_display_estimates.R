@@ -147,6 +147,7 @@ kable(output[, -"variable"], "latex", align = "c", booktabs = TRUE, linesep = c(
 
 #### display targeted moments and the model output.
 rm(list = setdiff(ls(all.names = TRUE), c("point_estimates", "CONFIG")))
+source('config.R')  # re-load helper functions wiped by the rm() above
 spec_log <- function(x) ifelse(x == 0 | is.nan(x), 0, log(x))
 
 estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
