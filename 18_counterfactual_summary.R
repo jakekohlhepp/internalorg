@@ -126,7 +126,7 @@ get_everything<-function(wage_guess, cnty, qy){
   }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -359,3 +359,4 @@ write_counterfactual_text(
   type = "tables",
   legacy_filename = "05_06_bytype_counterfactuals.tex"
 )
+
