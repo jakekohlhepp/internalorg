@@ -125,7 +125,7 @@ get_everything<-function(wage_guess, cnty, qy){
   }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -208,7 +208,7 @@ solve_reloc<-function(wage_guess){
   #old_p<-new_p
   #}
   #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
   
   
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
@@ -219,36 +219,8 @@ solve_reloc<-function(wage_guess){
                                    tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
   
   stopifnot(nrow(new_total_labor)==1)
-  names_mat<-copy(new_total_labor)
-  names_mat[, tot_1:=paste0(cnty,"-", qy, "-", "1")]
-  names_mat[, tot_2:=paste0(cnty,"-", qy, "-", "2")]
-  names_mat[, tot_3:=paste0(cnty,"-", qy, "-", "3")]
-  names_mat[, tot_4:=paste0(cnty,"-", qy, "-", "4")]
-  names_mat[, tot_5:=paste0(cnty,"-", qy, "-", "5")]
-  labor_clearing<-as.numeric(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")]))
-  names_clearing<-as.character(as.matrix(names_mat))
-  #labor_clearing<-sum(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")])^2)
-  
-  names(labor_clearing)<-names_clearing
-  
-  return(labor_clearing)
+  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
 }
-for (cnty in c('36061','17031', '6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_reloc, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=1, M=c(10,20,5,50)))
-    if (any(quad_wages$par<0)){
-      quad_wages<-BBsolve(as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
-                          solve_reloc, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=0.1, M=c(2,5,10,15,20,30,40,50,100,200)))
-    }
-    res_wages[quarter_year==qy & county==cnty & sol_type=="realloc", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-    res_wages[quarter_year==qy & county==cnty& sol_type=="realloc", fval:=quad_wages$residual]
-    
-  }
-}
-
-
 
 ## one function for full solution
 solve_wages<-function(wage_guess){
@@ -283,9 +255,9 @@ solve_wages<-function(wage_guess){
         return(p*C)
       }
       #for (i in 1:1000000){
-      #E_old<-E
-      #E<-fxpt(E_old)
-      #if (all(abs(E-E_old)<innertol)) break
+        #E_old<-E
+        #E<-fxpt(E_old)
+        #if (all(abs(E-E_old)<innertol)) break
       #}
       E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
       
@@ -337,16 +309,16 @@ solve_wages<-function(wage_guess){
   old_p<-counter_res$cust_price
   #for (i in 1:10000000){
   #  temp_shares<- exp(counter_res$Q+rho[cnty]*old_p)
-  # temp_shares<-temp_shares/sum(counter_res$weight*temp_shares)
-  # big_G<- rho[cnty]*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=FALSE)*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=TRUE)
-  #big_Tri<-rho[cnty]*diag(temp_shares)
-  #new_p<-as.numeric(counter_res$C + solve(big_Tri)%*%t(diag(x=1, nrow=nrow(counter_res), ncol=nrow(counter_res))*big_G)%*%(old_p-counter_res$C)-solve(big_Tri)%*%temp_shares)
-  
-  # if (all(abs(new_p-old_p)<innertol)) break
-  #old_p<-new_p
+   # temp_shares<-temp_shares/sum(counter_res$weight*temp_shares)
+   # big_G<- rho[cnty]*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=FALSE)*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=TRUE)
+    #big_Tri<-rho[cnty]*diag(temp_shares)
+    #new_p<-as.numeric(counter_res$C + solve(big_Tri)%*%t(diag(x=1, nrow=nrow(counter_res), ncol=nrow(counter_res))*big_G)%*%(old_p-counter_res$C)-solve(big_Tri)%*%temp_shares)
+    
+   # if (all(abs(new_p-old_p)<innertol)) break
+    #old_p<-new_p
   #}
   #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
   
   
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
@@ -357,73 +329,44 @@ solve_wages<-function(wage_guess){
                                    tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
   
   stopifnot(nrow(new_total_labor)==1)
-  names_mat<-copy(new_total_labor)
-  names_mat[, tot_1:=paste0(cnty,"-", qy, "-", "1")]
-  names_mat[, tot_2:=paste0(cnty,"-", qy, "-", "2")]
-  names_mat[, tot_3:=paste0(cnty,"-", qy, "-", "3")]
-  names_mat[, tot_4:=paste0(cnty,"-", qy, "-", "4")]
-  names_mat[, tot_5:=paste0(cnty,"-", qy, "-", "5")]
-  labor_clearing<-as.numeric(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")]))
-  names_clearing<-as.character(as.matrix(names_mat))
-  #labor_clearing<-sum(as.matrix(new_total_labor-total_labor[county==cnty & quarter_year==qy ,-c("county", "quarter_year")])^2)
-  
-  names(labor_clearing)<-names_clearing
-  
-  return(labor_clearing)
+  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
 }
 
-for (cnty in c('36061','17031') ){
-  for (qy in 2021.2 ){
-    print(paste("*******",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(initial_wages[county==cnty & quarter_year==qy, c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=FALSE, noimp=200, tol=5000, M=c(100,10,20,5,50)))
-    quad_wages<-broyden(solve_wages, quad_wages$par,maxiter=1000 )
-    quad_wages<-BBsolve(quad_wages$zero,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=50, M=c(100,10,20,5,50)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=200, tol=1, M=c(100,10,20,5,50)))
-    res_wages[quarter_year==qy & county==cnty & sol_type=="reorg", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-    res_wages[quarter_year==qy & county==cnty& sol_type=="reorg", fval:=quad_wages$residual]
-    
+solve_wage_abs<-function(x){
+  return(sum(abs(solve_wages(x))))
+}
+
+
+
+for (cnty in CONFIG$counties) {
+  for (qy in get_counterfactual_focus_quarter()) {
+    print(paste("*******", cnty, qy, "- shared", "immigration", "realloc solve"))
+    start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy, c("w1", "w2", "w3", "w4", "w5")], use.names = FALSE))
+    quad_wages <- counterfactual_solve_wage_market(
+      solve_reloc,
+      start,
+      label = paste("immigration", "realloc", cnty, qy),
+      target_tol = CONFIG$counterfactual_wage_tol
+    )
+    counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "realloc")
   }
 }
 
-
-
-for (cnty in c('6037') ){
-  for (qy in 2021.2 ){
-    print(paste("*******immigration*****",cnty, qy, " -  First Try"))
-    quad_wages<-BBsolve(as.numeric(res_wages[county==cnty & quarter_year==qy &sol_type=="realloc", c("w1", "w2", "w3", "w4", "w5")]),
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=200000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=100000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=50000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=40000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=30000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=20000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=10000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=5000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=3000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=2000, M=seq(from=2, to=100, by=5)))
-    quad_wages<-BBsolve(quad_wages$par,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=1, M=seq(from=2, to=100, by=5)))
-    quad_wages<-broyden(solve_wages, quad_wages$par,maxiter=10000 )
-    quad_wages<-BBsolve(quad_wages$zero,
-                        solve_wages, control=list(maxit=10000,trace=TRUE, NM=TRUE, noimp=50, tol=1, M=seq(from=2, to=100, by=5)))
-    res_wages[quarter_year==qy & county==cnty & sol_type=="reorg", c("w1", "w2", "w3", "w4", "w5"):= as.list(quad_wages$par)]
-    res_wages[quarter_year==qy & county==cnty& sol_type=="reorg", fval:=quad_wages$residual]
-    
+for (cnty in CONFIG$counties) {
+  for (qy in get_counterfactual_focus_quarter()) {
+    print(paste("*******", cnty, qy, "- shared", "immigration", "reorg solve"))
+    realloc_start <- as.numeric(unlist(res_wages[county == cnty & quarter_year == qy & sol_type == "realloc", c("w1", "w2", "w3", "w4", "w5")], use.names = FALSE))
+    baseline_start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy, c("w1", "w2", "w3", "w4", "w5")], use.names = FALSE))
+    quad_wages <- counterfactual_solve_wage_market(
+      solve_wages,
+      realloc_start,
+      label = paste("immigration", "reorg", cnty, qy),
+      additional_starts = list(baseline_start),
+      target_tol = CONFIG$counterfactual_wage_tol
+    )
+    counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "reorg")
   }
 }
-
 save_counterfactual_rds(
   res_wages,
   "05_04_wages_immigration.rds",
@@ -567,7 +510,7 @@ get_prod<-function(wage_guess, cnty, qy,stype){
   }
   
   
-  counter_res[, newprice:=best_respond(cust_price, Q,C,weight)]
+  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
   counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
   counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
   
@@ -590,5 +533,10 @@ save_counterfactual_rds(
   "05_04_prod_immigration.rds",
   legacy_filename = "05_04_prod_immigration.rds"
 )
+
+
+
+
+
 
 
