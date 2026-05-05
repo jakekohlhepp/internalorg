@@ -52,3 +52,57 @@ test_that("rank_aware_2sls keeps coefficients finite with duplicated instruments
   expect_true(all(is.finite(beta)))
   expect_equal(nrow(beta), ncol(x))
 })
+
+test_that("rank_aware_2sls matches direct solve on estimation sample", {
+  sample_path <- file.path(
+    PROJECT_ROOT,
+    CONFIG$prep_output_dir,
+    "04_estimation_sample.rds"
+  )
+  skip_if_not(file.exists(sample_path))
+
+  estimation_sample <- readRDS(sample_path)
+  estim_matrix <- estimation_sample$estim_matrix
+
+  b_raw_cols <- names(estim_matrix)[grep("^B_raw_[0-9]_", names(estim_matrix))]
+  x_formula <- as.formula(paste0(
+    "~factor(county):cust_price+",
+    "factor(county):factor(quarter_year)+",
+    paste0("factor(county):avg_labor:", b_raw_cols, collapse = "+"),
+    "-1"
+  ))
+  z_formula <- as.formula(paste0(
+    "~factor(county):hausman_other_price+",
+    "factor(county):factor(quarter_year)+",
+    paste0("factor(county):avg_labor:", b_raw_cols, collapse = "+"),
+    "-1"
+  ))
+
+  x <- model.matrix(x_formula, data = estim_matrix)
+  z <- model.matrix(z_formula, data = estim_matrix)
+  y <- as.matrix(estim_matrix$log_rel_mkt)
+
+  x_hat <- z %*% solve(crossprod(z), crossprod(z, x))
+  beta_direct <- solve(crossprod(x, x_hat), crossprod(x_hat, y))
+  rownames(beta_direct) <- colnames(x)
+
+  beta_rank_aware <- suppressWarnings(
+    rank_aware_2sls(
+      x,
+      z,
+      y,
+      context = "estimation-sample demand IV regression"
+    )
+  )
+
+  expect_equal(beta_rank_aware, beta_direct, tolerance = 1e-8)
+
+  diagnostics <- rank_aware_direct_solve_diagnostics(
+    crossprod(x, x_hat),
+    crossprod(x_hat, y),
+    beta_direct
+  )
+  expect_equal(diagnostics$method, "solve")
+  expect_lt(diagnostics$relative_residual, 1e-8)
+  expect_true(is.finite(diagnostics$reciprocal_condition))
+})

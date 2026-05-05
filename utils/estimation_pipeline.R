@@ -1,3 +1,24 @@
+rank_aware_direct_solve_diagnostics <- function(a, b, solution) {
+  a <- as.matrix(a)
+  b <- as.matrix(b)
+  solution <- as.matrix(solution)
+
+  residual <- a %*% solution - b
+  denom <- norm(a, type = "F") * norm(solution, type = "F") +
+    norm(b, type = "F")
+  relative_residual <- if (denom > 0) {
+    norm(residual, type = "F") / denom
+  } else {
+    norm(residual, type = "F")
+  }
+
+  list(
+    method = "solve",
+    reciprocal_condition = tryCatch(rcond(a), error = function(e) NA_real_),
+    relative_residual = relative_residual
+  )
+}
+
 rank_aware_solve <- function(a, b, tolerance = sqrt(.Machine$double.eps),
                              context = "linear system", warn = TRUE) {
   a <- as.matrix(a)
@@ -25,7 +46,34 @@ rank_aware_solve <- function(a, b, tolerance = sqrt(.Machine$double.eps),
     direct <- as.matrix(direct)
     rownames(direct) <- colnames(a)
     colnames(direct) <- colnames(b)
-    return(direct)
+    diagnostics <- rank_aware_direct_solve_diagnostics(a, b, direct)
+
+    residual_tolerance <- sqrt(tolerance)
+    if (is.finite(diagnostics$relative_residual) &&
+        diagnostics$relative_residual <= residual_tolerance) {
+      if (warn &&
+          is.finite(diagnostics$reciprocal_condition) &&
+          diagnostics$reciprocal_condition < tolerance) {
+        warning(
+          context, " direct solve is ill-conditioned (rcond = ",
+          signif(diagnostics$reciprocal_condition, 3),
+          ") but has a small scaled residual (",
+          signif(diagnostics$relative_residual, 3),
+          "); retaining solve() result.",
+          call. = FALSE
+        )
+      }
+      return(direct)
+    }
+
+    if (warn) {
+      warning(
+        context, " direct solve returned a large scaled residual (",
+        signif(diagnostics$relative_residual, 3),
+        "); falling back to SVD minimum-norm solution.",
+        call. = FALSE
+      )
+    }
   }
 
   ## SVD min-norm fallback for genuinely rank-deficient systems.
