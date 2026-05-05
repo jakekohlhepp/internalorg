@@ -197,11 +197,9 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
   ## Identification guard: the excluded instrument(s) must retain residual
   ## variation after partialling out the exogenous controls. If they lie in
   ## the column span of the exog block, rank_aware_2sls would silently return
-  ## an SVD min-norm artifact rather than a meaningful 2SLS estimate. This
-  ## complements the rank_aware_solve fix above: that fix removed silent
-  ## truncation on full-rank ill-conditioned systems; this check fails loudly
-  ## if the IV setup is genuinely under-identified (e.g. instrument lives
-  ## entirely in the FE column span).
+  ## an SVD min-norm artifact rather than a meaningful 2SLS estimate. This is
+  ## the failure mode that produced the LA cost-matrix degeneracy (worker 1
+  ## cheapest everywhere) under the previously-saturated FE specification.
   exog_cols <- intersect(colnames(mm_1), colnames(z_mm_1))
   excluded_inst_cols <- setdiff(colnames(z_mm_1), colnames(mm_1))
   if (length(excluded_inst_cols) > 0L && length(exog_cols) > 0L) {
@@ -307,6 +305,29 @@ fit_demand_parameters <- function(working_data, config = CONFIG, weights = NULL)
   beta <- as.matrix(stats::coef(fit), ncol = 1)
   rownames(beta) <- names(stats::coef(fit))
   beta
+}
+
+is_uniform_weights <- function(weights, tolerance = sqrt(.Machine$double.eps)) {
+  if (is.null(weights)) {
+    return(TRUE)
+  }
+  weights <- as.numeric(weights)
+  if (length(weights) == 0 || anyNA(weights) || any(!is.finite(weights))) {
+    return(FALSE)
+  }
+  max(abs(weights - weights[1])) <= tolerance
+}
+
+build_weighted_estimation_setup <- function(working_data, estim_matrix,
+                                            config = CONFIG, weights = NULL) {
+  if (is_uniform_weights(weights)) {
+    return(build_estimation_setup(working_data, estim_matrix, config = config))
+  }
+
+  beta <- fit_demand_parameters(working_data, config, weights)
+  unweighted_setup <- build_estimation_setup(working_data, estim_matrix, config = config)
+  unweighted_setup$beta <- beta
+  unweighted_setup
 }
 
 extract_wage_start <- function(parameters, config = CONFIG) {
@@ -475,8 +496,16 @@ estimate_structural_parameters <- function(working_data, estim_matrix, min_wage_
                                            beta = NULL, beta_2_subset = NULL,
                                            skip_structural_optimizer = config$skip_structural_optimizer,
                                            solver_state = NULL) {
+  moment_weights <- if (is_uniform_weights(weights)) NULL else weights
+
   if (is.null(beta)) {
-    beta <- fit_demand_parameters(working_data, config, weights)
+    estimation_setup <- build_weighted_estimation_setup(
+      working_data,
+      estim_matrix,
+      config = config,
+      weights = moment_weights
+    )
+    beta <- estimation_setup$beta
   }
 
   if (is.null(beta_2_subset)) {
@@ -495,7 +524,7 @@ estimate_structural_parameters <- function(working_data, estim_matrix, min_wage_
       config = config,
       clust = clust,
       solver_state = solver_state,
-      moment_weights = weights
+      moment_weights = moment_weights
     )
   } else {
     wage_result <- list(par = beta_2_subset, convergence = NA_integer_)
@@ -513,7 +542,7 @@ estimate_structural_parameters <- function(working_data, estim_matrix, min_wage_
     min_wage_levels,
     config = config,
     clust = clust,
-    weights = weights,
+    weights = moment_weights,
     solver_state = solver_state
   )
 

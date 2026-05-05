@@ -161,6 +161,11 @@ CONFIG <- list(
   nleqslv_global = Sys.getenv("JMP_NLEQSLV_GLOBAL", unset = "dbldog"),
   nleqslv_maxit = as.integer(Sys.getenv("JMP_NLEQSLV_MAXIT", unset = "200")),
   nleqslv_trace = as.integer(Sys.getenv("JMP_NLEQSLV_TRACE", unset = "1")),
+  structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  structural_bound_guard_weight = as.numeric(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD_WEIGHT", unset = "10")),
+  structural_bound_guard_tol = as.numeric(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD_TOL", unset = "1e-10")),
+  optimizer_failure_penalty = as.numeric(Sys.getenv("JMP_OPTIMIZER_FAILURE_PENALTY", unset = "1e6")),
   county_optimizer_rounds = as.integer(Sys.getenv("JMP_COUNTY_OPTIMIZER_ROUNDS", unset = "1")),
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
