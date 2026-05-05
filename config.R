@@ -164,6 +164,14 @@ CONFIG <- list(
   county_optimizer_rounds = as.integer(Sys.getenv("JMP_COUNTY_OPTIMIZER_ROUNDS", unset = "1")),
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
+  counterfactual_wage_tol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_WAGE_TOL", unset = "0.01")),
+  counterfactual_nleqslv_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_NLEQSLV_MAXIT", unset = "400")),
+  counterfactual_bbsolve_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BBSOLVE_MAXIT", unset = "10000")),
+  counterfactual_broyden_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BROYDEN_MAXITER", unset = "1000")),
+  counterfactual_price_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_PRICE_MAX_ITER", unset = "10000")),
+  counterfactual_zero_gamma_floor = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_ZERO_GAMMA_FLOOR", unset = "0")),
+  counterfactual_smoke_mode = tolower(Sys.getenv("JMP_COUNTERFACTUAL_SMOKE_MODE", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
 
   # ---------------------------------------------------------------------------
   # BBsolve warm-restart checkpoint (debugging only)
