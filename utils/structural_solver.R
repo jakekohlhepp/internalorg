@@ -706,6 +706,88 @@ objective_gmm <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust 
   E_mat
 }
 
+structural_bound_diagnostics <- function(theta, x, beta, beta_2_subset,
+                                         config = CONFIG, weights = NULL) {
+  rows <- prepare_equilibrium_rows(x, config)
+  pre_parms <- theta
+  names(pre_parms) <- names(beta_2_subset)
+  tild_theta <- build_cost_matrix(pre_parms, beta, config)
+
+  unique_bound <- numeric(length(rows$unique_key))
+  for (u in seq_along(rows$unique_key)) {
+    row_idx <- rows$unique_first_row[u]
+    corner <- compute_corner_solution(
+      tild_theta[[rows$county[row_idx]]],
+      rows$alpha[row_idx, ],
+      config
+    )
+    unique_bound[u] <- corner$entropy_bound
+  }
+
+  bounds <- unique_bound[rows$unique_id]
+  violation <- pmax(rows$s_index - bounds, 0)
+  row_weights <- normalize_moment_weights(weights, rows$n)
+  if (is.null(row_weights)) {
+    row_weights <- rep(1 / rows$n, rows$n)
+  }
+
+  diagnostics <- data.table::data.table(
+    county = rows$county,
+    s_index = rows$s_index,
+    s_bound = bounds,
+    violation = violation,
+    weight = row_weights
+  )
+
+  tol <- solver_value(config, "structural_bound_guard_tol", 1e-10)
+  diagnostics[, .(
+    n = .N,
+    positive_s = sum(s_index > tol, na.rm = TRUE),
+    above_bound = sum(violation > tol, na.rm = TRUE),
+    above_bound_share = mean(violation > tol, na.rm = TRUE),
+    positive_bound_share = mean(s_bound > tol, na.rm = TRUE),
+    mean_s_index = sum(s_index * weight) / sum(weight),
+    mean_s_bound = sum(s_bound * weight) / sum(weight),
+    mean_violation = sum(violation * weight) / sum(weight),
+    max_violation = max(violation, na.rm = TRUE)
+  ), by = county]
+}
+
+structural_bound_moments <- function(theta, x, beta, beta_2_subset,
+                                     config = CONFIG, weights = NULL) {
+  diagnostics <- structural_bound_diagnostics(
+    theta,
+    x,
+    beta,
+    beta_2_subset,
+    config,
+    weights
+  )
+  out <- diagnostics$mean_violation
+  names(out) <- paste0("county", diagnostics$county, ":s_bound_violation")
+  out
+}
+
+structural_wage_objective_score <- function(moment_vector, theta, x, beta,
+                                            beta_2_subset, config = CONFIG,
+                                            weights = NULL) {
+  moment_score <- sum(as.numeric(moment_vector)^2)
+  if (!solver_flag(config, "structural_bound_guard_enabled", TRUE)) {
+    return(moment_score)
+  }
+
+  bound_moments <- structural_bound_moments(
+    theta,
+    x,
+    beta,
+    beta_2_subset,
+    config,
+    weights
+  )
+  moment_score + solver_value(config, "structural_bound_guard_weight", 10) *
+    sum(as.numeric(bound_moments)^2)
+}
+
 eval_moments <- function(theta, x, beta, beta_2_subset, config = CONFIG, clust = NULL,
                          solver_state = NULL) {
   rows <- prepare_equilibrium_rows(x, config)
@@ -895,8 +977,33 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
   data <- as.data.frame(x)
   full_par <- start
   names(full_par) <- names(beta_2_subset)
+  initial_full_par <- full_par
   county_results <- list()
   moment_weights <- normalize_moment_weights(moment_weights, nrow(data))
+  objective_config <- config
+  objective_config$use_solver_warm_starts <- FALSE
+  objective_config$use_fixedpoint_warm_starts <- FALSE
+  objective_config$use_staged_solver_tolerances <- FALSE
+
+  start_full_moments <- weighted_col_means(objective_gmm(
+    theta = initial_full_par,
+    x = x,
+    beta = beta,
+    beta_2_subset = beta_2_subset,
+    config = objective_config,
+    clust = clust,
+    solver_state = NULL
+  ), moment_weights)
+  start_full_objective <- sum(start_full_moments^2)
+  start_full_score <- structural_wage_objective_score(
+    start_full_moments,
+    initial_full_par,
+    x,
+    beta,
+    beta_2_subset,
+    objective_config,
+    moment_weights
+  )
 
   for (cnty in config$counties) {
     county_pattern <- paste0("factor(county)", cnty, ":avg_labor:E_raw_")
@@ -909,22 +1016,48 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
     objective_county <- function(parms) {
       candidate <- full_par
       candidate[par_idx] <- parms
-      moments <- weighted_col_means(objective_gmm(
-        theta = candidate,
-        x = x_county,
-        beta = beta,
-        beta_2_subset = beta_2_subset,
-        config = config,
-        clust = clust,
-        solver_state = solver_state
-      ), weights = county_weights)
+      moments <- tryCatch(
+        weighted_col_means(objective_gmm(
+          theta = candidate,
+                x = x_county,
+                beta = beta,
+                beta_2_subset = beta_2_subset,
+                config = objective_config,
+                clust = clust,
+                solver_state = NULL
+        ), weights = county_weights),
+        error = function(e) {
+          rep(solver_value(config, "optimizer_failure_penalty", 1e6),
+              length(beta_2_subset))
+        }
+      )
       county_moments <- grepl(paste0("county", cnty, ":E_"),
                               names(moments), fixed = TRUE)
-      as.numeric(moments[county_moments])
+      out <- as.numeric(moments[county_moments])
+      if (length(out) != sum(par_idx) || anyNA(out) || any(!is.finite(out))) {
+        out <- rep(solver_value(config, "optimizer_failure_penalty", 1e6),
+                   sum(par_idx))
+      }
+      out
     }
 
+    start_par <- full_par[par_idx]
+    start_moments <- objective_county(start_par)
+    start_objective <- sum(start_moments^2)
+    start_candidate <- full_par
+    start_candidate[par_idx] <- start_par
+    start_score <- structural_wage_objective_score(
+      start_moments,
+      start_candidate,
+      x_county,
+      beta,
+      beta_2_subset,
+      objective_config,
+      county_weights
+    )
+
     result <- nleqslv::nleqslv(
-      x      = full_par[par_idx],
+      x      = start_par,
       fn     = objective_county,
       method = solver_value(config, "nleqslv_method", "Broyden"),
       global = solver_value(config, "nleqslv_global", "dbldog"),
@@ -935,7 +1068,42 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
         trace = solver_value(config, "nleqslv_trace", 1L)
       )
     )
-    full_par[par_idx] <- result$x
+
+    final_moments_county <- objective_county(result$x)
+    final_objective_county <- sum(final_moments_county^2)
+    final_candidate <- full_par
+    final_candidate[par_idx] <- result$x
+    final_score_county <- structural_wage_objective_score(
+      final_moments_county,
+      final_candidate,
+      x_county,
+      beta,
+      beta_2_subset,
+      objective_config,
+      county_weights
+    )
+    accepted <- is.finite(final_score_county) &&
+      final_score_county <= start_score * (1 + sqrt(.Machine$double.eps))
+    result$start_objective <- start_objective
+    result$final_objective <- final_objective_county
+    result$start_score <- start_score
+    result$final_score <- final_score_county
+    result$accepted <- accepted
+
+    if (accepted) {
+      full_par[par_idx] <- result$x
+    } else {
+      warning(
+        "Rejected nleqslv wage update for county ", cnty,
+        " because it did not improve the bound-guarded weighted objective. ",
+        "start=", signif(start_objective, 6),
+        ", candidate=", signif(final_objective_county, 6),
+        ", start_score=", signif(start_score, 6),
+        ", candidate_score=", signif(final_score_county, 6),
+        call. = FALSE
+      )
+      result$x <- start_par
+    }
     county_results[[as.character(cnty)]] <- result
   }
 
@@ -944,17 +1112,51 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
     x = x,
     beta = beta,
     beta_2_subset = beta_2_subset,
-    config = config,
+    config = objective_config,
     clust = clust,
-    solver_state = solver_state
+    solver_state = NULL
   ), moment_weights)
+  final_objective <- sum(final_moments^2)
+  final_score <- structural_wage_objective_score(
+    final_moments,
+    full_par,
+    x,
+    beta,
+    beta_2_subset,
+    objective_config,
+    moment_weights
+  )
+  global_accepted <- is.finite(final_score) &&
+    final_score <= start_full_score * (1 + sqrt(.Machine$double.eps))
+
+  if (!global_accepted) {
+    warning(
+      "Rejected nleqslv wage solve because the full bound-guarded weighted objective worsened. ",
+      "start=", signif(start_full_objective, 6),
+      ", candidate=", signif(final_objective, 6),
+      ", start_score=", signif(start_full_score, 6),
+      ", candidate_score=", signif(final_score, 6),
+      call. = FALSE
+    )
+    full_par <- initial_full_par
+    final_moments <- start_full_moments
+    final_objective <- start_full_objective
+    final_score <- start_full_score
+  }
 
   list(
     par = full_par,
-    convergence = if (all(vapply(county_results, function(r) r$termcd == 1, logical(1)))) 0L else 1L,
+    convergence = if (
+      global_accepted &&
+        all(vapply(county_results, function(r) r$termcd == 1, logical(1)))
+    ) 0L else 1L,
     county_results = county_results,
     final_moments = final_moments,
-    objective = sum(final_moments^2),
+    objective = final_objective,
+    score = final_score,
+    start_objective = start_full_objective,
+    start_score = start_full_score,
+    global_accepted = global_accepted,
     mode = "nleqslv"
   )
 }
