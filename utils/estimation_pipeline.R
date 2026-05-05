@@ -2,6 +2,33 @@ rank_aware_solve <- function(a, b, tolerance = sqrt(.Machine$double.eps),
                              context = "linear system", warn = TRUE) {
   a <- as.matrix(a)
   b <- as.matrix(b)
+
+  ## Try a regular linear solve first. The previous SVD-only path applied the
+  ## LAPACK threshold ``max(dim) * max(SV) * tolerance`` directly to the raw
+  ## SVD, which assumes the columns share a common scale. In the demand-IV
+  ## crossproduct ``X'PzX`` they do NOT: county-quarter FE dummy crossproducts
+  ## have max SV ~ 2e7, while avg_labor x B_raw skill crossproducts sit in the
+  ## 1e-3 to 1e2 range, giving a condition number ~ 2e10. The naive threshold
+  ## then collapses to ~40 and silently dropped ~103 of 111 well-identified
+  ## directions, returning an SVD min-norm projection onto only the largest FE
+  ## dimensions. That was the root cause of the LA cost-matrix degeneracy:
+  ## worker-1 skill coefs were pinned near zero, making worker 1 the cheapest
+  ## at every task and the entropy bound = 0 for every LA salon. Falling back
+  ## to SVD only when ``solve()`` actually fails preserves the rank-aware
+  ## intent without paying the silent-truncation cost on full-rank but
+  ## ill-conditioned systems.
+  direct <- tryCatch(
+    suppressWarnings(solve(a, b)),
+    error = function(e) e
+  )
+  if (!inherits(direct, "error")) {
+    direct <- as.matrix(direct)
+    rownames(direct) <- colnames(a)
+    colnames(direct) <- colnames(b)
+    return(direct)
+  }
+
+  ## SVD min-norm fallback for genuinely rank-deficient systems.
   decomp <- svd(a)
 
   if (length(decomp$d) == 0 || max(decomp$d) == 0) {
@@ -118,6 +145,46 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
   colnames(e_match) <- c(e_col_names, "s_index", "county")
   e_mat <- model.matrix(build_E_formula(2:config$n_worker_types, include_s_index = TRUE),
                         data = e_match)
+
+  ## Identification guard: the excluded instrument(s) must retain residual
+  ## variation after partialling out the exogenous controls. If they lie in
+  ## the column span of the exog block, rank_aware_2sls would silently return
+  ## an SVD min-norm artifact rather than a meaningful 2SLS estimate. This
+  ## complements the rank_aware_solve fix above: that fix removed silent
+  ## truncation on full-rank ill-conditioned systems; this check fails loudly
+  ## if the IV setup is genuinely under-identified (e.g. instrument lives
+  ## entirely in the FE column span).
+  exog_cols <- intersect(colnames(mm_1), colnames(z_mm_1))
+  excluded_inst_cols <- setdiff(colnames(z_mm_1), colnames(mm_1))
+  if (length(excluded_inst_cols) > 0L && length(exog_cols) > 0L) {
+    exog_only <- z_mm_1[, exog_cols, drop = FALSE]
+    excluded_only <- z_mm_1[, excluded_inst_cols, drop = FALSE]
+    proj <- rank_aware_projection(
+      exog_only, excluded_only,
+      tolerance = tolerance,
+      context = "instrument identification check"
+    )
+    inst_residual <- excluded_only - proj
+    inst_residual_norms <- sqrt(colSums(inst_residual^2))
+    inst_norms <- sqrt(colSums(excluded_only^2))
+    relative_residual <- ifelse(inst_norms > 0,
+                                inst_residual_norms / inst_norms, 0)
+    collinear <- relative_residual < sqrt(tolerance)
+    if (any(collinear)) {
+      stop(
+        "Excluded instrument column(s) lie in the column space of the ",
+        "exogenous controls (no identifying variation after partialling ",
+        "out fixed effects and other exog controls): ",
+        paste(excluded_inst_cols[collinear], collapse = ", "),
+        ". This typically indicates the FE specification is too saturated ",
+        "relative to the variation in the instrument. Relative residual norms: ",
+        paste0(excluded_inst_cols[collinear], "=",
+               signif(relative_residual[collinear], 3),
+               collapse = ", "),
+        "."
+      )
+    }
+  }
 
   beta <- rank_aware_2sls(
     mm_1,
