@@ -967,6 +967,245 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
   )
 }
 
+#' Per-county wage solver that minimizes the bound-guarded ssq via optim
+#' Nelder-Mead with parameter scaling.
+#'
+#' Use case: when the per-county wage moment system has flat or saturated
+#' regions (e.g. LA where worker 3 gets priced out), nleqslv (a root-finder)
+#' stalls with termcd = 6 and returns extreme parameter values trying to
+#' satisfy the moment equations one-by-one. A minimizer on ||g||^2 sees a
+#' useful descent direction even at non-zero floors and finds clean
+#' interior solutions. Empirically (tests/wage_stage_minimizer_check.R) the
+#' LA wage block goes from ssq = 0.147 with extreme wages under nleqslv to
+#' ssq = 0.002 with sensible wages (all under 200) under this routine.
+#'
+#' Parscale defaults assume the wage parameters are O(50). Tune via
+#' ``min_optim_parscale_wage`` config entry if your scale differs.
+estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
+                                               config = CONFIG, clust = NULL,
+                                               solver_state = NULL,
+                                               moment_weights = NULL) {
+  data <- as.data.frame(x)
+  full_par <- start
+  names(full_par) <- names(beta_2_subset)
+  initial_full_par <- full_par
+  county_results <- list()
+  moment_weights <- normalize_moment_weights(moment_weights, nrow(data))
+  ## Keep the per-salon solver warm-starts ON: each Nelder-Mead step is a
+  ## small perturbation of the previous one, so the equilibrium solver
+  ## converges much faster from the cached gamma/E values. Disabling them
+  ## (as the nleqslv path does) made per-county runtime ~6x longer in
+  ## practice.
+  objective_config <- config
+
+  parscale_w <- solver_value(config, "min_optim_parscale_wage", 20)
+  maxit_per_county <- solver_value(config, "min_optim_maxit", 500L)
+  reltol <- solver_value(config, "min_optim_reltol", config$obj_tol)
+
+  start_full_moments <- weighted_col_means(objective_gmm(
+    theta = initial_full_par,
+    x = x,
+    beta = beta,
+    beta_2_subset = beta_2_subset,
+    config = objective_config,
+    clust = clust,
+    solver_state = NULL
+  ), moment_weights)
+  start_full_objective <- sum(start_full_moments^2)
+  start_full_score <- structural_wage_objective_score(
+    start_full_moments,
+    initial_full_par,
+    x,
+    beta,
+    beta_2_subset,
+    objective_config,
+    moment_weights
+  )
+
+  for (cnty in config$counties) {
+    county_pattern <- paste0("factor(county)", cnty, ":avg_labor:E_raw_")
+    par_idx <- grepl(county_pattern, names(full_par), fixed = TRUE)
+    row_idx <- as.character(data$county) == cnty
+    if (!any(par_idx) || !any(row_idx)) next
+
+    x_county <- data[row_idx, , drop = FALSE]
+    county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
+
+    objective_county_ssq <- function(parms) {
+      candidate <- full_par
+      candidate[par_idx] <- parms
+      moments <- tryCatch(
+        weighted_col_means(objective_gmm(
+          theta = candidate,
+          x = x_county,
+          beta = beta,
+          beta_2_subset = beta_2_subset,
+          config = objective_config,
+          clust = clust,
+          solver_state = NULL
+        ), weights = county_weights),
+        error = function(e) NULL
+      )
+      if (is.null(moments)) {
+        return(solver_value(config, "optimizer_failure_penalty", 1e6))
+      }
+      county_moments <- grepl(paste0("county", cnty, ":E_"),
+                              names(moments), fixed = TRUE)
+      v <- as.numeric(moments[county_moments])
+      if (anyNA(v) || any(!is.finite(v))) {
+        return(solver_value(config, "optimizer_failure_penalty", 1e6))
+      }
+      sum(v^2)
+    }
+
+    objective_county_vec <- function(parms) {
+      candidate <- full_par
+      candidate[par_idx] <- parms
+      moments <- weighted_col_means(objective_gmm(
+        theta = candidate,
+        x = x_county,
+        beta = beta,
+        beta_2_subset = beta_2_subset,
+        config = objective_config,
+        clust = clust,
+        solver_state = NULL
+      ), weights = county_weights)
+      county_moments <- grepl(paste0("county", cnty, ":E_"),
+                              names(moments), fixed = TRUE)
+      as.numeric(moments[county_moments])
+    }
+
+    start_par <- full_par[par_idx]
+    start_objective <- objective_county_ssq(start_par)
+    start_candidate <- full_par
+    start_candidate[par_idx] <- start_par
+    start_score <- structural_wage_objective_score(
+      objective_county_vec(start_par),
+      start_candidate,
+      x_county,
+      beta,
+      beta_2_subset,
+      objective_config,
+      county_weights
+    )
+
+    parscale_vec <- rep(parscale_w, length(start_par))
+    result <- tryCatch(
+      stats::optim(
+        par = start_par,
+        fn = objective_county_ssq,
+        method = "Nelder-Mead",
+        control = list(
+          maxit = maxit_per_county,
+          reltol = reltol,
+          parscale = parscale_vec,
+          trace = solver_value(config, "min_optim_trace", 0L)
+        )
+      ),
+      error = function(e) {
+        warning("optim Nelder-Mead failed for county ", cnty, ": ",
+                conditionMessage(e), call. = FALSE)
+        list(par = start_par, value = start_objective, convergence = -1L)
+      }
+    )
+
+    final_par <- result$par
+    final_moments_county <- objective_county_vec(final_par)
+    final_objective_county <- sum(final_moments_county^2)
+    final_candidate <- full_par
+    final_candidate[par_idx] <- final_par
+    final_score_county <- structural_wage_objective_score(
+      final_moments_county,
+      final_candidate,
+      x_county,
+      beta,
+      beta_2_subset,
+      objective_config,
+      county_weights
+    )
+
+    accepted <- is.finite(final_score_county) &&
+      final_score_county <= start_score * (1 + sqrt(.Machine$double.eps))
+    result$x <- final_par
+    result$start_objective <- start_objective
+    result$final_objective <- final_objective_county
+    result$start_score <- start_score
+    result$final_score <- final_score_county
+    result$accepted <- accepted
+
+    if (accepted) {
+      full_par[par_idx] <- final_par
+    } else {
+      warning(
+        "Rejected min_optim wage update for county ", cnty,
+        " because it did not improve the bound-guarded objective. ",
+        "start=", signif(start_objective, 6),
+        ", candidate=", signif(final_objective_county, 6),
+        ", start_score=", signif(start_score, 6),
+        ", candidate_score=", signif(final_score_county, 6),
+        call. = FALSE
+      )
+      result$x <- start_par
+    }
+    county_results[[as.character(cnty)]] <- result
+  }
+
+  final_moments <- weighted_col_means(objective_gmm(
+    theta = full_par,
+    x = x,
+    beta = beta,
+    beta_2_subset = beta_2_subset,
+    config = objective_config,
+    clust = clust,
+    solver_state = NULL
+  ), moment_weights)
+  final_objective <- sum(final_moments^2)
+  final_score <- structural_wage_objective_score(
+    final_moments,
+    full_par,
+    x,
+    beta,
+    beta_2_subset,
+    objective_config,
+    moment_weights
+  )
+  global_accepted <- is.finite(final_score) &&
+    final_score <= start_full_score * (1 + sqrt(.Machine$double.eps))
+
+  if (!global_accepted) {
+    warning(
+      "Rejected min_optim wage solve because the full bound-guarded ",
+      "objective worsened. start=", signif(start_full_objective, 6),
+      ", candidate=", signif(final_objective, 6),
+      ", start_score=", signif(start_full_score, 6),
+      ", candidate_score=", signif(final_score, 6),
+      call. = FALSE
+    )
+    full_par <- initial_full_par
+    final_moments <- start_full_moments
+    final_objective <- start_full_objective
+    final_score <- start_full_score
+  }
+
+  list(
+    par = full_par,
+    convergence = if (
+      global_accepted &&
+        all(vapply(county_results,
+                   function(r) is.finite(r$convergence) && r$convergence == 0L,
+                   logical(1)))
+    ) 0L else 1L,
+    county_results = county_results,
+    final_moments = final_moments,
+    objective = final_objective,
+    score = final_score,
+    start_objective = start_full_objective,
+    start_score = start_full_score,
+    global_accepted = global_accepted,
+    mode = "min_optim"
+  )
+}
+
 estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
                                              config = CONFIG, clust = NULL,
                                              solver_state = NULL,
@@ -1163,11 +1402,15 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
 
 #' Estimate wage parameters with the configured outer solver.
 #'
-#' Default mode is "nleqslv" (Broyden + double dogleg via the nleqslv package),
-#' which converges quadratically near the solution and is dramatically faster
-#' than the BBsolve dfsane variants for this problem (typical wallclock ~minutes
-#' vs hours). Modes "county" (BBsolve per county) and "joint" (BBsolve over the
-#' full vector) are retained for exact parity with the original paper draft.
+#' Modes:
+#'   - "nleqslv" (Broyden + double dogleg root-finder; the default kept for
+#'     backwards compatibility).
+#'   - "min_optim" (per-county optim Nelder-Mead minimizer on ||g||^2 with
+#'     parameter scaling). Recommended when the moment system has flat or
+#'     saturated regions where a root-finder gets stuck. See
+#'     ``docs/la_wage_moment_floor.md`` for the empirical case.
+#'   - "county" (BBsolve per county; original paper-draft solver).
+#'   - "joint"  (BBsolve over the full wage vector; original paper-draft).
 estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CONFIG,
                                      clust = NULL, solver_state = NULL,
                                      moment_weights = NULL) {
@@ -1178,6 +1421,12 @@ estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CON
 
   if (identical(mode, "nleqslv")) {
     return(estimate_wage_parameters_nleqslv(
+      start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+    ))
+  }
+
+  if (identical(mode, "min_optim")) {
+    return(estimate_wage_parameters_min_optim(
       start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
     ))
   }
@@ -1194,5 +1443,6 @@ estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CON
     ))
   }
 
-  stop("Unknown wage_optimizer_mode: ", mode, ". Use 'nleqslv', 'county', or 'joint'.")
+  stop("Unknown wage_optimizer_mode: ", mode,
+       ". Use 'nleqslv', 'min_optim', 'county', or 'joint'.")
 }

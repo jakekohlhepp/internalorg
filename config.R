@@ -161,6 +161,13 @@ CONFIG <- list(
   nleqslv_global = Sys.getenv("JMP_NLEQSLV_GLOBAL", unset = "dbldog"),
   nleqslv_maxit = as.integer(Sys.getenv("JMP_NLEQSLV_MAXIT", unset = "200")),
   nleqslv_trace = as.integer(Sys.getenv("JMP_NLEQSLV_TRACE", unset = "1")),
+  ## Settings for wage_optimizer_mode = "min_optim" (per-county optim
+  ## Nelder-Mead minimizer on ||g_wage||^2). parscale_wage assumes the wage
+  ## parameters are O(50); set per-context if needed.
+  min_optim_maxit = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAXIT", unset = "500")),
+  min_optim_reltol = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RELTOL", unset = "1e-8")),
+  min_optim_parscale_wage = as.numeric(Sys.getenv("JMP_MIN_OPTIM_PARSCALE_WAGE", unset = "20")),
+  min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   structural_bound_guard_weight = as.numeric(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD_WEIGHT", unset = "10")),
