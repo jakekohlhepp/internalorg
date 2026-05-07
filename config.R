@@ -128,8 +128,9 @@ CONFIG <- list(
   obj_tol = 1e-06,
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
-  # full BBsolve pass by default; set JMP_SKIP_STRUCTURAL_OPTIMIZER=true only for
-  # refactor smoke tests that need to validate downstream assembly quickly.
+  # full wage solver (per `wage_optimizer_mode`, default nleqslv) by default;
+  # set JMP_SKIP_STRUCTURAL_OPTIMIZER=true only for refactor smoke tests that
+  # need to validate downstream assembly quickly.
   skip_structural_optimizer = tolower(Sys.getenv("JMP_SKIP_STRUCTURAL_OPTIMIZER", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
   structural_optimizer_maxit = as.integer(Sys.getenv("JMP_STRUCTURAL_OPTIMIZER_MAXIT", unset = "1000000")),
@@ -164,9 +165,22 @@ CONFIG <- list(
   ## Settings for wage_optimizer_mode = "min_optim" (per-county optim
   ## Nelder-Mead minimizer on ||g_wage||^2). parscale_wage assumes the wage
   ## parameters are O(50); set per-context if needed.
-  min_optim_maxit = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAXIT", unset = "500")),
+  min_optim_maxit = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAXIT", unset = "5000")),
   min_optim_reltol = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RELTOL", unset = "1e-8")),
   min_optim_parscale_wage = as.numeric(Sys.getenv("JMP_MIN_OPTIM_PARSCALE_WAGE", unset = "20")),
+  ## Per-county parscale override (named list keyed by county code as a
+  ## character string). NYC (36061) wages live on an O(1000) scale, so the
+  ## default parscale_wage of 20 produces a tiny initial simplex relative to
+  ## the parameter magnitude and Nelder-Mead degenerates (code 10). A larger
+  ## parscale yields a simplex that actually explores the space.
+  min_optim_parscale_wage_by_county = list(
+    "36061" = as.numeric(Sys.getenv("JMP_MIN_OPTIM_PARSCALE_WAGE_36061", unset = "200"))
+  ),
+  ## When optim returns convergence code 10 (degenerate simplex), perturb the
+  ## current best vertex by min_optim_restart_jitter (relative) and restart
+  ## up to min_optim_max_restarts times before raising the strict-exit error.
+  min_optim_max_restarts = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAX_RESTARTS", unset = "3")),
+  min_optim_restart_jitter = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RESTART_JITTER", unset = "0.05")),
   min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
