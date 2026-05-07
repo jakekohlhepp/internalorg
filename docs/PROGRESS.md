@@ -112,6 +112,7 @@ Use these as the current source of truth:
 - `docs/mk_tasks_cosmo_summary.md`
 - `docs/legacy_import_data_issue.md`
 - `docs/02_estimation_walkthrough.md`
+- `docs/bootstrap_slurm.md`
 
 ## Next Planned Work
 

@@ -90,10 +90,25 @@ bootstrap_row_weights <- function(iter, data, boot_weight_all) {
   weights
 }
 
-bootstrap_result_row <- function(iter, parameter_table) {
-  values <- parameter_table$coefficients
-  names(values) <- parameter_table$parm_name
-  as.data.table(t(c(iteration = iter, values)))
+bootstrap_result_row <- function(iter, parameter_table,
+                                 wage_convergence = NA_integer_,
+                                 price_convergence = NA_integer_,
+                                 status = "ok",
+                                 error_message = NA_character_) {
+  if (is.null(parameter_table) || nrow(parameter_table) == 0L) {
+    out <- data.table(iteration = iter)
+  } else {
+    values <- parameter_table$coefficients
+    names(values) <- parameter_table$parm_name
+    out <- as.data.table(t(c(iteration = iter, values)))
+  }
+  out[, `:=`(
+    wage_convergence  = as.integer(wage_convergence),
+    price_convergence = as.integer(price_convergence),
+    status            = as.character(status),
+    error_message     = as.character(error_message)
+  )]
+  out
 }
 
 combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
@@ -123,29 +138,58 @@ run_bootstrap_iteration <- function(iter, config = CONFIG) {
     on.exit(parallel::stopCluster(clust), add = TRUE)
   }
 
-  result <- estimate_structural_parameters(
-    working_data,
-    estim_matrix,
-    min_wage_levels,
-    config = config,
-    clust = clust,
-    weights = weights,
-    starting_parameters = point_parameters,
-    skip_structural_optimizer = FALSE
+  result <- tryCatch(
+    estimate_structural_parameters(
+      working_data,
+      estim_matrix,
+      min_wage_levels,
+      config = config,
+      clust = clust,
+      weights = weights,
+      starting_parameters = point_parameters,
+      skip_structural_optimizer = isTRUE(config$skip_structural_optimizer)
+    ),
+    error = function(e) structure(list(error = conditionMessage(e)), class = "boot_iter_error")
   )
 
-  if (!is.null(result$wage_result$convergence) && result$wage_result$convergence != 0) {
-    warning("Bootstrap iteration ", iter, " wage solve convergence code: ",
-            result$wage_result$convergence)
-  }
-  if (result$price_result$result$convergence != 0) {
-    warning("Bootstrap iteration ", iter, " price solve convergence code: ",
-            result$price_result$result$convergence)
+  if (inherits(result, "boot_iter_error")) {
+    message("Bootstrap iteration ", iter, " errored: ", result$error,
+            " -- recording status='error' and continuing.")
+    this_res <- bootstrap_result_row(
+      iter, parameter_table = NULL,
+      status = "error", error_message = result$error
+    )
+  } else {
+    wage_conv  <- result$wage_result$convergence
+    price_conv <- if (is.list(result$price_result)) result$price_result$result$convergence else NA_integer_
+
+    wage_nonconv <- !isTRUE(config$skip_structural_optimizer) &&
+      isTRUE(!is.null(wage_conv) && !is.na(wage_conv) && wage_conv != 0)
+    price_nonconv <- isTRUE(!is.null(price_conv) && !is.na(price_conv) && price_conv != 0)
+
+    if (wage_nonconv) {
+      message("Bootstrap iteration ", iter, " wage solve non-converged: code ", wage_conv)
+    }
+    if (price_nonconv) {
+      message("Bootstrap iteration ", iter, " price solve non-converged: code ", price_conv)
+    }
+
+    status <- if (wage_nonconv && price_nonconv) "wage+price_nonconverged"
+              else if (wage_nonconv)             "wage_nonconverged"
+              else if (price_nonconv)            "price_nonconverged"
+              else                               "ok"
+
+    this_res <- bootstrap_result_row(
+      iter, result$parameter_table,
+      wage_convergence  = if (is.null(wage_conv))  NA_integer_ else wage_conv,
+      price_convergence = if (is.null(price_conv)) NA_integer_ else price_conv,
+      status            = status
+    )
   }
 
-  this_res <- bootstrap_result_row(iter, result$parameter_table)
   saveRDS(this_res, file.path(reps_dir, paste0("boot_res_", iter, ".rds")))
-  message("--- Completed bootstrap iteration ", iter, " at ", Sys.time(), " ---")
+  message("--- Completed bootstrap iteration ", iter, " at ", Sys.time(),
+          " (status=", this_res$status, ") ---")
   this_res
 }
 
