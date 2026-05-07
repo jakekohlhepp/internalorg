@@ -107,7 +107,8 @@ if (isTRUE(CONFIG$check_structural_start)) {
 
 if (isTRUE(CONFIG$skip_structural_optimizer)) {
   message(
-    "Skipping BBsolve and reusing mkdata/data/seeit_bb.rds because ",
+    "Skipping wage solver (mode=", CONFIG$wage_optimizer_mode,
+    ") and reusing mkdata/data/seeit_bb.rds because ",
     "JMP_SKIP_STRUCTURAL_OPTIMIZER=true."
   )
 }
@@ -127,7 +128,8 @@ print(estimation_result$wage_result)
 if (!isTRUE(CONFIG$skip_structural_optimizer) &&
     !is.null(estimation_result$wage_result$convergence) &&
     estimation_result$wage_result$convergence != 0) {
-  warning("BBsolve did not converge. Convergence code: ",
+  warning("Wage solver (mode=", CONFIG$wage_optimizer_mode,
+          ") did not converge. Convergence code: ",
           estimation_result$wage_result$convergence,
           "\nResults may be unreliable. Consider adjusting tolerances or starting values.")
 }
