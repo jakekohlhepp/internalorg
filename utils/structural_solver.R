@@ -998,9 +998,13 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
   ## practice.
   objective_config <- config
 
-  parscale_w <- solver_value(config, "min_optim_parscale_wage", 20)
-  maxit_per_county <- solver_value(config, "min_optim_maxit", 500L)
+  parscale_w_default <- solver_value(config, "min_optim_parscale_wage", 20)
+  parscale_by_county <- solver_value(config, "min_optim_parscale_wage_by_county", list())
+  maxit_per_county <- solver_value(config, "min_optim_maxit", 5000L)
   reltol <- solver_value(config, "min_optim_reltol", config$obj_tol)
+  strict_obj_tol <- solver_value(config, "obj_tol", 1e-6)
+  max_restarts <- solver_value(config, "min_optim_max_restarts", 3L)
+  restart_jitter <- solver_value(config, "min_optim_restart_jitter", 0.05)
 
   start_full_moments <- weighted_col_means(objective_gmm(
     theta = initial_full_par,
@@ -1089,25 +1093,64 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
       county_weights
     )
 
+    cnty_key <- as.character(cnty)
+    parscale_w <- if (!is.null(parscale_by_county[[cnty_key]])) {
+      parscale_by_county[[cnty_key]]
+    } else {
+      parscale_w_default
+    }
     parscale_vec <- rep(parscale_w, length(start_par))
-    result <- tryCatch(
-      stats::optim(
-        par = start_par,
-        fn = objective_county_ssq,
-        method = "Nelder-Mead",
-        control = list(
-          maxit = maxit_per_county,
-          reltol = reltol,
-          parscale = parscale_vec,
-          trace = solver_value(config, "min_optim_trace", 0L)
-        )
-      ),
-      error = function(e) {
-        warning("optim Nelder-Mead failed for county ", cnty, ": ",
-                conditionMessage(e), call. = FALSE)
-        list(par = start_par, value = start_objective, convergence = -1L)
+
+    attempt_par <- start_par
+    restart_count <- 0L
+    repeat {
+      result <- tryCatch(
+        stats::optim(
+          par = attempt_par,
+          fn = objective_county_ssq,
+          method = "Nelder-Mead",
+          control = list(
+            maxit = maxit_per_county,
+            reltol = reltol,
+            parscale = parscale_vec,
+            trace = solver_value(config, "min_optim_trace", 0L)
+          )
+        ),
+        error = function(e) {
+          warning("optim Nelder-Mead failed for county ", cnty, ": ",
+                  conditionMessage(e), call. = FALSE)
+          list(par = attempt_par, value = start_objective, convergence = -1L)
+        }
+      )
+
+      if (identical(as.integer(result$convergence), 10L) &&
+          restart_count < max_restarts) {
+        restart_count <- restart_count + 1L
+        jitter <- pmax(abs(result$par), parscale_w) *
+          stats::runif(length(result$par), -restart_jitter, restart_jitter)
+        attempt_par <- result$par + jitter
+        message(sprintf(
+          paste0("Nelder-Mead degenerate simplex (code 10) for county %s ",
+                 "at ssq=%.6g; restarting attempt %d/%d with jitter."),
+          cnty, result$value, restart_count, max_restarts
+        ))
+        next
       }
-    )
+      break
+    }
+    result$restart_count <- restart_count
+    result$parscale <- parscale_w
+
+    if (!identical(as.integer(result$convergence), 0L) &&
+        result$value > strict_obj_tol) {
+      stop(sprintf(
+        paste0("Nelder-Mead did not exit properly for county %s ",
+               "(convergence=%d, restarts=%d, parscale=%g) and final ",
+               "objective %.6g exceeds obj_tol=%.6g."),
+        cnty, result$convergence, restart_count, parscale_w,
+        result$value, strict_obj_tol
+      ), call. = FALSE)
+    }
 
     final_par <- result$par
     final_moments_county <- objective_county_vec(final_par)
