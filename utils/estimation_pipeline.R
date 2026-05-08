@@ -240,6 +240,32 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
     context = "demand IV estimator"
   )
 
+  ## Optional workers-as-rows monotonicity restriction on the per-county skill
+  ## matrix B[task, worker]. Replaces the unconstrained 2SLS beta with the
+  ## constrained QP solution, searching all n_w! permutations of worker types
+  ## per county and picking the one that minimizes the constrained 2SLS
+  ## criterion. The wage / price stages downstream consume this constrained
+  ## beta unchanged (they do not optimize over beta).
+  monotone_fit <- NULL
+  monotone_mode <- if (is.null(config$skill_monotone_orientation)) "none" else config$skill_monotone_orientation
+  if (identical(monotone_mode, "workers_rows")) {
+    monotone_fit <- search_workers_perm(
+      X = mm_1,
+      Z = z_mm_1,
+      y = estim_matrix[, "log_rel_mkt"],
+      beta_names = rownames(beta),
+      counties = config$counties,
+      county_vec = as.character(estim_matrix[, "county"]),
+      n_t = config$n_task_types,
+      n_w = config$n_worker_types,
+      tolerance = tolerance,
+      context = "demand IV monotone (workers_rows)"
+    )
+    beta <- monotone_fit$beta
+  } else if (!identical(monotone_mode, "none")) {
+    stop("Unsupported config$skill_monotone_orientation: ", monotone_mode)
+  }
+
   p_adj <- estim_matrix[, "cust_price"]
   for (cnty in config$counties) {
     price_idx <- grep(paste0(cnty, ":cust_price"), rownames(beta))
@@ -267,6 +293,7 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
     z_mm_1 = z_mm_1,
     z_mm_2 = z_mm_2,
     e_mat = e_mat,
+    skill_monotone_fit = monotone_fit,
     diagnostics = list(
       mm_1_rank = qr(mm_1, tol = tolerance)$rank,
       z_mm_1_rank = qr(z_mm_1, tol = tolerance)$rank,

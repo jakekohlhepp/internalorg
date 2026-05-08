@@ -158,6 +158,12 @@ CONFIG <- list(
   use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "nleqslv"),
+  ## Skill-matrix monotonicity restriction. "none" leaves the demand-IV step
+  ## unconstrained (matches 06_estimation.R). "workers_rows" imposes that each
+  ## county's productivity matrix is consistent with some total ordering of
+  ## worker types: B[t, pi(i+1)] >= B[t, pi(i)] for every task t. The
+  ## permutation pi is searched over all n_w! orderings per county.
+  skill_monotone_orientation = Sys.getenv("JMP_SKILL_MONOTONE", unset = "none"),
   nleqslv_method = Sys.getenv("JMP_NLEQSLV_METHOD", unset = "Broyden"),
   nleqslv_global = Sys.getenv("JMP_NLEQSLV_GLOBAL", unset = "dbldog"),
   nleqslv_maxit = as.integer(Sys.getenv("JMP_NLEQSLV_MAXIT", unset = "200")),

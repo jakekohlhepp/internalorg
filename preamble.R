@@ -93,6 +93,7 @@ spec_log <- function(x) ifelse(x == 0 | is.nan(x), 0, log(x))
 ## get_gammas().
 source(project_path("utils", "structural_solver.R"))
 source(project_path("utils", "estimation_pipeline.R"))
+source(project_path("utils", "constrained_demand_iv.R"))
 
 ####### shared setup for estimation equations
 ## 04_estimation_sample.R owns the data assembly. 05_iv_spec_comparison.R and
