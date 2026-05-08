@@ -542,7 +542,10 @@ estimate_structural_parameters <- function(working_data, estim_matrix, min_wage_
   if (!is.null(solver_state)) {
     solver_state$last_moment_norm <- Inf
   }
-  get_default_solver_state()$last_moment_norm <- Inf
+  default_state <- get_default_solver_state()
+  if (!is.null(default_state)) {
+    default_state$last_moment_norm <- Inf
+  }
 
   price_result <- fit_price_parameters(
     working_data,
