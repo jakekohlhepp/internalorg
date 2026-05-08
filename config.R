@@ -181,6 +181,42 @@ CONFIG <- list(
   ## up to min_optim_max_restarts times before raising the strict-exit error.
   min_optim_max_restarts = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAX_RESTARTS", unset = "3")),
   min_optim_restart_jitter = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RESTART_JITTER", unset = "0.05")),
+  ## Multi-start configuration. For counties listed in
+  ## min_optim_n_multistarts_by_county, draw n random starting vectors
+  ## uniformly in [-multistart_scale, +multistart_scale]^d (the seed start
+  ## from seeit_bb.rds is always included as the first start), run the full
+  ## NM-with-restart pipeline from each, and keep the best by final ssq.
+  ## NYC (36061) has a large local minimum at ssq=0.0248 that quasi-Newton
+  ## polishing cannot escape, so multi-start is the only way to find a
+  ## different basin. Default scale = 5 * parscale_w for the county.
+  min_optim_n_multistarts_by_county = list(
+    "36061" = as.integer(Sys.getenv("JMP_MIN_OPTIM_N_MULTISTARTS_36061", unset = "5"))
+  ),
+  min_optim_multistart_scale_by_county = list(),
+  ## Settings for wage_optimizer_mode = "pso" (per-county particle swarm
+  ## with NM polish and the same strict-exit guard as min_optim). Use this
+  ## when the moment objective has multiple basins that the local NM solver
+  ## (even with multi-start) cannot reach. Empirical case: NYC's wage
+  ## block has a 0.0248 plateau near (-1000, -1000, -1000, -1000) that NM
+  ## cannot escape; PSO finds a 0.00128 basin near (-22, +498, +151, +1826)
+  ## that is qualitatively closer to the manuscript pattern.
+  pso_n_particles = as.integer(Sys.getenv("JMP_PSO_N_PARTICLES", unset = "40")),
+  pso_n_iter = as.integer(Sys.getenv("JMP_PSO_N_ITER", unset = "100")),
+  pso_search_halfwidth = as.numeric(Sys.getenv("JMP_PSO_SEARCH_HALFWIDTH", unset = "2000")),
+  pso_search_halfwidth_by_county = list(),
+  pso_w  = as.numeric(Sys.getenv("JMP_PSO_W",  unset = "0.7")),
+  pso_c1 = as.numeric(Sys.getenv("JMP_PSO_C1", unset = "1.5")),
+  pso_c2 = as.numeric(Sys.getenv("JMP_PSO_C2", unset = "1.5")),
+  pso_polish_method = Sys.getenv("JMP_PSO_POLISH_METHOD", unset = "Nelder-Mead"),
+  pso_seed_offset = as.integer(Sys.getenv("JMP_PSO_SEED_OFFSET", unset = "0")),
+  ## Strict-exit tolerance for PSO mode. Distinct from `obj_tol` because PSO
+  ## is a stochastic global search and is not expected to reach machine-zero
+  ## precision the way a root-finder might. Default 1e-2 reflects the
+  ## empirical NYC floor of ~1.3e-3 plus a safety margin; counties with
+  ## better-behaved moments still pass trivially because their seed start
+  ## is already below 1e-7.
+  pso_strict_obj_tol = as.numeric(Sys.getenv("JMP_PSO_STRICT_OBJ_TOL", unset = "0.01")),
+  pso_strict_obj_tol_by_county = list(),
   min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
@@ -191,6 +227,15 @@ CONFIG <- list(
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
   counterfactual_wage_tol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_WAGE_TOL", unset = "0.01")),
+  # Inner SQUAREM fixed-point tolerance used by 13-19's local solve_org loops.
+  # Default preserves the value the scripts hardcoded before they were wired
+  # to CONFIG; tighten via JMP_COUNTERFACTUAL_INNERTOL once estimates are
+  # validated against this baseline.
+  counterfactual_innertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_INNERTOL", unset = "1e-8")),
+  # Outer best-response price contraction tolerance passed to
+  # counterfactual_best_response_prices and the inline figure helpers.
+  # Default preserves the previously hardcoded script-local value.
+  counterfactual_outertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_OUTERTOL", unset = "1e-4")),
   counterfactual_nleqslv_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_NLEQSLV_MAXIT", unset = "400")),
   counterfactual_bbsolve_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BBSOLVE_MAXIT", unset = "10000")),
   counterfactual_broyden_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BROYDEN_MAXITER", unset = "1000")),

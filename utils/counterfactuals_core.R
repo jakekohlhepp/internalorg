@@ -179,6 +179,28 @@ get_counterfactual_market_parms <- function(all_results) {
   market_parms
 }
 
+#' Names of the per-firm worker-share columns: E_1, E_2, ..., E_n.
+counterfactual_e_field_names <- function(config = CONFIG) {
+  paste0("E_", seq_len(config$n_worker_types))
+}
+
+#' Names of the per-firm B (assignment) fields, in column-major order over
+#' the (n_worker_types x n_task_types) matrix. The downstream pattern
+#' "B_<task>_<worker>" matches a flattened B[worker, task] keeping
+#' as.vector(B) aligned with these names.
+counterfactual_b_field_names <- function(config = CONFIG) {
+  as.vector(vapply(
+    seq_len(config$n_task_types),
+    function(task_id) paste0("B_", task_id, "_", seq_len(config$n_worker_types)),
+    character(config$n_worker_types)
+  ))
+}
+
+#' Names of the per-market total-labor columns: tot_1, tot_2, ..., tot_n.
+counterfactual_tot_labor_field_names <- function(config = CONFIG) {
+  paste0("tot_", seq_len(config$n_worker_types))
+}
+
 compute_counterfactual_total_labor <- function(working_data, config = CONFIG) {
   working_data[, {
     totals <- lapply(seq_len(config$n_worker_types), function(idx) {
@@ -429,6 +451,109 @@ counterfactual_assignment <- function(cost_matrix, alpha, gamma,
   B[abs(B) < config$B_zero_threshold] <- 0
 
   list(B = B, E = E)
+}
+
+#' Spec-log helper used by the counterfactual scripts. Mirrors preamble.R's
+#' definition so 13-19 don't need to redefine it locally.
+counterfactual_spec_log <- function(x) {
+  ifelse(x == 0 | is.nan(x), 0, log(x))
+}
+
+#' Build a per-firm summary record from a wage / theta / gamma triple.
+#'
+#' Wraps `counterfactual_assignment()` and computes the c_endog / q_endog /
+#' s_index / E_i / B_<task>_<worker> fields the counterfactual scripts emit.
+#' Optional flags select which fields appear in the result so 13-18 can use
+#' the same helper despite their different output schemas.
+#'
+#' @param cost_matrix wage-adjusted skill cost matrix (worker x task).
+#' @param alpha task-mix vector, length n_task_types.
+#' @param gamma scalar coordination cost; pass `Inf` / `NA` for max frictions.
+#' @param wage_guess wage vector, length n_worker_types.
+#' @param new_theta optional task-skill matrix; required when `with_q = TRUE`
+#'   or `with_swept_b = TRUE`.
+#' @param innertol fixed-point tolerance.
+#' @param with_s_index include the entropy index in the output.
+#' @param with_b include `B_<task>_<worker>` columns from the assignment.
+#' @param with_swept_b like `with_b`, but multiplies B by the column-min-
+#'   subtracted theta to produce the productivity-output panel that
+#'   `get_prod()` writes in 14-17.
+#' @param config configuration list controlling dimensions and tolerances.
+#' @return Named list ready to drop into a data.table assignment.
+counterfactual_org_outputs <- function(cost_matrix, alpha, gamma, wage_guess,
+                                       new_theta = NULL,
+                                       innertol = CONFIG$innertol,
+                                       with_s_index = FALSE,
+                                       with_b = FALSE,
+                                       with_swept_b = FALSE,
+                                       config = CONFIG) {
+  if ((with_swept_b || isTRUE(attr(new_theta, "needs_q"))) && is.null(new_theta)) {
+    stop("counterfactual_org_outputs() requires new_theta when q is requested.")
+  }
+
+  assign <- counterfactual_assignment(cost_matrix, alpha, gamma, innertol, config)
+  B <- assign$B
+  E <- assign$E
+  Brel <- t(t(B / E) / alpha)
+  s_index <- sum(B * counterfactual_spec_log(Brel))
+  cendog <- sum(E * wage_guess) +
+    ifelse(is.finite(gamma), gamma * s_index, 0)
+  qendog <- if (is.null(new_theta)) NA_real_ else sum(B * new_theta)
+
+  out <- list(c_endog = cendog, q_endog = qendog)
+  if (with_s_index) out$s_index <- s_index
+  out <- c(out, setNames(as.list(E), counterfactual_e_field_names(config)))
+
+  if (with_b || with_swept_b) {
+    if (with_swept_b) {
+      swept_theta <- sweep(new_theta, 2, apply(new_theta, 2, min), FUN = "-")
+      B_out <- B * swept_theta
+    } else {
+      B_out <- B
+    }
+    out <- c(out,
+             setNames(as.list(as.vector(B_out)),
+                      counterfactual_b_field_names(config)))
+  }
+
+  out
+}
+
+#' Reconstruct an org summary from a saved B matrix (no fresh assignment).
+#'
+#' Implements the realloc branch of 14-17's `solve_reloc`: pull a saved
+#' firm-level B (e.g. from `orig_struct`), recompute the cost / quality
+#' summary at the new wage / gamma without re-solving the assignment.
+counterfactual_org_outputs_from_b <- function(B, alpha, gamma, wage_guess,
+                                              new_theta,
+                                              with_s_index = FALSE,
+                                              with_b = FALSE,
+                                              with_swept_b = FALSE,
+                                              config = CONFIG) {
+  E <- rowSums(B)
+  Brel <- t(t(B / E) / colSums(B))
+  s_index <- sum(B * counterfactual_spec_log(Brel))
+  cendog <- sum(E * wage_guess) +
+    ifelse(is.finite(gamma), gamma * s_index, 0)
+  qendog <- sum(B * new_theta)
+
+  out <- list(c_endog = cendog, q_endog = qendog)
+  if (with_s_index) out$s_index <- s_index
+  out <- c(out, setNames(as.list(E), counterfactual_e_field_names(config)))
+
+  if (with_b || with_swept_b) {
+    if (with_swept_b) {
+      swept_theta <- sweep(new_theta, 2, apply(new_theta, 2, min), FUN = "-")
+      B_out <- B * swept_theta
+    } else {
+      B_out <- B
+    }
+    out <- c(out,
+             setNames(as.list(as.vector(B_out)),
+                      counterfactual_b_field_names(config)))
+  }
+
+  out
 }
 
 counterfactual_effective_gamma <- function(gamma, config = CONFIG) {

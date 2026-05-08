@@ -16,15 +16,21 @@
 ### Second loop: best-response pricing (contract on lambert's w). 
 #### convergence not for sure. but if we end up converging, this is a best response to best responses.
 ### Third loop: best-response org structure. convergence guaranteed.
-innertol<-1e-08
-outertol<-1e-04
-
 source("config.R")
 source("utils/counterfactuals_core.R")
+
+innertol <- CONFIG$counterfactual_innertol
+outertol <- CONFIG$counterfactual_outertol
 
 load_counterfactual_packages()
 ensure_counterfactual_dirs()
 spec_log<-function(x)  ifelse(x==0 | is.nan(x),0,log(x))
+
+n_worker_types <- CONFIG$n_worker_types
+n_task_types   <- CONFIG$n_task_types
+e_field_names <- counterfactual_e_field_names(CONFIG)
+e_raw_cols    <- get_E_raw_cols(CONFIG)
+tot_field_names <- counterfactual_tot_labor_field_names(CONFIG)
 
 
 ## need to get back employee count
@@ -119,61 +125,63 @@ working_data[, mk_piece:=1/(1-salon_share_subdiv)]
 working_data[, org_cost:=ifelse(is.finite(gamma_invert),gamma_invert*s_index*avg_labor,0)]
 
 ## Compute amount of each type.
-get_demands<-function(a1, a2, a3, a4, a5, county,quarter_year,gamma){
-  alpha<-c(a1, a2, a3, a4,a5)
-  if (is.finite(gamma) & gamma>0 & !is.na(gamma)){
-    
-    alpha<-c(a1, a2, a3, a4,a5)
-    ## this function will return matrix given gamma
-    A<-exp(-1/gamma*(tild_theta[[county]][[as.character(quarter_year)]]) )
-    E<-rep(0.2, 5)
-    A[A>=Inf]<-1e16
-    A[A<=0]<-1e-16
-    fxpt<-function(p){
-      C<-colSums(t(A)*alpha/colSums(A*p))
-      return(p*C)
+get_demands <- function(alpha_vec, county, quarter_year, gamma){
+  cost_matrix <- tild_theta[[county]][[as.character(quarter_year)]]
+  if (is.finite(gamma) & gamma > 0 & !is.na(gamma)){
+    A <- exp(-1 / gamma * cost_matrix)
+    E <- rep(1 / n_worker_types, n_worker_types)
+    A[A >= Inf] <- CONFIG$numeric_ceiling
+    A[A <= 0]   <- CONFIG$numeric_floor
+    fxpt <- function(p){
+      C <- colSums(t(A) * alpha_vec / colSums(A * p))
+      p * C
     }
-    for (i in 1:1000000){
-      E_old<-E
-      E<-fxpt(E_old)
-      if (all(abs(E-E_old)<innertol)) break
+    for (i in seq_len(CONFIG$fixedpoint_max_iter)){
+      E_old <- E
+      E <- fxpt(E_old)
+      if (all(abs(E - E_old) < innertol)) break
     }
-    B<-t(t(A)*alpha/colSums(A*E))*E
+    B <- t(t(A) * alpha_vec / colSums(A * E)) * E
   } else if (is.infinite(gamma) | is.na(gamma) | is.nan(gamma)){
     # max frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    B[which.min(rowSums(t(t(tild_theta[[county]][[as.character(quarter_year)]])*alpha ))),]<-alpha
-  } else{
+    B <- matrix(0, ncol = n_task_types, nrow = n_worker_types)
+    B[which.min(rowSums(t(t(cost_matrix) * alpha_vec))), ] <- alpha_vec
+  } else {
     # no frictions
-    B<-matrix(0, ncol=5, nrow=5)
-    for (col in 1:5){
-      B[which.min(tild_theta[[county]][[as.character(quarter_year)]][,col]),col]<-alpha[col]
+    B <- matrix(0, ncol = n_task_types, nrow = n_worker_types)
+    for (col in seq_len(n_task_types)){
+      B[which.min(cost_matrix[, col]), col] <- alpha_vec[col]
     }
   }
-  
-  E<-rowSums(B)
-  B[abs(B)<1e-16]<-0
-  Brel<-t(t(B/E)/alpha)
-  return(c(E,sum(B*spec_log(Brel))) )
+
+  E <- rowSums(B)
+  B[abs(B) < CONFIG$B_zero_threshold] <- 0
+  Brel <- t(t(B / E) / alpha_vec)
+  c(E, sum(B * spec_log(Brel)))
 }
-for (i in 1:nrow(working_data)){
-  working_data[i,c("E_1", "E_2", "E_3", "E_4", "E_5", "s_pred") := as.list(get_demands(task_mix_1, task_mix_2, task_mix_3, task_mix_4, task_mix_5, county,quarter_year, gamma_invert)) ]
+task_mix_cols <- get_task_mix_cols(CONFIG)
+for (i in seq_len(nrow(working_data))){
+  alpha_vec <- as.numeric(working_data[i, ..task_mix_cols])
+  working_data[i, c(e_field_names, "s_pred") := as.list(get_demands(
+    alpha_vec,
+    county,
+    quarter_year,
+    gamma_invert
+  ))]
 }
 # fill in labor demands for firms not in regression estimation sample.
 # to get labor demand we use raw shares for firms in estimation sample and we use model shares for others.
 
-working_data[is.na(E_raw_1), E_raw_1:=E_1]
-working_data[is.na(E_raw_2), E_raw_2:=E_2]
-working_data[is.na(E_raw_3), E_raw_3:=E_3]
-working_data[is.na(E_raw_4), E_raw_4:=E_4]
-working_data[is.na(E_raw_5), E_raw_5:=E_5]
+for (idx in seq_len(n_worker_types)){
+  raw_col <- e_raw_cols[idx]
+  pred_col <- e_field_names[idx]
+  working_data[is.na(get(raw_col)), (raw_col) := get(pred_col)]
+}
 
 
 # labor demand is then weights times market share times avg_labor times cspop
-total_labor<-working_data[, .(tot_1=sum(weight*salon_share_subdiv*CSPOP*E_1*avg_labor),tot_2=sum(weight*salon_share_subdiv*CSPOP*E_2*avg_labor),
-                              tot_3=sum(weight*salon_share_subdiv*CSPOP*E_3*avg_labor),tot_4=sum(weight*salon_share_subdiv*CSPOP*E_4*avg_labor),
-                              tot_5=sum(weight*salon_share_subdiv*CSPOP*E_5*avg_labor)), by=c("county", "quarter_year")]
-total_labor_orig<-copy(total_labor)
+total_labor <- compute_counterfactual_total_labor(working_data, CONFIG)
+total_labor_orig <- copy(total_labor)
 
 # get quality and marginal cost heterogeneity (residual)
 # instead of writing out the entire multiplication I rebuild 
@@ -185,10 +193,14 @@ total_labor_orig<-copy(total_labor)
 
 parm_demand<-all_results[demand==TRUE,]$coefficients
 parm_supply<-all_results[demand==FALSE & !str_detect(parm_name, "E_raw_[0-9]$"),]$coefficients
-working_data[, wb_2:=market_parms[paste0("factor(county)", county, ":avg_labor:E_raw_2")]*E_raw_2*avg_labor]
-working_data[, wb_3:=market_parms[paste0("factor(county)", county, ":avg_labor:E_raw_3")]*E_raw_3*avg_labor]
-working_data[, wb_4:=market_parms[paste0("factor(county)", county, ":avg_labor:E_raw_4")]*E_raw_4*avg_labor]
-working_data[, wb_5:=market_parms[paste0("factor(county)", county, ":avg_labor:E_raw_5")]*E_raw_5*avg_labor]
+wb_cols <- paste0("wb_", 2:n_worker_types)
+for (idx in 2:n_worker_types){
+  raw_col <- paste0("E_raw_", idx)
+  wb_col  <- paste0("wb_", idx)
+  working_data[, (wb_col) := market_parms[paste0(
+    "factor(county)", county, ":avg_labor:", raw_col
+  )] * get(raw_col) * avg_labor]
+}
 
 ## get exogenous cost and demand shifters
 ## these are everything net of org cost, markups, 
@@ -200,10 +212,15 @@ working_data[,qual_exo:=log_rel_mkt- mm_1%*%parm_demand]
 working_data[, mean_qual_exo:=sum(qual_exo*(service_mix_id=="11111"))/sum(service_mix_id=="11111"), by=c("county", "quarter_year")]
 
 
-xnam <- as.formula("~avg_labor:factor(county):factor(quarter_year)+factor(quarter_year):factor(county)+factor(quarter_year):(task_mix_2+task_mix_3+task_mix_4+task_mix_5)-1")
+xnam <- as.formula(paste0(
+  "~avg_labor:factor(county):factor(quarter_year)+",
+  "factor(quarter_year):factor(county)+",
+  "factor(quarter_year):(", build_task_mix_sum(CONFIG), ")-1"
+))
 mod_mm_2<-model.matrix(xnam, data=working_data)
 mod_mm_2[,-grep("^avg_labor:",colnames(mod_mm_2))]<-0
-working_data[, cost_exo:=cust_price-wb_2-wb_3-wb_4-wb_5-org_cost+mk_piece/market_parms[paste0("factor(county)",county, ":cust_price")] - mod_mm_2%*%parm_supply ]
+wb_total <- Reduce("+", lapply(wb_cols, function(col) working_data[[col]]))
+working_data[, cost_exo:=cust_price-wb_total-org_cost+mk_piece/market_parms[paste0("factor(county)",county, ":cust_price")] - mod_mm_2%*%parm_supply ]
 working_data[, mean_cost_exo:=sum(cost_exo*(service_mix_id=="11111"))/sum(service_mix_id=="11111"), by=c("county", "quarter_year")]
 
 
@@ -216,113 +233,63 @@ initial_guess<-guess_setup$initial_guess
 rho<-guess_setup$rho
 
 
-solve_wages<-function(wage_guess){
-  
-  counter_res<-copy(working_data[county==cnty & quarter_year==qy, c("location_id","county","quarter_year","gamma_invert","avg_labor", "task_mix_1",
-                                                                    "task_mix_2", "task_mix_3", "task_mix_4", "task_mix_5",
-                                                                    "qual_exo", "cost_exo","weight", "cust_price",
-                                                                    "CSPOP")])
-  
+solve_wages_market_cols <- c(
+  "location_id", "county", "quarter_year", "gamma_invert", "avg_labor",
+  task_mix_cols, "qual_exo", "cost_exo", "weight", "cust_price", "CSPOP"
+)
+
+solve_wages <- function(wage_guess){
+  counter_res <- copy(working_data[county == cnty & quarter_year == qy,
+                                   ..solve_wages_market_cols])
+
   ## create the skill sets matrix (theta), wage vectors (wage_guess), and wage-adjusted skills (new_tild_theta)
-  ## swepe ere, because it improve snumericla performance. undo when calcing quality.
-  new_theta<-matrix(market_parms[grep(paste0(cnty,":avg_labor:B"),names(market_parms))], ncol=5, nrow=5, byrow=FALSE)
-  w_mat<-matrix(wage_guess, ncol=5, nrow=5, byrow=FALSE)
-  new_tild_theta<-w_mat+(rho[cnty])^(-1)*new_theta
-  new_tild_theta<-sweep(new_tild_theta,2,apply(new_tild_theta,2,min))
-  
-  ## solve internal org
-  
-  
-  solve_org<-Vectorize(function(a1, a2, a3, a4, a5,gamma){
-    alpha<-c(a1, a2, a3, a4,a5)
-    if (is.finite(gamma) & gamma>0){
-      
-      alpha<-c(a1, a2, a3, a4,a5)
-      ## this function will return matrix given gamma
-      A<-exp(-1/gamma*(new_tild_theta) )
-      E<-rep(0.2, 5)
-      A[A>=Inf]<-1e16
-      A[A<=0]<-1e-16
-      fxpt<-function(p){
-        C<-colSums(t(A)*alpha/colSums(A*p))
-        return(p*C)
-      }
-      #for (i in 1:1000000){
-        #E_old<-E
-        #E<-fxpt(E_old)
-        #if (all(abs(E-E_old)<innertol)) break
-      #}
-      E<-squarem(E,fixptfn = fxpt, control=list(maxiter=100000,tol=innertol) )$par
-      
-      B<-t(t(A)*alpha/colSums(A*E))*E
-    } else if (gamma==0){
-      # no frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      for (col in 1:5){
-        B[which.min(new_tild_theta[,col]),col]<-alpha[col]
-      }
-    } else{
-      # max frictions
-      B<-matrix(0, ncol=5, nrow=5)
-      B[which.min(rowSums(t(t(new_tild_theta)*alpha ))),]<-alpha
-    }
-    E<-rowSums(B)
-    B[abs(B)<1e-16]<-0
-    Brel<-t(t(B/E)/alpha)
-    ## compute endogenous cost and quality components.
-    # cost is wages plus org cost.
-    cendog<-sum(E*wage_guess)+ifelse(is.finite(gamma),gamma*sum(B*spec_log(Brel)),
-                                     0)
-    qendog<-sum(B*new_theta)
-    return(list(c_endog=cendog,q_endog=qendog,E_1=E[1],
-                E_2=E[2], E_3=E[3], E_4=E[4], E_5=E[5]))
-  })
-  
-  counter_res[, c("c_endog", "q_endog",
-                  "E_1", "E_2", "E_3", "E_4", "E_5"):= (solve_org(task_mix_1, task_mix_2, task_mix_3, task_mix_4,task_mix_5,
-                                                                  gamma_invert)),by=c("location_id")]
-  counter_res[, Q:=q_endog*avg_labor+qual_exo]
-  counter_res[, C:=c_endog*avg_labor+cost_exo]
-  # do not allow negative costs.
-  counter_res[C<0, C:=0]
-  # be careful about sign
-  # in original draft, rho is positive.
-  # in new draft, rho is negative.
-  best_respond<-function(p0, Q,C, wgt){
-    old_p<-p0
-    for (i in 1:10000000){
-      new_p<- -1/rho[cnty]+C-lambertW0(exp(-1+Q+rho[cnty]*C)/(1+sum(wgt*exp(Q+rho[cnty]*old_p))-exp(Q+rho[cnty]*old_p)) )/rho[cnty]
-      if (all(abs(new_p-old_p)<outertol)) break
-      old_p<-new_p
-    }
-    return(new_p)
+  ## sweep here, because it improves numerical performance. undo when calcing quality.
+  new_theta <- matrix(market_parms[grep(paste0(cnty, ":avg_labor:B"), names(market_parms))],
+                      ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  w_mat <- matrix(wage_guess, ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  new_tild_theta <- w_mat + (rho[cnty])^(-1) * new_theta
+  new_tild_theta <- sweep(new_tild_theta, 2, apply(new_tild_theta, 2, min))
+
+  ## solve internal org via the shared counterfactuals_core helper.
+  solve_org <- function(alpha, gamma){
+    counterfactual_org_outputs(
+      cost_matrix = new_tild_theta,
+      alpha = alpha,
+      gamma = gamma,
+      wage_guess = wage_guess,
+      new_theta = new_theta,
+      innertol = innertol,
+      with_s_index = FALSE,
+      with_b = FALSE,
+      config = CONFIG
+    )
   }
-  
-  ## from conlon
-  old_p<-counter_res$cust_price
-  #for (i in 1:10000000){
-  #  temp_shares<- exp(counter_res$Q+rho[cnty]*old_p)
-   # temp_shares<-temp_shares/sum(counter_res$weight*temp_shares)
-   # big_G<- rho[cnty]*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=FALSE)*matrix(temp_shares, ncol=length(temp_shares), nrow=length(temp_shares), byrow=TRUE)
-    #big_Tri<-rho[cnty]*diag(temp_shares)
-    #new_p<-as.numeric(counter_res$C + solve(big_Tri)%*%t(diag(x=1, nrow=nrow(counter_res), ncol=nrow(counter_res))*big_G)%*%(old_p-counter_res$C)-solve(big_Tri)%*%temp_shares)
-    
-   # if (all(abs(new_p-old_p)<innertol)) break
-    #old_p<-new_p
-  #}
-  #counter_res[, newprice:=new_p]
-  counter_res[, newprice:=counterfactual_best_response_prices(cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy))]
-  
-  
-  counter_res[, new_share:=exp(Q+rho[cnty]*newprice)]
-  counter_res[,new_share:=new_share/(sum(weight*new_share)+1)]
-  
-  new_total_labor<-counter_res[, .(tot_1=sum(weight*new_share*CSPOP*E_1*avg_labor),tot_2=sum(weight*new_share*CSPOP*E_2*avg_labor),
-                                   tot_3=sum(weight*new_share*CSPOP*E_3*avg_labor),tot_4=sum(weight*new_share*CSPOP*E_4*avg_labor),
-                                   tot_5=sum(weight*new_share*CSPOP*E_5*avg_labor))]
-  
-  stopifnot(nrow(new_total_labor)==1)
-  return(counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy))
+
+  counter_res[, c("c_endog", "q_endog", e_field_names) :=
+                solve_org(as.numeric(.SD), gamma_invert),
+              by = c("location_id"),
+              .SDcols = task_mix_cols]
+  counter_res[, Q := q_endog * avg_labor + qual_exo]
+  counter_res[, C := c_endog * avg_labor + cost_exo]
+  # do not allow negative costs.
+  counter_res[C < 0, C := 0]
+
+  counter_res[, newprice := counterfactual_best_response_prices(
+    cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy)
+  )]
+  counter_res[, new_share := counterfactual_logit_shares(
+    Q, newprice, weight, rho[cnty]
+  )]
+
+  new_total_labor <- counter_res[, setNames(
+    lapply(seq_len(n_worker_types), function(idx) {
+      sum(weight * new_share * CSPOP * get(e_field_names[idx]) * avg_labor)
+    }),
+    tot_field_names
+  )]
+
+  stopifnot(nrow(new_total_labor) == 1)
+  counterfactual_labor_gap(new_total_labor, total_labor, cnty, qy)
 }
 
 solve_wage_abs<-function(x){
