@@ -17,7 +17,7 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-export JMP_WAGE_OPTIMIZER_MODE=pso
-export JMP_MIN_OPTIM_TRACE=1
+echo "JMP_WAGE_OPTIMIZER_MODE=${JMP_WAGE_OPTIMIZER_MODE:-<config default>}"
+echo "JMP_MIN_OPTIM_TRACE=${JMP_MIN_OPTIM_TRACE:-<config default>}"
 
 Rscript 06_estimation.R

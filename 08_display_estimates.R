@@ -65,16 +65,52 @@ bootstrap_path <- file.path("results", "data", "07_bootstrap.rds")
 
 if (file.exists(bootstrap_path)) {
   all_bootreps <- data.table(readRDS(bootstrap_path))
-  colnames(all_bootreps)[-1] <- names(point_estimates)
-  all_se <- all_bootreps[, lapply(.SD, sd), .SDcols = colnames(all_bootreps)[-1]]
-  all_se <- rbind(all_se)
-  all_se[, id_var := 1]
+  parameter_cols <- names(point_estimates)
 
-  all_se <- melt(all_se, id = c("id_var"))
-  all_se[, id_var := NULL]
-  all_se[, demand := point_estimates_demand_flag]
-  setnames(all_se, "value", "se")
-  setnames(all_se, "variable", "parm_name")
+  if (identical(ncol(all_bootreps), length(parameter_cols) + 1L) &&
+      identical(names(all_bootreps)[1], "iteration")) {
+    setnames(all_bootreps, old = names(all_bootreps)[-1], new = parameter_cols)
+  }
+
+  missing_parameter_cols <- setdiff(parameter_cols, names(all_bootreps))
+  if (length(missing_parameter_cols) > 0L) {
+    stop("Bootstrap file is missing coefficient columns: ",
+         paste(missing_parameter_cols, collapse = ", "))
+  }
+
+  if ("status" %in% names(all_bootreps)) {
+    bad_status <- all_bootreps[is.na(status) | status != "ok"]
+    if (nrow(bad_status) > 0L) {
+      stop("Bootstrap file contains non-ok replications: ",
+           paste(head(paste0("iteration ", bad_status$iteration, " (", bad_status$status, ")"), 10L),
+                 collapse = ", "))
+    }
+    all_bootreps <- all_bootreps[status == "ok"]
+  }
+
+  for (conv_col in intersect(c("wage_convergence", "price_convergence"), names(all_bootreps))) {
+    bad_conv <- all_bootreps[!is.na(get(conv_col)) & get(conv_col) != 0L]
+    if (nrow(bad_conv) > 0L) {
+      stop("Bootstrap file contains non-converged replications in ", conv_col, ": ",
+           paste(head(paste0("iteration ", bad_conv$iteration, " (", bad_conv[[conv_col]], ")"), 10L),
+                 collapse = ", "))
+    }
+  }
+
+  if (nrow(all_bootreps) < 2L) {
+    stop("At least two successful bootstrap replications are required to compute standard errors.")
+  }
+
+  all_se <- all_bootreps[, lapply(.SD, stats::sd), .SDcols = parameter_cols]
+  all_se <- melt(all_se, measure.vars = parameter_cols,
+                 variable.name = "parm_name", value.name = "se",
+                 variable.factor = FALSE)
+  all_se <- merge(
+    data.table(parm_name = parameter_cols, demand = point_estimates_demand_flag),
+    all_se,
+    by = "parm_name",
+    sort = FALSE
+  )
 
   all_results <- merge(all_results, all_se, by = c("parm_name", "demand"))
   stopifnot(nrow(all_results) == nrow(all_se))
