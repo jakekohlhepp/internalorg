@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -p general
 #SBATCH -n 1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=16g
-#SBATCH -t 12:00:00
-#SBATCH -J 06_estimation
-#SBATCH -o logs/06_estimation_%j.out
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8g
+#SBATCH -t 02:00:00
+#SBATCH -J smoke_bfgs_polish
+#SBATCH -o logs/smoke_bfgs_polish_%j.out
 
 set -euo pipefail
 
@@ -17,7 +17,4 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-export JMP_WAGE_OPTIMIZER_MODE=pso
-export JMP_MIN_OPTIM_TRACE=1
-
-Rscript 06_estimation.R
+Rscript smoke_bfgs_polish.R

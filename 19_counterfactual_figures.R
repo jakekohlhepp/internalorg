@@ -2,11 +2,11 @@
 ## The earlier counterfactual scripts solve wages and productivity panels; this
 ## script reconstructs firm-level organization snapshots only for the figure
 ## decomposition.
-figure_innertol <- 1e-08
-figure_outertol <- 1e-04
-
 source("config.R")
 source("utils/counterfactuals_core.R")
+
+figure_innertol <- CONFIG$counterfactual_innertol
+figure_outertol <- CONFIG$counterfactual_outertol
 
 counterfactual_context <- load_counterfactual_context(
   extra_packages = c("ggplot2", "ggforce")
