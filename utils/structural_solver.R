@@ -1180,6 +1180,8 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     }
     result <- best_result
     result$multistart_count <- n_multistarts
+    result$strict_tol <- strict_obj_tol
+    result$candidate_value <- result$value
 
     if (result$value > strict_obj_tol) {
       stop(sprintf(
@@ -1191,11 +1193,11 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
       ), call. = FALSE)
     }
 
-    final_par <- result$par
-    final_moments_county <- objective_county_vec(final_par)
+    candidate_par <- result$par
+    final_moments_county <- objective_county_vec(candidate_par)
     final_objective_county <- sum(final_moments_county^2)
     final_candidate <- full_par
-    final_candidate[par_idx] <- final_par
+    final_candidate[par_idx] <- candidate_par
     final_score_county <- structural_wage_objective_score(
       final_moments_county,
       final_candidate,
@@ -1208,15 +1210,20 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
 
     accepted <- is.finite(final_score_county) &&
       final_score_county <= start_score * (1 + sqrt(.Machine$double.eps))
-    result$x <- final_par
+    result$candidate_par <- candidate_par
+    result$candidate_objective <- final_objective_county
+    result$candidate_score <- final_score_county
     result$start_objective <- start_objective
-    result$final_objective <- final_objective_county
     result$start_score <- start_score
-    result$final_score <- final_score_county
     result$accepted <- accepted
 
     if (accepted) {
-      full_par[par_idx] <- final_par
+      full_par[par_idx] <- candidate_par
+      result$par <- candidate_par
+      result$x <- candidate_par
+      result$value <- final_objective_county
+      result$final_objective <- final_objective_county
+      result$final_score <- final_score_county
     } else {
       warning(
         "Rejected min_optim wage update for county ", cnty,
@@ -1227,7 +1234,11 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
         ", candidate_score=", signif(final_score_county, 6),
         call. = FALSE
       )
+      result$par <- start_par
       result$x <- start_par
+      result$value <- start_objective
+      result$final_objective <- start_objective
+      result$final_score <- start_score
     }
     county_results[[as.character(cnty)]] <- result
   }
@@ -1269,14 +1280,21 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     final_score <- start_full_score
   }
 
+  county_converged <- vapply(
+    county_results,
+    function(r) {
+      isTRUE(r$accepted) &&
+        is.finite(r$convergence) && r$convergence == 0L &&
+        is.finite(r$final_objective) &&
+        is.finite(r$strict_tol) &&
+        r$final_objective <= r$strict_tol
+    },
+    logical(1)
+  )
+
   list(
     par = full_par,
-    convergence = if (
-      global_accepted &&
-        all(vapply(county_results,
-                   function(r) is.finite(r$convergence) && r$convergence == 0L,
-                   logical(1)))
-    ) 0L else 1L,
+    convergence = if (global_accepted && all(county_converged)) 0L else 1L,
     county_results = county_results,
     final_moments = final_moments,
     objective = final_objective,
@@ -1284,6 +1302,7 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     start_objective = start_full_objective,
     start_score = start_full_score,
     global_accepted = global_accepted,
+    county_converged = county_converged,
     mode = "min_optim"
   )
 }
@@ -1330,6 +1349,17 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
   c1 <- solver_value(config, "pso_c1", 1.5)
   c2 <- solver_value(config, "pso_c2", 1.5)
   pso_trace <- solver_value(config, "min_optim_trace", 0L)
+  pso_seed_offset <- solver_value(config, "pso_seed_offset", 0L)
+  if (length(pso_seed_offset) == 0L || is.na(pso_seed_offset)) {
+    pso_seed_offset <- 0L
+  }
+  pso_iteration_seed <- 0L
+  if (!is.null(config$slurm_array_task_id) && !is.na(config$slurm_array_task_id)) {
+    pso_iteration_seed <- config$slurm_array_task_id
+  } else if (!is.null(config$bootstrap_iteration) && !is.na(config$bootstrap_iteration)) {
+    pso_iteration_seed <- config$bootstrap_iteration
+  }
+  pso_county_order <- setNames(seq_along(config$counties), as.character(config$counties))
 
   start_full_moments <- weighted_col_means(objective_gmm(
     theta = initial_full_par, x = x, beta = beta,
@@ -1445,9 +1475,18 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
 
     d <- length(start_par)
     lower <- rep(-halfwidth, d); upper <- rep(halfwidth, d)
+    pso_seed <- as.integer((
+      as.numeric(pso_seed_offset) +
+        1000003 * as.numeric(pso_iteration_seed) +
+        9973 * as.numeric(pso_county_order[[cnty_key]])
+    ) %% .Machine$integer.max)
+    if (is.na(pso_seed) || pso_seed <= 0L) {
+      pso_seed <- 1L
+    }
+    set.seed(pso_seed)
     message(sprintf(
-      "PSO county %s: %d particles x %d iter, search box +/- %g, seed-as-particle.",
-      cnty, n_particles, n_iter, halfwidth
+      "PSO county %s: %d particles x %d iter, search box +/- %g, seed-as-particle, rng seed %d.",
+      cnty, n_particles, n_iter, halfwidth, pso_seed
     ))
     pso_res <- pso_solve(objective_county_ssq, lower, upper,
                          seed_particle = as.numeric(start_par),
@@ -1480,12 +1519,20 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       polish_used <- FALSE
     }
 
+    strict_tol <- if (!is.null(strict_obj_tol_by_county[[cnty_key]])) {
+      strict_obj_tol_by_county[[cnty_key]]
+    } else {
+      strict_obj_tol_default
+    }
+
     result <- list(
       par = result_par, value = result_value, x = result_par,
+      candidate_par = result_par, candidate_value = result_value,
       pso_value = pso_res$value, polish_value = polish$value,
       polish_used = polish_used, polish_convergence = polish$convergence,
       pso_n_iter = n_iter, pso_n_particles = n_particles,
       halfwidth = halfwidth, parscale = parscale_w,
+      pso_seed = pso_seed, strict_tol = strict_tol,
       start_objective = start_objective, final_objective = result_value,
       start_score = start_score
     )
@@ -1494,11 +1541,6 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       cnty, pso_res$value, polish$value, result_value
     ))
 
-    strict_tol <- if (!is.null(strict_obj_tol_by_county[[cnty_key]])) {
-      strict_obj_tol_by_county[[cnty_key]]
-    } else {
-      strict_obj_tol_default
-    }
     if (result_value > strict_tol) {
       stop(sprintf(
         paste0("PSO+polish did not reach pso_strict_obj_tol for county %s ",
@@ -1519,11 +1561,17 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     )
     accepted <- is.finite(final_score_county) &&
       final_score_county <= start_score * (1 + sqrt(.Machine$double.eps))
-    result$final_score <- final_score_county
+    result$candidate_objective <- final_objective_county
+    result$candidate_score <- final_score_county
     result$accepted <- accepted
 
     if (accepted) {
       full_par[par_idx] <- result_par
+      result$par <- result_par
+      result$x <- result_par
+      result$value <- final_objective_county
+      result$final_objective <- final_objective_county
+      result$final_score <- final_score_county
     } else {
       warning(
         "Rejected PSO wage update for county ", cnty,
@@ -1534,7 +1582,11 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
         ", candidate_score=", signif(final_score_county, 6),
         call. = FALSE
       )
+      result$par <- start_par
       result$x <- start_par
+      result$value <- start_objective
+      result$final_objective <- start_objective
+      result$final_score <- start_score
     }
     county_results[[cnty_key]] <- result
   }
@@ -1559,9 +1611,20 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     final_score <- start_full_score
   }
 
+  county_converged <- vapply(
+    county_results,
+    function(r) {
+      isTRUE(r$accepted) &&
+        is.finite(r$final_objective) &&
+        is.finite(r$strict_tol) &&
+        r$final_objective <= r$strict_tol
+    },
+    logical(1)
+  )
+
   list(
     par = full_par,
-    convergence = if (global_accepted) 0L else 1L,
+    convergence = if (global_accepted && all(county_converged)) 0L else 1L,
     county_results = county_results,
     final_moments = final_moments,
     objective = final_objective,
@@ -1569,6 +1632,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     start_objective = start_full_objective,
     start_score = start_full_score,
     global_accepted = global_accepted,
+    county_converged = county_converged,
     mode = "pso"
   )
 }

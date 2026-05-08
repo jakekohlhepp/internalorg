@@ -23,8 +23,8 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-# Fail fast if the renv project library is missing or a representative package
-# is not loadable. Job 48457046 (06_estimation) burned a slot exiting at the
+# Fail fast if the renv project library is missing or direct runtime packages
+# are not loadable. Job 48457046 (06_estimation) burned a slot exiting at the
 # library(lubridate) call because renv had not been restored yet; this guard
 # turns that failure mode into an immediate, obvious one.
 if [[ ! -f renv/activate.R ]]; then
@@ -33,7 +33,10 @@ if [[ ! -f renv/activate.R ]]; then
 fi
 Rscript --vanilla -e '
   source("renv/activate.R")
-  required <- c("lubridate", "data.table", "BB", "SQUAREM", "nleqslv")
+  required <- c(
+    "data.table", "lubridate", "stringr", "zoo", "lessR", "xtable",
+    "gmm", "readxl", "nloptr", "BB", "SQUAREM", "nleqslv", "ivreg"
+  )
   missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
   if (length(missing)) {
     stop("renv library is missing required packages: ",
