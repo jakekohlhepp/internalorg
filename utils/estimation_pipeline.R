@@ -533,6 +533,17 @@ estimate_structural_parameters <- function(working_data, estim_matrix, min_wage_
   wage_coefs <- wage_result$par
   names(wage_coefs) <- names(beta_2_subset)
 
+  # The wage solver writes a finite last_moment_norm into solver_state. If that
+  # is left in place, get_solver_tolerances() flips fit_price_parameters'
+  # get_gammas() calls onto coarse tolerances, making gamma_invert (and hence
+  # the L-BFGS-B objective) depend on the wage trajectory rather than only on
+  # (wage_coefs, beta, data). Reset to Inf so the price step always uses fine
+  # tolerances; warm-start gamma/E hints in the cache stay valid.
+  if (!is.null(solver_state)) {
+    solver_state$last_moment_norm <- Inf
+  }
+  get_default_solver_state()$last_moment_norm <- Inf
+
   price_result <- fit_price_parameters(
     working_data,
     estim_matrix,
