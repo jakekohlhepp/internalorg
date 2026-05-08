@@ -148,6 +148,120 @@ test_that("by-location_id solve_org_from_saved reads each firm's saved B", {
   }
 })
 
+test_that("the get_everything / solve_reloc / solve_wages flow used by 14-17 runs without errors", {
+  # Build synthetic per-firm market state for a single county-quarter.
+  set.seed(7)
+  n_firms <- 8
+  task_mix <- t(apply(matrix(runif(n_firms * 5), n_firms, 5), 1,
+                      function(x) x / sum(x)))
+  working_data <- data.table::data.table(
+    location_id = sprintf("loc%02d", seq_len(n_firms)),
+    county = "17031",
+    quarter_year = 2021.2,
+    gamma_invert = c(rep(2.5, n_firms - 2), 0.0, Inf),
+    avg_labor = runif(n_firms, 0.5, 2),
+    qual_exo = rnorm(n_firms),
+    cost_exo = runif(n_firms, 0, 10),
+    weight = rep(1.0, n_firms),
+    cust_price = runif(n_firms, 25, 60),
+    CSPOP = rep(1e6, n_firms)
+  )
+  for (k in seq_len(5)) {
+    working_data[, (paste0("task_mix_", k)) := task_mix[, k]]
+  }
+
+  task_mix_cols <- paste0("task_mix_", 1:5)
+  e_field_names <- counterfactual_e_field_names(TEST_CONFIG)
+  b_field_names <- counterfactual_b_field_names(TEST_CONFIG)
+
+  cnty <- "17031"
+  qy <- 2021.2
+
+  # cost / theta matrices exposed via lexical scope, as in 14-17.
+  new_theta <- matrix(runif(25, -1, 1), 5, 5)
+  new_tild_theta <- abs(new_theta) + matrix(runif(25), 5, 5)
+  mats <- list(new_theta = new_theta, new_tild_theta = new_tild_theta)
+  rho <- c("17031" = -0.05)
+  wage_guess <- c(10, 15, 20, 25, 30)
+  innertol <- TEST_CONFIG$counterfactual_innertol
+  outertol <- TEST_CONFIG$counterfactual_outertol
+  n_worker_types <- 5
+  n_task_types <- 5
+
+  # Step 1: get_everything-style solve produces the full (s_index + B + E) panel.
+  output_full <- c("c_endog", "q_endog", "s_index", e_field_names, b_field_names)
+  panel <- copy(working_data)
+  panel[, (output_full) := counterfactual_org_outputs(
+        cost_matrix  = mats$new_tild_theta,
+        alpha        = as.numeric(.SD),
+        gamma        = gamma_invert,
+        wage_guess   = wage_guess,
+        new_theta    = mats$new_theta,
+        innertol     = innertol,
+        with_s_index = TRUE,
+        with_b       = TRUE,
+        config       = TEST_CONFIG
+      ),
+      by = "location_id",
+      .SDcols = task_mix_cols]
+
+  expect_true(all(output_full %in% names(panel)))
+  expect_true(all(is.finite(panel$c_endog)))
+  expect_true(all(is.finite(panel$s_index)))
+
+  # Step 2: solve_reloc-style solve uses the saved B from panel and recomputes
+  # the cost / quality summary at a new wage.
+  saved_struct <- panel
+  saved_b_cols <- b_field_names
+  realloc_panel <- copy(working_data)
+  realloc_panel[, c("c_endog", "q_endog", e_field_names) := {
+        loc <- location_id
+        saved_B <- matrix(
+          as.numeric(saved_struct[location_id == loc, .SD, .SDcols = saved_b_cols]),
+          byrow = FALSE, nrow = n_worker_types, ncol = n_task_types
+        )
+        counterfactual_org_outputs_from_b(
+          B          = saved_B,
+          alpha      = as.numeric(.SD),
+          gamma      = gamma_invert,
+          wage_guess = wage_guess + 1,  # different wage
+          new_theta  = mats$new_theta,
+          config     = TEST_CONFIG
+        )
+      },
+      by = "location_id",
+      .SDcols = task_mix_cols]
+
+  expect_true(all(is.finite(realloc_panel$c_endog)))
+  expect_true(all(is.finite(realloc_panel$q_endog)))
+
+  # Step 3: apply_pricing-style block produces newprice and new_share.
+  realloc_panel[, Q := q_endog * avg_labor + qual_exo]
+  realloc_panel[, C := pmax(c_endog * avg_labor + cost_exo, 0)]
+  realloc_panel[, newprice := counterfactual_best_response_prices(
+                  cust_price, Q, C, weight, rho[cnty],
+                  outertol, paste(cnty, qy), TEST_CONFIG)]
+  realloc_panel[, new_share := counterfactual_logit_shares(
+                  Q, newprice, weight, rho[cnty], TEST_CONFIG)]
+
+  expect_true(all(is.finite(realloc_panel$newprice)))
+  expect_true(all(is.finite(realloc_panel$new_share)))
+  expect_true(sum(realloc_panel$weight * realloc_panel$new_share) <= 1 + 1e-9)
+
+  # Step 4: total-labor aggregation matches the helper helper.
+  total_labor <- realloc_panel[, setNames(
+        lapply(seq_len(n_worker_types), function(idx) {
+          sum(weight * new_share * CSPOP * get(e_field_names[idx]) * avg_labor)
+        }),
+        counterfactual_tot_labor_field_names(TEST_CONFIG)
+      ),
+      by = c("county", "quarter_year")]
+  expect_equal(nrow(total_labor), 1L)
+  for (col in counterfactual_tot_labor_field_names(TEST_CONFIG)) {
+    expect_true(is.finite(total_labor[[col]]))
+  }
+})
+
 test_that("apply_pricing pattern produces finite Q, C, newprice, new_share", {
   working_data <- build_synthetic_market(8, seed = 99)
   rho_value <- -0.05
