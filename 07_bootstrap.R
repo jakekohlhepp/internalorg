@@ -111,20 +111,49 @@ bootstrap_result_row <- function(iter, parameter_table,
   out
 }
 
+validate_bootstrap_results <- function(results, context = "bootstrap results") {
+  if (is.null(results) || nrow(results) == 0L) {
+    stop(context, " are empty.", call. = FALSE)
+  }
+
+  if ("status" %in% names(results)) {
+    bad_status <- results[is.na(status) | status != "ok"]
+    if (nrow(bad_status) > 0L) {
+      stop(context, " contain non-ok replications: ",
+           paste(head(paste0("iteration ", bad_status$iteration, " (", bad_status$status, ")"), 10L),
+                 collapse = ", "),
+           call. = FALSE)
+    }
+  }
+
+  for (conv_col in intersect(c("wage_convergence", "price_convergence"), names(results))) {
+    bad_conv <- results[!is.na(get(conv_col)) & get(conv_col) != 0L]
+    if (nrow(bad_conv) > 0L) {
+      stop(context, " contain non-converged replications in ", conv_col, ": ",
+           paste(head(paste0("iteration ", bad_conv$iteration, " (", bad_conv[[conv_col]], ")"), 10L),
+                 collapse = ", "),
+           call. = FALSE)
+    }
+  }
+
+  invisible(TRUE)
+}
+
 combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
   rep_paths <- file.path(reps_dir, paste0("boot_res_", iterations, ".rds"))
   existing <- file.exists(rep_paths)
   if (!any(existing)) {
-    warning("No bootstrap replication files found to combine.")
-    return(invisible(NULL))
+    stop("No bootstrap replication files found to combine.", call. = FALSE)
   }
   if (!all(existing)) {
-    warning("Missing bootstrap replication files for iterations: ",
-            paste(iterations[!existing], collapse = ", "))
+    stop("Missing bootstrap replication files for iterations: ",
+         paste(iterations[!existing], collapse = ", "),
+         call. = FALSE)
   }
 
-  combined <- rbindlist(lapply(rep_paths[existing], readRDS), fill = TRUE)
+  combined <- rbindlist(lapply(rep_paths, readRDS), fill = TRUE)
   setorder(combined, iteration)
+  validate_bootstrap_results(combined, "Combined bootstrap results")
   saveRDS(combined, output_path)
   invisible(combined)
 }
@@ -132,9 +161,11 @@ combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
 run_bootstrap_iteration <- function(iter, config = CONFIG) {
   message("\n--- Starting bootstrap iteration ", iter, " at ", Sys.time(), " ---")
   weights <- bootstrap_row_weights(iter, working_data, boot_weight_all)
+  iter_config <- config
+  iter_config$bootstrap_iteration <- iter
   clust <- NULL
-  if (identical(get_os(), "windows") && isTRUE(config$pl_on)) {
-    clust <- make_windows_solver_cluster(config)
+  if (identical(get_os(), "windows") && isTRUE(iter_config$pl_on)) {
+    clust <- make_windows_solver_cluster(iter_config)
     on.exit(parallel::stopCluster(clust), add = TRUE)
   }
 
@@ -143,53 +174,57 @@ run_bootstrap_iteration <- function(iter, config = CONFIG) {
       working_data,
       estim_matrix,
       min_wage_levels,
-      config = config,
+      config = iter_config,
       clust = clust,
       weights = weights,
       starting_parameters = point_parameters,
-      skip_structural_optimizer = isTRUE(config$skip_structural_optimizer)
+      skip_structural_optimizer = isTRUE(iter_config$skip_structural_optimizer)
     ),
-    error = function(e) structure(list(error = conditionMessage(e)), class = "boot_iter_error")
+    error = function(e) {
+      out_path <- file.path(reps_dir, paste0("boot_res_", iter, ".rds"))
+      this_res <- bootstrap_result_row(
+        iter,
+        parameter_table = NULL,
+        status = "error",
+        error_message = conditionMessage(e)
+      )
+      saveRDS(this_res, out_path)
+      stop("Bootstrap iteration ", iter, " errored: ", conditionMessage(e),
+           ". Saved diagnostic row at ", out_path, ".", call. = FALSE)
+    }
   )
 
-  if (inherits(result, "boot_iter_error")) {
-    message("Bootstrap iteration ", iter, " errored: ", result$error,
-            " -- recording status='error' and continuing.")
-    this_res <- bootstrap_result_row(
-      iter, parameter_table = NULL,
-      status = "error", error_message = result$error
-    )
-  } else {
-    wage_conv  <- result$wage_result$convergence
-    price_conv <- if (is.list(result$price_result)) result$price_result$result$convergence else NA_integer_
+  wage_conv  <- result$wage_result$convergence
+  price_conv <- if (is.list(result$price_result)) result$price_result$result$convergence else NA_integer_
 
-    wage_nonconv <- !isTRUE(config$skip_structural_optimizer) &&
-      isTRUE(!is.null(wage_conv) && !is.na(wage_conv) && wage_conv != 0)
-    price_nonconv <- isTRUE(!is.null(price_conv) && !is.na(price_conv) && price_conv != 0)
+  wage_nonconv <- !isTRUE(iter_config$skip_structural_optimizer) &&
+    isTRUE(!is.null(wage_conv) && !is.na(wage_conv) && wage_conv != 0)
+  price_nonconv <- isTRUE(!is.null(price_conv) && !is.na(price_conv) && price_conv != 0)
 
-    if (wage_nonconv) {
-      message("Bootstrap iteration ", iter, " wage solve non-converged: code ", wage_conv)
-    }
-    if (price_nonconv) {
-      message("Bootstrap iteration ", iter, " price solve non-converged: code ", price_conv)
-    }
-
-    status <- if (wage_nonconv && price_nonconv) "wage+price_nonconverged"
-              else if (wage_nonconv)             "wage_nonconverged"
-              else if (price_nonconv)            "price_nonconverged"
-              else                               "ok"
-
-    this_res <- bootstrap_result_row(
-      iter, result$parameter_table,
-      wage_convergence  = if (is.null(wage_conv))  NA_integer_ else wage_conv,
-      price_convergence = if (is.null(price_conv)) NA_integer_ else price_conv,
-      status            = status
-    )
+  if (wage_nonconv) {
+    message("Bootstrap iteration ", iter, " wage solve non-converged: code ", wage_conv)
+  }
+  if (price_nonconv) {
+    message("Bootstrap iteration ", iter, " price solve non-converged: code ", price_conv)
   }
 
-  saveRDS(this_res, file.path(reps_dir, paste0("boot_res_", iter, ".rds")))
+  status <- if (wage_nonconv && price_nonconv) "wage+price_nonconverged"
+            else if (wage_nonconv)             "wage_nonconverged"
+            else if (price_nonconv)            "price_nonconverged"
+            else                               "ok"
+
+  this_res <- bootstrap_result_row(
+    iter, result$parameter_table,
+    wage_convergence  = if (is.null(wage_conv))  NA_integer_ else wage_conv,
+    price_convergence = if (is.null(price_conv)) NA_integer_ else price_conv,
+    status            = status
+  )
+
+  out_path <- file.path(reps_dir, paste0("boot_res_", iter, ".rds"))
+  saveRDS(this_res, out_path)
   message("--- Completed bootstrap iteration ", iter, " at ", Sys.time(),
           " (status=", this_res$status, ") ---")
+  validate_bootstrap_results(this_res, paste0("Bootstrap iteration ", iter))
   this_res
 }
 
@@ -237,7 +272,7 @@ run_bootstrap_iterations <- function(iterations, config = CONFIG) {
       clust,
       c("working_data", "estim_matrix", "min_wage_levels", "point_parameters",
         "boot_weight_all", "reps_dir", "bootstrap_row_weights",
-        "bootstrap_result_row", "run_bootstrap_iteration"),
+        "bootstrap_result_row", "validate_bootstrap_results", "run_bootstrap_iteration"),
       envir = .GlobalEnv
     )
     return(rbindlist(parallel::parLapply(clust, iterations, run_bootstrap_iteration,
