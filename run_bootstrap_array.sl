@@ -23,6 +23,13 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
+# Force PSO for the wage stage so bootstrap reps land in the same basin as
+# 06_estimation. docs/wage_solver_stability.md establishes that nleqslv and
+# min_optim dead-end at NYC's worse basin (ssq ~0.025); PSO is the only solver
+# that finds the manuscript-shape basin (ssq ~1.3e-3).
+export JMP_WAGE_OPTIMIZER_MODE=pso
+export JMP_MIN_OPTIM_TRACE=1
+
 # Fail fast if the renv project library is missing or direct runtime packages
 # are not loadable. Job 48457046 (06_estimation) burned a slot exiting at the
 # library(lubridate) call because renv had not been restored yet; this guard

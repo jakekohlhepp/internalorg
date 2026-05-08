@@ -17,7 +17,13 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
-echo "JMP_WAGE_OPTIMIZER_MODE=${JMP_WAGE_OPTIMIZER_MODE:-<config default>}"
-echo "JMP_MIN_OPTIM_TRACE=${JMP_MIN_OPTIM_TRACE:-<config default>}"
+# Force PSO for the wage stage. docs/wage_solver_stability.md establishes that
+# nleqslv and min_optim dead-end at NYC's worse basin (ssq ~0.025); PSO is the
+# only solver that finds the manuscript-shape basin (ssq ~1.3e-3).
+export JMP_WAGE_OPTIMIZER_MODE=pso
+export JMP_MIN_OPTIM_TRACE=1
+
+echo "JMP_WAGE_OPTIMIZER_MODE=${JMP_WAGE_OPTIMIZER_MODE}"
+echo "JMP_MIN_OPTIM_TRACE=${JMP_MIN_OPTIM_TRACE}"
 
 Rscript 06_estimation.R
