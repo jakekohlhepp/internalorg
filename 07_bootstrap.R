@@ -7,7 +7,9 @@
 #'
 #' Inputs:
 #'   - mkdata/data/04_estimation_sample.rds
-#'   - results/data/06_parameters.rds  (point estimates as warm start)
+#'   - results/data/06_parameters.rds  (canonical 06 output; wage warm start is
+#'     pulled from the parameter_table rows whose parm_name matches the
+#'     :avg_labor:E_raw_* pattern)
 #'
 #' Outputs:
 #'   - results/data/07_boot_weights.rds
@@ -23,10 +25,10 @@ source("preamble.R")
 script_start <- Sys.time()
 
 estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
-parameters_path <- file.path("results", "data", "06_parameters.rds")
+parameters_06_path <- file.path("results", "data", "06_parameters.rds")
 weights_path <- file.path("results", "data", "07_boot_weights.rds")
 reps_dir <- CONFIG$bootstrap_results_dir
-assert_required_files(c(estimation_sample_path, parameters_path))
+assert_required_files(c(estimation_sample_path, parameters_06_path))
 ensure_directory(file.path("results", "data"))
 ensure_directory(reps_dir)
 
@@ -34,7 +36,32 @@ estimation_sample <- readRDS(estimation_sample_path)
 working_data <- data.table(estimation_sample$working_data)
 estim_matrix <- estimation_sample$estim_matrix
 min_wage_levels <- data.table(estimation_sample$min_wage_levels)
-point_parameters <- readRDS(parameters_path)
+
+## Wage warm start. Pull the wage coefficients straight from 06_parameters.rds.
+## In utils/estimation_pipeline.R, the parameter_table's wage rows are written
+## with parm_name = names(wage_coefs) = names(beta_2_subset) = the
+## :avg_labor:E_raw_* names off beta_2's rownames; so we filter on that pattern
+## and reorder to match rownames(beta_2)[wage_idx], which is the order
+## extract_wage_start expects.
+estimation_objects <- build_estimation_setup(working_data, estim_matrix, config = CONFIG)
+beta_2 <- estimation_objects$beta_2
+rm(estimation_objects)
+
+wage_terms <- paste0(":avg_labor:E_raw_", 2:CONFIG$n_worker_types, "$")
+wage_idx <- Reduce(`|`, lapply(wage_terms, grepl, rownames(beta_2)))
+wage_names <- rownames(beta_2)[wage_idx]
+
+parameters_06 <- as.data.table(readRDS(parameters_06_path))
+wage_rows <- parameters_06[parm_name %in% wage_names]
+stopifnot(nrow(wage_rows) == length(wage_names),
+          length(wage_names) > 0,
+          setequal(wage_rows$parm_name, wage_names))
+beta_2_subset <- setNames(
+  wage_rows$coefficients[match(wage_names, wage_rows$parm_name)],
+  wage_names
+)
+stopifnot(length(beta_2_subset) == sum(wage_idx),
+          all(is.finite(beta_2_subset)))
 
 resolve_bootstrap_iterations <- function(config = CONFIG) {
   if (!is.na(config$slurm_array_task_id)) {
@@ -158,7 +185,11 @@ combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
   invisible(combined)
 }
 
+`%||%` <- function(a, b) if (is.null(a)) b else a
+.boot_iter_traceback <- NULL
+
 run_bootstrap_iteration <- function(iter, config = CONFIG) {
+  .boot_iter_traceback <<- NULL
   message("\n--- Starting bootstrap iteration ", iter, " at ", Sys.time(), " ---")
   weights <- bootstrap_row_weights(iter, working_data, boot_weight_all)
   iter_config <- config
@@ -170,25 +201,39 @@ run_bootstrap_iteration <- function(iter, config = CONFIG) {
   }
 
   result <- tryCatch(
-    estimate_structural_parameters(
-      working_data,
-      estim_matrix,
-      min_wage_levels,
-      config = iter_config,
-      clust = clust,
-      weights = weights,
-      starting_parameters = point_parameters,
-      skip_structural_optimizer = isTRUE(iter_config$skip_structural_optimizer)
+    withCallingHandlers(
+      estimate_structural_parameters(
+        working_data,
+        estim_matrix,
+        min_wage_levels,
+        config = iter_config,
+        clust = clust,
+        weights = weights,
+        beta_2_subset = beta_2_subset,
+        skip_structural_optimizer = isTRUE(iter_config$skip_structural_optimizer)
+      ),
+      error = function(e) {
+        .boot_iter_traceback <<- vapply(sys.calls(), function(c) {
+          s <- tryCatch(deparse(c, nlines = 1L)[1L], error = function(...) "<undeparsable>")
+          if (nchar(s) > 200L) paste0(substr(s, 1L, 200L), "...") else s
+        }, character(1))
+      }
     ),
     error = function(e) {
       out_path <- file.path(reps_dir, paste0("boot_res_", iter, ".rds"))
+      tb <- .boot_iter_traceback %||% character(0)
       this_res <- bootstrap_result_row(
         iter,
         parameter_table = NULL,
         status = "error",
-        error_message = conditionMessage(e)
+        error_message = paste0(conditionMessage(e),
+                               if (length(tb)) paste0(" || traceback: ",
+                                                      paste(rev(tb), collapse = " <- "))
+                               else "")
       )
       saveRDS(this_res, out_path)
+      message("--- TRACEBACK for bootstrap iteration ", iter, " ---")
+      for (i in seq_along(tb)) message("  ", length(tb) - i + 1L, ": ", tb[length(tb) - i + 1L])
       stop("Bootstrap iteration ", iter, " errored: ", conditionMessage(e),
            ". Saved diagnostic row at ", out_path, ".", call. = FALSE)
     }
@@ -270,7 +315,7 @@ run_bootstrap_iterations <- function(iterations, config = CONFIG) {
     }))
     parallel::clusterExport(
       clust,
-      c("working_data", "estim_matrix", "min_wage_levels", "point_parameters",
+      c("working_data", "estim_matrix", "min_wage_levels", "beta_2_subset",
         "boot_weight_all", "reps_dir", "bootstrap_row_weights",
         "bootstrap_result_row", "validate_bootstrap_results", "run_bootstrap_iteration"),
       envir = .GlobalEnv
