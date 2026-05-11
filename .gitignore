@@ -40,6 +40,13 @@ temp_*
 nul
 *.tmp
 
+# Smoke / exploratory scripts (local-only, not for shared repo)
+# Convention codified in walled_estimate_dynamic_labor/portable_skills/02_project_structure.md.
+# Promote by renaming to tests/test_*.R or a numbered analysis script.
+smoke_*.R
+run_smoke_*.sl
+run_smoke_*.R
+
 # IDE
 .vscode/
 .idea/
