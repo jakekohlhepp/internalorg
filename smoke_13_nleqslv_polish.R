@@ -1,21 +1,8 @@
-## compute counterfactuals
-## Store only the essentials of the equilibrium:
-### 1. Equilibrium wages (to get equilibrium again)
-### 2. org Structures (because these require contraction to recover)
-## 
-
-## Compute the following objects
-## 1. Consumer surplus
-## 2. specialization (s-index)
-## 3. Specialization (max fraction of time spent on one task)
-## 4. sum of theta*B at each firm
-## 5. marginal cost of each firm.
-
-## Structure:
-### First loop: wages
-### Second loop: best-response pricing (contract on lambert's w). 
-#### convergence not for sure. but if we end up converging, this is a best response to best responses.
-### Third loop: best-response org structure. convergence guaranteed.
+## SMOKE: nleqslv polish on PSO+NM output of 13_counterfactual_prep.R.
+## Reuses the setup of 13_ verbatim through the solve_wages closure, then
+## loads the saved 05_00_initial_wages.rds and runs nleqslv on log-wages from
+## each PSO solution. Reports max-abs labor-clearing residual before/after.
+## Does NOT overwrite the saved baseline.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
@@ -297,34 +284,89 @@ solve_wage_abs<-function(x){
 }
 
 
-res_wages <- new_counterfactual_wages_grid(
-  unique(total_labor_orig$quarter_year),
-  include_solution_type = FALSE
-)
+## ----- Smoke: nleqslv polish on saved PSO+NM wages -----
+pso_path <- counterfactual_data_path("05_00_initial_wages.rds")
+if (!file.exists(pso_path)) {
+  pso_path <- legacy_counterfactual_data_path("05_00_initial_wages.rds")
+}
+stopifnot(file.exists(pso_path))
+cat("Loading PSO+NM wages from:", pso_path, "\n")
+pso_wages_tbl <- as.data.frame(readRDS(pso_path))
+
+target_tol <- CONFIG$counterfactual_wage_tol
+wage_cols  <- paste0("w", seq_len(n_worker_types))
+
+cat(strrep("=", 70), "\n", sep = "")
+cat(sprintf("%-8s %-9s %-14s %-14s %-7s %-7s\n",
+            "county", "quarter",
+            "pso_max_abs", "nleqslv_max_abs", "termcd", "iter"))
+cat(strrep("-", 70), "\n", sep = "")
 
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
-    print(paste("*******", cnty, qy, "- shared baseline solve"))
-    start <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
-    quad_wages <- counterfactual_solve_wage_market_pso(
-      solve_wages,
-      start,
-      label = paste("baseline", cnty, qy),
-      target_tol = CONFIG$counterfactual_wage_tol
+    row <- pso_wages_tbl[
+      pso_wages_tbl$county == cnty & pso_wages_tbl$quarter_year == qy, ,
+      drop = FALSE
+    ]
+    if (nrow(row) == 0L) {
+      cat(sprintf("%-8s %-9s %s\n", cnty, qy, "[no saved PSO row]"))
+      next
+    }
+    if (nrow(row) > 1L) row <- row[1L, , drop = FALSE]
+    pso_par <- as.numeric(row[, wage_cols])
+    if (any(!is.finite(pso_par)) || any(pso_par <= 0)) {
+      cat(sprintf("%-8s %-9s %s\n", cnty, qy, "[non-finite or non-positive PSO wages]"))
+      next
+    }
+
+    pso_resid <- tryCatch(as.numeric(solve_wages(pso_par)),
+                          error = function(e) rep(NA_real_, n_worker_types))
+    pso_max_abs <- if (any(!is.finite(pso_resid))) NA_real_ else max(abs(pso_resid))
+
+    fn_log <- function(log_w) {
+      w <- exp(log_w)
+      r <- tryCatch(as.numeric(solve_wages(w)),
+                    error = function(e) rep(1e6, n_worker_types))
+      if (any(!is.finite(r))) rep(1e6, n_worker_types) else r
+    }
+    pol <- tryCatch(
+      nleqslv::nleqslv(
+        x = log(pmax(pso_par, CONFIG$numeric_floor)),
+        fn = fn_log,
+        method = "Broyden", global = "dbldog",
+        control = list(xtol = 1e-10, ftol = 1e-8, maxit = 200L,
+                       cndtol = 1e-12, allowSingular = TRUE, trace = 0L)
+      ),
+      error = function(e) {
+        message("nleqslv failed for ", cnty, " ", qy, ": ", conditionMessage(e))
+        NULL
+      }
     )
-    counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy)
+    if (is.null(pol)) {
+      cat(sprintf("%-8s %-9s %-14.4g %-14s %-7s %-7s\n",
+                  cnty, qy, pso_max_abs, "FAIL", "-", "-"))
+      next
+    }
+    polished_par <- exp(pol$x)
+    pol_resid <- tryCatch(as.numeric(solve_wages(polished_par)),
+                          error = function(e) rep(NA_real_, n_worker_types))
+    pol_max_abs <- if (any(!is.finite(pol_resid))) NA_real_ else max(abs(pol_resid))
+
+    cat(sprintf("%-8s %-9s %-14.4g %-14.4g %-7d %-7d\n",
+                cnty, qy,
+                pso_max_abs, pol_max_abs,
+                as.integer(pol$termcd), as.integer(pol$iter)))
+    cat("  PSO wages:     ", paste(signif(pso_par, 4), collapse = ", "), "\n")
+    cat("  Polished wages:", paste(signif(polished_par, 4), collapse = ", "), "\n")
+    cat("  PSO resid:     ", paste(signif(pso_resid, 3), collapse = ", "), "\n")
+    cat("  Polished resid:", paste(signif(pol_resid, 3), collapse = ", "), "\n")
+    cat(sprintf("  converged at target_tol=%.2g? PSO=%s  nleqslv=%s\n",
+                target_tol,
+                isTRUE(pso_max_abs <= target_tol),
+                isTRUE(pol_max_abs <= target_tol)))
   }
 }
-save_counterfactual_rds(
-  res_wages,
-  "05_00_initial_wages.rds",
-  legacy_filename = "05_00_initial_wages.rds"
-)
-save_counterfactual_rds(
-  working_data,
-  "05_00_working_data.rds",
-  legacy_filename = "05_00_working_data.rds"
-)
+cat(strrep("=", 70), "\n", sep = "")
 
 
 

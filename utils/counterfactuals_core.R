@@ -2,6 +2,10 @@ if (!exists("CONFIG")) {
   source("config.R")
 }
 
+if (!exists("pso_solve") || !exists("solver_value")) {
+  source(project_path("utils", "structural_solver.R"))
+}
+
 load_counterfactual_packages <- function(extra_packages = NULL) {
   required_packages <- unique(c(
     "data.table",
@@ -1018,6 +1022,152 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
     best_result$residual <= target_tol
   best_result$target_tol <- target_tol
   best_result
+}
+
+#' PSO + Nelder-Mead wage solver for the counterfactual pipeline.
+#'
+#' Mirrors `estimate_wage_parameters_pso` (utils/structural_solver.R) but for
+#' a single (county, quarter) labor-clearing problem rather than a per-county
+#' GMM moment sweep:
+#'   - search runs in log-wage space (wages are levels and must be positive);
+#'   - cold-start PSO over [-halfwidth, +halfwidth]^n_worker_types;
+#'   - two Nelder-Mead polishes: one from the PSO best, one from the seed;
+#'   - candidate = lowest of {pso, polish_pso, polish_seed};
+#'   - acceptance gate: if the candidate's sum-of-squared residuals exceeds the
+#'     seed's, revert to the seed (the "minimizer cannot make things worse than
+#'     the start" guarantee from the estimation analogue).
+#'
+#' Returns the same record shape as `counterfactual_solve_wage_market` so it is
+#' a drop-in replacement at the `counterfactual_store_wage_solution` boundary.
+counterfactual_solve_wage_market_pso <- function(fn, start, label = NULL,
+                                                 target_tol = CONFIG$counterfactual_wage_tol,
+                                                 config = CONFIG) {
+  start <- pmax(as.numeric(start), config$numeric_floor)
+  d <- length(start)
+  failure_penalty <- solver_value(config, "optimizer_failure_penalty", 1e6)
+
+  fn_safe <- counterfactual_safe_wage_fn(fn, config)
+
+  objective_ssq <- function(log_w) {
+    if (!all(is.finite(log_w))) return(failure_penalty)
+    w <- exp(log_w)
+    if (!all(is.finite(w)) || any(w <= 0)) return(failure_penalty)
+    residual <- tryCatch(as.numeric(fn_safe(w)), error = function(e) NULL)
+    if (is.null(residual) || length(residual) != d || any(!is.finite(residual))) {
+      return(failure_penalty)
+    }
+    sum(residual^2)
+  }
+
+  start_log <- log(start)
+  start_objective <- objective_ssq(start_log)
+
+  n_particles <- solver_value(config, "pso_n_particles", 40L)
+  n_iter <- solver_value(config, "pso_n_iter", 100L)
+  halfwidth <- solver_value(config, "counterfactual_pso_log_halfwidth", 6)
+  parscale_log <- solver_value(config, "counterfactual_pso_log_parscale", 1)
+  w_inertia <- solver_value(config, "pso_w", 0.7)
+  c1 <- solver_value(config, "pso_c1", 1.5)
+  c2 <- solver_value(config, "pso_c2", 1.5)
+  pso_trace <- solver_value(config, "min_optim_trace", 0L)
+  polish_method <- solver_value(config, "pso_polish_method", "Nelder-Mead")
+  polish_maxit <- solver_value(config, "min_optim_maxit", 5000L)
+  reltol <- solver_value(config, "min_optim_reltol", config$obj_tol)
+
+  lower <- rep(-halfwidth, d); upper <- rep(halfwidth, d)
+  pso_label <- if (is.null(label)) "counterfactual" else label
+  message(sprintf(
+    "PSO wage solve %s: %d particles x %d iter, log search box +/- %g, cold start.",
+    pso_label, n_particles, n_iter, halfwidth
+  ))
+
+  pso_res <- pso_solve(
+    objective_ssq, lower, upper,
+    seed_particle = NULL,
+    n_particles = n_particles, n_iter = n_iter,
+    w = w_inertia, c1 = c1, c2 = c2, trace = pso_trace,
+    label = pso_label
+  )
+
+  polish_pso <- tryCatch(
+    stats::optim(
+      par = pso_res$par, fn = objective_ssq,
+      method = polish_method,
+      control = list(parscale = rep(parscale_log, d),
+                     maxit = polish_maxit, reltol = reltol,
+                     trace = pso_trace)
+    ),
+    error = function(e) {
+      warning("PSO->polish failed", if (!is.null(label)) paste0(" for ", label), ": ",
+              conditionMessage(e), call. = FALSE)
+      list(par = pso_res$par, value = pso_res$value, convergence = -1L)
+    }
+  )
+
+  polish_seed <- tryCatch(
+    stats::optim(
+      par = start_log, fn = objective_ssq,
+      method = polish_method,
+      control = list(parscale = rep(parscale_log, d),
+                     maxit = polish_maxit, reltol = reltol,
+                     trace = pso_trace)
+    ),
+    error = function(e) {
+      warning("seed->polish failed", if (!is.null(label)) paste0(" for ", label), ": ",
+              conditionMessage(e), call. = FALSE)
+      list(par = start_log, value = start_objective, convergence = -1L)
+    }
+  )
+
+  candidates <- list(
+    pso         = list(par = pso_res$par,     value = pso_res$value),
+    polish_pso  = list(par = polish_pso$par,  value = polish_pso$value),
+    polish_seed = list(par = polish_seed$par, value = polish_seed$value)
+  )
+  cand_values <- vapply(candidates, function(x) x$value, numeric(1))
+  best_label <- names(cand_values)[which.min(cand_values)]
+  best_par_log <- candidates[[best_label]]$par
+  best_value <- candidates[[best_label]]$value
+
+  message(sprintf(
+    "PSO wage solve %s done: pso=%.6g  polish_pso=%.6g  polish_seed=%.6g  best=%.6g (%s)",
+    pso_label, pso_res$value, polish_pso$value, polish_seed$value,
+    best_value, best_label
+  ))
+
+  accepted <- is.finite(best_value) &&
+    best_value <= start_objective * (1 + sqrt(.Machine$double.eps))
+  if (!accepted) {
+    warning(
+      "Rejected PSO counterfactual wage solve ", pso_label,
+      " because the minimum sum-of-squared residuals did not improve on the start. ",
+      "start=", signif(start_objective, 6),
+      ", candidate=", signif(best_value, 6),
+      call. = FALSE
+    )
+    best_par_log <- start_log
+    best_value <- start_objective
+    best_label <- "start_revert"
+  }
+
+  best_par <- exp(best_par_log)
+  best_par <- pmax(best_par, config$numeric_floor)
+  result <- counterfactual_candidate_result(
+    fn_safe, best_par,
+    method = best_label,
+    message = sprintf("PSO+polish (ssq=%.6g, start_ssq=%.6g, accepted=%s)",
+                      best_value, start_objective, accepted),
+    termcd = if (isTRUE(accepted)) 0L else 1L
+  )
+  result$pso_value <- pso_res$value
+  result$polish_pso_value <- polish_pso$value
+  result$polish_seed_value <- polish_seed$value
+  result$start_objective <- start_objective
+  result$candidate_objective <- best_value
+  result$accepted <- accepted
+  result$converged <- is.finite(result$residual) && result$residual <= target_tol
+  result$target_tol <- target_tol
+  result
 }
 
 counterfactual_store_wage_solution <- function(wage_table, result, cnty, qy,

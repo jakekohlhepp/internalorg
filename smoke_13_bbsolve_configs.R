@@ -1,21 +1,10 @@
-## compute counterfactuals
-## Store only the essentials of the equilibrium:
-### 1. Equilibrium wages (to get equilibrium again)
-### 2. org Structures (because these require contraction to recover)
-## 
-
-## Compute the following objects
-## 1. Consumer surplus
-## 2. specialization (s-index)
-## 3. Specialization (max fraction of time spent on one task)
-## 4. sum of theta*B at each firm
-## 5. marginal cost of each firm.
-
-## Structure:
-### First loop: wages
-### Second loop: best-response pricing (contract on lambert's w). 
-#### convergence not for sure. but if we end up converging, this is a best response to best responses.
-### Third loop: best-response org structure. convergence guaranteed.
+## SMOKE: BBsolve as the only wage-finding algorithm for the counterfactual
+## labor-clearing problem. Reuses 13_counterfactual_prep.R's setup verbatim
+## through the solve_wages closure, then loops a set of BBsolve configurations
+## over all (county, quarter) markets in 13_, tabulating convergence,
+## iterations, function evaluations, and wall time. Does NOT save anything to
+## the canonical counterfactual data paths; results go to a smoke RDS plus
+## stdout for inspection.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
@@ -297,34 +286,222 @@ solve_wage_abs<-function(x){
 }
 
 
-res_wages <- new_counterfactual_wages_grid(
-  unique(total_labor_orig$quarter_year),
-  include_solution_type = FALSE
+## ============================================================
+## BBsolve smoke harness
+## ============================================================
+##
+## Methodology: hold the labor-clearing residual function fixed (the
+## solve_wages closure built above). For each (county, quarter) market and
+## each BBsolve configuration, evaluate:
+##   - converged? (max-abs labor-gap residual <= target_tol = 0.01)
+##   - final max-abs residual
+##   - BBsolve $convergence code (0 = OK; 1 = maxit; 2 = no progress; 3-9 = various)
+##   - iter count, function evaluations
+##   - wall-clock seconds
+##
+## A configuration "works" if it converges in ALL 3 markets to max-abs <= 0.01.
+##
+## Two parameterisations of the wage vector are tested:
+##   - "raw":  x = w, fn = solve_wages(w) directly. Risk: BBsolve has no
+##             bounds, so iterates can go non-positive and break the inner
+##             best-response price contraction. We clamp via pmax in the
+##             wrapper but BBsolve sees the discontinuity.
+##   - "log":  x = log(w), fn = solve_wages(exp(x)). Wages are positive by
+##             construction. Risk: large step sizes in log space map to
+##             extreme wage values that the inner solver may not handle.
+
+target_tol <- CONFIG$counterfactual_wage_tol
+n_w <- n_worker_types
+
+## Robust residual evaluator: returns rep(1e6, n_w) on any failure, so BBsolve
+## sees a finite (but extremely bad) objective rather than crashing.
+solve_wages_safe <- function(w) {
+  w <- pmax(as.numeric(w), CONFIG$numeric_floor)
+  r <- tryCatch(as.numeric(solve_wages(w)),
+                error = function(e) rep(1e6, n_w),
+                warning = function(w) {
+                  ## warnings (e.g. price solver non-convergence) -> tolerable
+                  suppressWarnings(as.numeric(solve_wages(pmax(w, CONFIG$numeric_floor))))
+                })
+  if (length(r) != n_w || any(!is.finite(r))) rep(1e6, n_w) else r
+}
+fn_raw <- function(w)     solve_wages_safe(w)
+fn_log <- function(log_w) solve_wages_safe(exp(log_w))
+
+## --------------------------------------------------------------------------
+## Configurations to test. Each is a self-contained recipe so the table reads
+## cleanly. The order goes from "bare default" to progressively more aggressive
+## multi-method retries.
+## --------------------------------------------------------------------------
+configs <- list(
+  list(
+    name = "bb_default_raw",
+    space = "raw",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = FALSE, noimp = 100)
+  ),
+  list(
+    name = "bb_default_log",
+    space = "log",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = FALSE, noimp = 100)
+  ),
+  list(
+    name = "bb_NM_raw",
+    space = "raw",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = TRUE, noimp = 100)
+  ),
+  list(
+    name = "bb_NM_log",
+    space = "log",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = TRUE, noimp = 100)
+  ),
+  list(
+    name = "bb_multiM_raw",     # current counterfactual fallback recipe
+    space = "raw",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = TRUE,
+                   noimp = 100, M = c(10, 2, 15, 5, 20))
+  ),
+  list(
+    name = "bb_multiM_log",
+    space = "log",
+    control = list(maxit = 1500, tol = 1e-8, trace = FALSE, NM = TRUE,
+                   noimp = 100, M = c(10, 2, 15, 5, 20))
+  ),
+  list(
+    name = "bb_long_log",
+    space = "log",
+    control = list(maxit = 5000, tol = 1e-9, trace = FALSE, NM = TRUE,
+                   noimp = 300, M = c(10, 2, 15, 5, 20, 50))
+  ),
+  list(
+    name = "bb_widerM_log",
+    space = "log",
+    control = list(maxit = 3000, tol = 1e-8, trace = FALSE, NM = TRUE,
+                   noimp = 200, M = c(5, 10, 20, 50, 100))
+  )
 )
 
-for (cnty in CONFIG$counties) {
-  for (qy in get_counterfactual_focus_quarter()) {
-    print(paste("*******", cnty, qy, "- shared baseline solve"))
-    start <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
-    quad_wages <- counterfactual_solve_wage_market_pso(
-      solve_wages,
-      start,
-      label = paste("baseline", cnty, qy),
-      target_tol = CONFIG$counterfactual_wage_tol
-    )
-    counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy)
+run_one_config <- function(cfg, start_raw, label) {
+  x0 <- if (identical(cfg$space, "log")) {
+    log(pmax(as.numeric(start_raw), CONFIG$numeric_floor))
+  } else {
+    pmax(as.numeric(start_raw), CONFIG$numeric_floor)
+  }
+  fn <- if (identical(cfg$space, "log")) fn_log else fn_raw
+
+  t0 <- Sys.time()
+  res <- tryCatch(
+    BB::BBsolve(par = x0, fn = fn, control = cfg$control, quiet = TRUE),
+    error = function(e) {
+      message("[", cfg$name, " ", label, "] BBsolve error: ", conditionMessage(e))
+      list(par = x0, convergence = -1L, message = conditionMessage(e),
+           iter = NA_integer_, feval = NA_integer_, residual = NA_real_)
+    }
+  )
+  elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+
+  final_par <- if (identical(cfg$space, "log")) {
+    exp(res$par)
+  } else {
+    pmax(as.numeric(res$par), CONFIG$numeric_floor)
+  }
+  final_resid <- solve_wages_safe(final_par)
+  max_abs <- if (any(!is.finite(final_resid))) Inf else max(abs(final_resid))
+
+  list(
+    config = cfg$name,
+    space = cfg$space,
+    elapsed_sec = elapsed,
+    iter = as.integer(if (is.null(res$iter)) NA_integer_ else res$iter),
+    feval = as.integer(if (is.null(res$feval)) NA_integer_ else res$feval),
+    bb_convergence = as.integer(if (is.null(res$convergence)) NA_integer_ else res$convergence),
+    bb_message = if (is.null(res$message)) NA_character_ else as.character(res$message),
+    max_abs_resid = max_abs,
+    converged = isTRUE(max_abs <= target_tol),
+    final_par = final_par,
+    final_resid = final_resid
+  )
+}
+
+## --------------------------------------------------------------------------
+## Run the grid
+## --------------------------------------------------------------------------
+markets <- list()
+for (cnty_iter in CONFIG$counties) {
+  for (qy_iter in get_counterfactual_focus_quarter()) {
+    markets[[length(markets) + 1]] <- list(county = cnty_iter, quarter = qy_iter)
   }
 }
-save_counterfactual_rds(
-  res_wages,
-  "05_00_initial_wages.rds",
-  legacy_filename = "05_00_initial_wages.rds"
+
+results <- list()
+cat(strrep("=", 100), "\n", sep = "")
+cat(sprintf("%-18s %-8s %-9s %-6s %-9s %-12s %-12s %-9s %s\n",
+            "config", "county", "quarter", "space", "elapsed_s",
+            "max_abs", "iter/feval", "bb_conv", "converged"))
+cat(strrep("-", 100), "\n", sep = "")
+for (cfg in configs) {
+  for (mkt in markets) {
+    cnty <- mkt$county
+    qy   <- mkt$quarter
+    start_raw <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
+    label <- paste(cfg$name, cnty, qy)
+    r <- run_one_config(cfg, start_raw, label)
+    r$county <- cnty
+    r$quarter <- qy
+    results[[length(results) + 1]] <- r
+    cat(sprintf("%-18s %-8s %-9s %-6s %9.1f %12.4g %5d/%-6d %-9d %s\n",
+                r$config, cnty, qy, r$space, r$elapsed_sec,
+                r$max_abs_resid,
+                if (is.na(r$iter)) -1L else r$iter,
+                if (is.na(r$feval)) -1L else r$feval,
+                if (is.na(r$bb_convergence)) -99L else r$bb_convergence,
+                r$converged))
+  }
+}
+cat(strrep("=", 100), "\n", sep = "")
+
+## --------------------------------------------------------------------------
+## Summary: which configs converged in ALL markets
+## --------------------------------------------------------------------------
+config_names <- vapply(configs, function(c) c$name, character(1))
+n_markets <- length(markets)
+summary_tbl <- data.frame(
+  config = config_names,
+  n_converged = vapply(config_names, function(nm) {
+    sum(vapply(results, function(r) r$config == nm && isTRUE(r$converged),
+               logical(1)))
+  }, integer(1)),
+  worst_max_abs = vapply(config_names, function(nm) {
+    vals <- vapply(results, function(r) if (r$config == nm) r$max_abs_resid else NA_real_,
+                   numeric(1))
+    max(vals, na.rm = TRUE)
+  }, numeric(1)),
+  total_seconds = vapply(config_names, function(nm) {
+    sum(vapply(results, function(r) if (r$config == nm) r$elapsed_sec else 0,
+               numeric(1)), na.rm = TRUE)
+  }, numeric(1)),
+  stringsAsFactors = FALSE
 )
-save_counterfactual_rds(
-  working_data,
-  "05_00_working_data.rds",
-  legacy_filename = "05_00_working_data.rds"
-)
+summary_tbl <- summary_tbl[order(-summary_tbl$n_converged,
+                                  summary_tbl$worst_max_abs), ]
+cat("\nSUMMARY (sorted by markets converged, then by worst residual):\n")
+print(summary_tbl, row.names = FALSE)
+
+cat("\nConfigs that converged in all ", n_markets, " markets:\n", sep = "")
+ok_configs <- summary_tbl$config[summary_tbl$n_converged == n_markets]
+if (length(ok_configs) == 0) {
+  cat("  (none)\n")
+} else {
+  for (nm in ok_configs) cat("  - ", nm, "\n", sep = "")
+}
+
+## --------------------------------------------------------------------------
+## Persist raw results for offline analysis (not into the canonical path)
+## --------------------------------------------------------------------------
+out_path <- file.path("logs", "smoke_13_bbsolve_configs_results.rds")
+saveRDS(list(results = results, summary = summary_tbl,
+             configs = configs, target_tol = target_tol),
+        out_path)
+cat("Wrote: ", out_path, "\n", sep = "")
 
 
 
