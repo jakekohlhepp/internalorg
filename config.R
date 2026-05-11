@@ -275,7 +275,7 @@ CONFIG <- list(
   # ---------------------------------------------------------------------------
   # Bootstrap execution
   # ---------------------------------------------------------------------------
-  bootstrap_reps = as.integer(Sys.getenv("JMP_BOOTSTRAP_REPS", unset = "200")),
+  bootstrap_reps = as.integer(Sys.getenv("JMP_BOOTSTRAP_REPS", unset = "1100")),
   bootstrap_seed = as.integer(Sys.getenv("JMP_BOOTSTRAP_SEED", unset = "833927")),
   bootstrap_backend = Sys.getenv("JMP_BOOTSTRAP_BACKEND", unset = "auto"),
   bootstrap_workers = as.integer(Sys.getenv("JMP_BOOTSTRAP_WORKERS", unset = NA_character_)),
