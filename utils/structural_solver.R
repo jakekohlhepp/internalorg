@@ -651,6 +651,28 @@ solve_worker_rows <- function(tild_theta, rows, config = CONFIG, clust = NULL,
     results <- lapply(jobs, solve_one, worker_config, tild_theta, tolerances)
   }
 
+  ## mclapply/parLapply return `try-error` (atomic character with attributes)
+  ## for jobs whose worker process errored; the downstream `result$unique_id`
+  ## then triggers "$ operator is invalid for atomic vectors". Convert any
+  ## such failure into a stop() the caller can catch.
+  bad <- vapply(results,
+                function(r) inherits(r, "try-error") || !is.list(r),
+                logical(1))
+  if (any(bad)) {
+    first_bad <- which(bad)[1L]
+    msg <- if (inherits(results[[first_bad]], "try-error")) {
+      paste(attr(results[[first_bad]], "condition")$message,
+            "(job index ", first_bad, ")")
+    } else {
+      paste0("inner solver returned non-list of class ",
+             paste(class(results[[first_bad]]), collapse = "/"),
+             " for job index ", first_bad)
+    }
+    stop("solve_worker_rows: ", sum(bad), " of ", length(results),
+         " inner solves failed in parallel workers; first failure: ", msg,
+         call. = FALSE)
+  }
+
   E_unique <- matrix(NA_real_, nrow = n_unique, ncol = n_E)
   gamma_unique <- rep(NA_real_, n_unique)
 
@@ -1360,12 +1382,14 @@ pso_solve <- function(fn, lower, upper, seed_particle,
 #' negative wages that NM dead-ends in; PSO with a wide search box finds a
 #' basin at ssq ~0.001 with a manuscript-like sign pattern.
 #'
-#' For each county the swarm initialises with one particle pinned at the
-#' seed start and the rest drawn uniformly in
-#' [-pso_search_halfwidth, +pso_search_halfwidth]^d, runs n_iter velocity
-#' updates, then polishes the global best with the configured optim method
-#' (default Nelder-Mead). The strict-exit guard at obj_tol fires the same
-#' way as in min_optim mode.
+#' For each county the swarm initialises with all particles drawn uniformly
+#' in [-pso_search_halfwidth, +pso_search_halfwidth]^d (cold start; no
+#' particle pinned at the seed -- anchoring at a poor seed collapses the
+#' swarm to that basin), runs n_iter velocity updates, then runs the
+#' configured optim polisher (default Nelder-Mead) twice: once from the PSO
+#' global best, once from the seed start. The county solution is the lowest
+#' of (raw PSO, polish-from-PSO, polish-from-seed). The strict-exit guard
+#' (pso_strict_obj_tol) fires the same way as in min_optim mode.
 estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
                                          config = CONFIG, clust = NULL,
                                          solver_state = NULL,
@@ -1463,11 +1487,22 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     objective_county_vec <- function(parms) {
       candidate <- full_par
       candidate[par_idx] <- parms
-      moments <- weighted_col_means(objective_gmm(
-        theta = candidate, x = x_county, beta = beta,
-        beta_2_subset = beta_2_subset, config = objective_config,
-        clust = clust, solver_state = NULL
-      ), weights = county_weights)
+      moments <- tryCatch(
+        weighted_col_means(objective_gmm(
+          theta = candidate, x = x_county, beta = beta,
+          beta_2_subset = beta_2_subset, config = objective_config,
+          clust = clust, solver_state = NULL
+        ), weights = county_weights),
+        error = function(e) NULL
+      )
+      if (is.null(moments)) {
+        ## Match the moment width that the success path produces so callers
+        ## (structural_wage_objective_score, sum(...^2)) see NA, not a length
+        ## mismatch. The accepted-check downstream uses is.finite(), so NA
+        ## triggers the existing rejection branch back to the warm start.
+        n_moments_per_county <- config$n_worker_types - 1L
+        return(rep(NA_real_, n_moments_per_county))
+      }
       cm <- grepl(paste0("county", cnty, ":E_"), names(moments), fixed = TRUE)
       as.numeric(moments[cm])
     }
@@ -1493,16 +1528,21 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     }
     set.seed(pso_seed)
     message(sprintf(
-      "PSO county %s: %d particles x %d iter, search box +/- %g, seed-as-particle, rng seed %d.",
+      "PSO county %s: %d particles x %d iter, search box +/- %g, cold start, rng seed %d.",
       cnty, n_particles, n_iter, halfwidth, pso_seed
     ))
+    ## Cold PSO: do not anchor any particle at the seed. Anchoring at a
+    ## bad-basin seed (as NYC's was previously) collapses the swarm to that
+    ## basin and prevents discovery of better basins elsewhere. Independent
+    ## NM polishes from both the PSO best and the seed below ensure the
+    ## seed's solution is never *worsened* by switching to PSO mode.
     pso_res <- pso_solve(objective_county_ssq, lower, upper,
-                         seed_particle = as.numeric(start_par),
+                         seed_particle = NULL,
                          n_particles = n_particles, n_iter = n_iter,
                          w = w_inertia, c1 = c1, c2 = c2, trace = pso_trace,
                          label = cnty_key)
 
-    polish <- tryCatch(
+    polish_pso <- tryCatch(
       stats::optim(
         par = pso_res$par, fn = objective_county_ssq,
         method = polish_method,
@@ -1511,21 +1551,37 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
                        trace = pso_trace)
       ),
       error = function(e) {
-        warning("PSO polish failed for county ", cnty, ": ",
+        warning("PSO->polish failed for county ", cnty, ": ",
                 conditionMessage(e), call. = FALSE)
         list(par = pso_res$par, value = pso_res$value, convergence = -1L)
       }
     )
 
-    if (polish$value < pso_res$value) {
-      result_par <- polish$par
-      result_value <- polish$value
-      polish_used <- TRUE
-    } else {
-      result_par <- pso_res$par
-      result_value <- pso_res$value
-      polish_used <- FALSE
-    }
+    polish_seed <- tryCatch(
+      stats::optim(
+        par = as.numeric(start_par), fn = objective_county_ssq,
+        method = polish_method,
+        control = list(parscale = rep(parscale_w, d),
+                       maxit = polish_maxit, reltol = reltol,
+                       trace = pso_trace)
+      ),
+      error = function(e) {
+        warning("seed->polish failed for county ", cnty, ": ",
+                conditionMessage(e), call. = FALSE)
+        list(par = as.numeric(start_par), value = start_objective,
+             convergence = -1L)
+      }
+    )
+
+    candidates <- list(
+      pso         = list(par = pso_res$par,     value = pso_res$value),
+      polish_pso  = list(par = polish_pso$par,  value = polish_pso$value),
+      polish_seed = list(par = polish_seed$par, value = polish_seed$value)
+    )
+    cand_values <- vapply(candidates, function(x) x$value, numeric(1))
+    best_label <- names(cand_values)[which.min(cand_values)]
+    result_par <- candidates[[best_label]]$par
+    result_value <- candidates[[best_label]]$value
 
     strict_tol <- if (!is.null(strict_obj_tol_by_county[[cnty_key]])) {
       strict_obj_tol_by_county[[cnty_key]]
@@ -1536,8 +1592,12 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     result <- list(
       par = result_par, value = result_value, x = result_par,
       candidate_par = result_par, candidate_value = result_value,
-      pso_value = pso_res$value, polish_value = polish$value,
-      polish_used = polish_used, polish_convergence = polish$convergence,
+      pso_value = pso_res$value,
+      polish_pso_value = polish_pso$value,
+      polish_seed_value = polish_seed$value,
+      polish_pso_convergence = polish_pso$convergence,
+      polish_seed_convergence = polish_seed$convergence,
+      source = best_label,
       pso_n_iter = n_iter, pso_n_particles = n_particles,
       halfwidth = halfwidth, parscale = parscale_w,
       pso_seed = pso_seed, strict_tol = strict_tol,
@@ -1545,27 +1605,37 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       start_score = start_score
     )
     message(sprintf(
-      "PSO county %s done: pso=%.6g  polish=%.6g  best=%.6g",
-      cnty, pso_res$value, polish$value, result_value
+      "PSO county %s done: pso=%.6g  polish_pso=%.6g  polish_seed=%.6g  best=%.6g (%s)",
+      cnty, pso_res$value, polish_pso$value, polish_seed$value,
+      result_value, best_label
     ))
 
     if (result_value > strict_tol) {
       stop(sprintf(
         paste0("PSO+polish did not reach pso_strict_obj_tol for county %s ",
-               "(pso=%.6g, polish=%.6g, halfwidth=%g, parscale=%g): ",
-               "best objective %.6g exceeds pso_strict_obj_tol=%.6g."),
-        cnty, pso_res$value, polish$value, halfwidth, parscale_w,
-        result_value, strict_tol
+               "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, ",
+               "halfwidth=%g, parscale=%g): best objective %.6g exceeds ",
+               "pso_strict_obj_tol=%.6g."),
+        cnty, pso_res$value, polish_pso$value, polish_seed$value,
+        halfwidth, parscale_w, result_value, strict_tol
       ), call. = FALSE)
     }
 
-    final_moments_county <- objective_county_vec(result_par)
-    final_objective_county <- sum(final_moments_county^2)
     final_candidate <- full_par
     final_candidate[par_idx] <- result_par
-    final_score_county <- structural_wage_objective_score(
-      final_moments_county, final_candidate, x_county,
-      beta, beta_2_subset, objective_config, county_weights
+    final_moments_county <- objective_county_vec(result_par)
+    final_objective_county <- sum(final_moments_county^2)
+    final_score_county <- tryCatch(
+      structural_wage_objective_score(
+        final_moments_county, final_candidate, x_county,
+        beta, beta_2_subset, objective_config, county_weights
+      ),
+      error = function(e) {
+        warning("PSO post-check structural_wage_objective_score failed for county ",
+                cnty, ": ", conditionMessage(e), " -- treating candidate as rejected.",
+                call. = FALSE)
+        NA_real_
+      }
     )
     accepted <- is.finite(final_score_county) &&
       final_score_county <= start_score * (1 + sqrt(.Machine$double.eps))
