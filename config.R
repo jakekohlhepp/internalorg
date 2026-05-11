@@ -233,6 +233,16 @@ CONFIG <- list(
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
   counterfactual_wage_tol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_WAGE_TOL", unset = "0.01")),
+  # PSO search halfwidth in log-wage space for counterfactual_solve_wage_market_pso.
+  # Default 6 -> wages explored in roughly [exp(-6), exp(6)] = [0.0025, 403].
+  # Distinct from pso_search_halfwidth (=2000) because the estimation PSO
+  # operates on wage *coefficients* with no sign constraint, while the
+  # counterfactual PSO searches positive wage *levels* in log space.
+  counterfactual_pso_log_halfwidth = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_PSO_LOG_HALFWIDTH", unset = "6")),
+  # NM polish parscale on log-wages for the counterfactual PSO. Wage levels
+  # differ by O(1) in log space so unit parscale is appropriate; distinct from
+  # min_optim_parscale_wage (=20) which targets wage-coefficient scales.
+  counterfactual_pso_log_parscale = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_PSO_LOG_PARSCALE", unset = "1")),
   # Inner SQUAREM fixed-point tolerance used by 13-19's local solve_org loops.
   # Default preserves the value the scripts hardcoded before they were wired
   # to CONFIG; tighten via JMP_COUNTERFACTUAL_INNERTOL once estimates are

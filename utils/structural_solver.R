@@ -1307,6 +1307,51 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
   )
 }
 
+#' Vanilla particle-swarm minimiser shared by the estimation and
+#' counterfactual wage stages.
+#'
+#'   x_i^{t+1} = x_i^t + v_i^{t+1};
+#'   v_i^{t+1} = w*v_i^t + c1*r1*(pbest_i - x_i) + c2*r2*(gbest - x_i).
+#'
+#' Particles initialise uniformly in [lower, upper]^d. If `seed_particle` is
+#' supplied, it replaces the first particle (warm start); pass NULL for a
+#' cold start (all particles random). Returns the global-best location and
+#' value after `n_iter` velocity updates.
+pso_solve <- function(fn, lower, upper, seed_particle,
+                      n_particles, n_iter, w, c1, c2, trace, label) {
+  d <- length(lower)
+  X <- matrix(stats::runif(n_particles * d,
+                           rep(lower, each = n_particles),
+                           rep(upper, each = n_particles)),
+              n_particles, d)
+  if (!is.null(seed_particle) && length(seed_particle) == d) X[1, ] <- seed_particle
+  V <- matrix(stats::runif(n_particles * d,
+                           -abs(upper - lower), abs(upper - lower)),
+              n_particles, d) * 0.1
+  fX <- apply(X, 1, fn)
+  pbest <- X; fpbest <- fX
+  gi <- which.min(fpbest); gbest <- X[gi, ]; fgbest <- fpbest[gi]
+  for (t in seq_len(n_iter)) {
+    r1 <- matrix(stats::runif(n_particles * d), n_particles, d)
+    r2 <- matrix(stats::runif(n_particles * d), n_particles, d)
+    V <- w * V +
+      c1 * r1 * (pbest - X) +
+      c2 * r2 * (matrix(gbest, n_particles, d, byrow = TRUE) - X)
+    X <- X + V
+    X <- pmax(pmin(X, matrix(upper, n_particles, d, byrow = TRUE)),
+              matrix(lower, n_particles, d, byrow = TRUE))
+    fX <- apply(X, 1, fn)
+    upd <- fX < fpbest
+    pbest[upd, ] <- X[upd, ]; fpbest[upd] <- fX[upd]
+    gi <- which.min(fpbest)
+    if (fpbest[gi] < fgbest) { gbest <- pbest[gi, ]; fgbest <- fpbest[gi] }
+    if (trace > 0L && (t %% 10L == 0L || t == 1L)) {
+      message(sprintf("  PSO %s iter %3d: gbest ssq=%.6g", label, t, fgbest))
+    }
+  }
+  list(par = gbest, value = fgbest, n_iter = n_iter, n_particles = n_particles)
+}
+
 #' Per-county particle-swarm wage solver with NM polish.
 #'
 #' Use case: when the per-county wage moment surface has multiple basins
@@ -1371,43 +1416,6 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     start_full_moments, initial_full_par, x, beta, beta_2_subset,
     objective_config, moment_weights
   )
-
-  ## Vanilla PSO: x_i^{t+1} = x_i^t + v_i^{t+1};
-  ##   v_i^{t+1} = w*v_i^t + c1*r1*(pbest_i - x_i) + c2*r2*(gbest - x_i)
-  pso_solve <- function(fn, lower, upper, seed_particle,
-                        n_particles, n_iter, w, c1, c2, trace, label) {
-    d <- length(lower)
-    X <- matrix(stats::runif(n_particles * d,
-                             rep(lower, each = n_particles),
-                             rep(upper, each = n_particles)),
-                n_particles, d)
-    if (!is.null(seed_particle) && length(seed_particle) == d) X[1, ] <- seed_particle
-    V <- matrix(stats::runif(n_particles * d,
-                             -abs(upper - lower), abs(upper - lower)),
-                n_particles, d) * 0.1
-    fX <- apply(X, 1, fn)
-    pbest <- X; fpbest <- fX
-    gi <- which.min(fpbest); gbest <- X[gi, ]; fgbest <- fpbest[gi]
-    for (t in seq_len(n_iter)) {
-      r1 <- matrix(stats::runif(n_particles * d), n_particles, d)
-      r2 <- matrix(stats::runif(n_particles * d), n_particles, d)
-      V <- w * V +
-        c1 * r1 * (pbest - X) +
-        c2 * r2 * (matrix(gbest, n_particles, d, byrow = TRUE) - X)
-      X <- X + V
-      X <- pmax(pmin(X, matrix(upper, n_particles, d, byrow = TRUE)),
-                matrix(lower, n_particles, d, byrow = TRUE))
-      fX <- apply(X, 1, fn)
-      upd <- fX < fpbest
-      pbest[upd, ] <- X[upd, ]; fpbest[upd] <- fX[upd]
-      gi <- which.min(fpbest)
-      if (fpbest[gi] < fgbest) { gbest <- pbest[gi, ]; fgbest <- fpbest[gi] }
-      if (trace > 0L && (t %% 10L == 0L || t == 1L)) {
-        message(sprintf("  PSO %s iter %3d: gbest ssq=%.6g", label, t, fgbest))
-      }
-    }
-    list(par = gbest, value = fgbest, n_iter = n_iter, n_particles = n_particles)
-  }
 
   for (cnty in config$counties) {
     cnty_key <- as.character(cnty)
