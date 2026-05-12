@@ -143,23 +143,42 @@ validate_bootstrap_results <- function(results, context = "bootstrap results") {
     stop(context, " are empty.", call. = FALSE)
   }
 
+  ## Only status="error" rejects the rep -- those rows have no parameter
+  ## columns, so they cannot enter the bootstrap distribution. The
+  ## soft-revert statuses (wage_nonconverged / price_nonconverged /
+  ## wage+price_nonconverged) keep the rep: per docs/bootstrap_slurm.md
+  ## "Wage-stage convergence and fallback semantics", these reps have a
+  ## full parameter table (some county/columns may be 06-warm-start
+  ## fallbacks for wage, or L-BFGS-B final iterate for price). The
+  ## downstream filter in 08_display_estimates.R is the line of defense
+  ## that decides whether to drop or flag them for the final std errors.
   if ("status" %in% names(results)) {
-    bad_status <- results[is.na(status) | status != "ok"]
+    bad_status <- results[!is.na(status) & status == "error"]
     if (nrow(bad_status) > 0L) {
-      stop(context, " contain non-ok replications: ",
-           paste(head(paste0("iteration ", bad_status$iteration, " (", bad_status$status, ")"), 10L),
+      stop(context, " contain status=error replications (no parameters): ",
+           paste(head(paste0("iteration ", bad_status$iteration), 10L),
                  collapse = ", "),
            call. = FALSE)
+    }
+    soft_status <- results[!is.na(status) & status != "ok" & status != "error"]
+    if (nrow(soft_status) > 0L) {
+      message(context, ": ", nrow(soft_status), " soft-revert replication(s): ",
+              paste(head(paste0("iteration ", soft_status$iteration,
+                                " (", soft_status$status, ")"), 10L),
+                    collapse = ", "),
+              if (nrow(soft_status) > 10L) ", ..." else "")
     }
   }
 
   for (conv_col in intersect(c("wage_convergence", "price_convergence"), names(results))) {
     bad_conv <- results[!is.na(get(conv_col)) & get(conv_col) != 0L]
     if (nrow(bad_conv) > 0L) {
-      stop(context, " contain non-converged replications in ", conv_col, ": ",
-           paste(head(paste0("iteration ", bad_conv$iteration, " (", bad_conv[[conv_col]], ")"), 10L),
-                 collapse = ", "),
-           call. = FALSE)
+      message(context, ": ", nrow(bad_conv), " replication(s) with ",
+              conv_col, " != 0: ",
+              paste(head(paste0("iteration ", bad_conv$iteration,
+                                " (code=", bad_conv[[conv_col]], ")"), 10L),
+                    collapse = ", "),
+              if (nrow(bad_conv) > 10L) ", ..." else "")
     }
   }
 

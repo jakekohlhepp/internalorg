@@ -120,18 +120,40 @@ candidate, a mix, or all-06 fallback). Bootstrap reps where the wage
 vector is partially or fully 06-substituted will *still* re-estimate
 prices under bootstrap weights using those wage values.
 
+### Validator behavior (per-rep and combine-pass)
+
+[`validate_bootstrap_results` in 07_bootstrap.R](../07_bootstrap.R)
+distinguishes two failure classes:
+
+- **`status == "error"`**: rep has no parameter columns (gate 1 fired or
+  some other unhandled exception). `stop()` is called — these reps cannot
+  enter the bootstrap distribution.
+- **`status %in% c("wage_nonconverged", "price_nonconverged", "wage+price_nonconverged")`**:
+  rep has a full parameter table (some columns may be 06 warm-start
+  fallbacks per gate 2/3, or L-BFGS-B's final iterate before its own
+  convergence flag fired). The validator emits a `message()` listing the
+  affected iterations and **keeps the rep**. Slurm marks the task
+  successful (the R process exits 0), and the combine pass includes the
+  parameters in `results/data/07_bootstrap.rds`.
+
+Same logic applies to per-rep and combine-pass invocations of the
+validator. Likewise, non-zero `wage_convergence` / `price_convergence`
+codes produce a `message()`, not a `stop()`.
+
 ### Post-hoc filtering in 08
 
 `pso_strict_obj_tol = 0.1` is loose enough that the gate-1 check cannot
 distinguish a "right basin, reweighting-shifted floor" rep (e.g. NYC
 polish_seed = 0.05) from a "wrong basin" rep (NYC basin floor ≈ 0.025
 under uniform weights — see [wage_solver_stability.md](wage_solver_stability.md)).
-The natural defense is a downstream filter in
-`08_display_estimates.R` that drops or flags reps whose NYC moment ssq
-exceeds some threshold, or whose `status` is non-`ok`. This filter has not
-yet been added; without it, the combined `07_bootstrap.rds` validator
-([`validate_bootstrap_results` in 07_bootstrap.R](../07_bootstrap.R)) will
-reject any non-`ok` status outright when the combine pass runs.
+Soft-revert reps (gate 2/3) similarly land in the file with parameters
+that are partly 06-warm-start. The natural defense is a downstream
+filter in `08_display_estimates.R` that drops or flags reps whose NYC
+moment ssq exceeds some threshold, or whose `status` is non-`ok`, or
+whose `wage_convergence`/`price_convergence` is non-zero. **This filter
+has not yet been added** — the validator now lets these reps through, so
+without the 08 filter they will silently contribute to the final
+standard errors.
 
 ## Why serial
 
