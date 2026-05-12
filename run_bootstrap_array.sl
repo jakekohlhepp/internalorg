@@ -3,7 +3,7 @@
 #SBATCH -n 1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4g
-#SBATCH -t 10:00:00
+#SBATCH -t 2-00:00:00
 #SBATCH --array=1-1100%100
 #SBATCH -J 07_bootstrap
 #SBATCH -o logs/boot_%A_%a.out
