@@ -33,7 +33,7 @@ them into `results/data/07_bootstrap.rds` on the combine-only pass.
 | `-n 1` | one task per array element | Each rep is one process. |
 | `--cpus-per-task=2` | 2 CPUs | Each rep is single-threaded at the R level (see "Why serial" below). One core would suffice; the second is headroom for `data.table` internal threads and any OpenMP region not covered by the env-var pinning. |
 | `--mem=4g` | 4 GB | Tuned 2026-05-09 from `sacct MaxRSS`. Bench job 49320283 (full PSO+warm-start, single rep) peaked at 698 MB. 4 GB is ~5.7x headroom. |
-| `-t 10:00:00` | 10 h | Tuned 2026-05-09 from bench job 49320283 wall = 5:22:16 (full PSO wage solve across Cook/NYC/LA + price step). 10 h is ~1.9x headroom for tail reps where NYC PSO crawls. The previous 1:30:00 budget (extrapolated from a smoke run with `JMP_SKIP_STRUCTURAL_OPTIMIZER=true`) caused job 49194150 to TIMEOUT 476/600 elapsed tasks. |
+| `-t 2-00:00:00` | 48 h | Retuned 2026-05-12 from production array 49968490, which TIMEOUTed 53/100 first-wave tasks at -t 10:00:00. The 47 COMPLETED reps in that wave spanned 5:52-9:53 (median 8:23), with TIMEOUTs hitting the ceiling at exactly 10:00 -- the right tail of the per-rep wall distribution clearly extends past 10 h. 2 days is deliberately generous (~5x median, ~5x the max observed COMPLETED) so the array completes in one pass; tail reps that need 12-18 h won't waste a Slurm slot. Tighten in a future revision once we have the full 1100-rep wall distribution. |
 | `--array=1-1100%100` | 1100 reps, 100 concurrent | `CONFIG$bootstrap_reps` is 1100 in [config.R](../config.R). At ~5h per rep (bench job 49320283 wall = 5:22:16) with %100 concurrency, the array finishes in ~11 waves ≈ ~2.5 days wall. |
 | OMP/OpenBLAS/MKL/vecLib `_NUM_THREADS=1` | env vars | Force BLAS/OpenMP single-threaded so we don't silently oversubscribe the 2 allocated cores. Required because the R-level backend is serial (next section). |
 | `JMP_PSO_STRICT_OBJ_TOL=0.1` | env var | Loosened from 0.01 default for bootstrap mode. The 0.01 gate was sized for the uniform-weight surface (NYC basin floor ~1.3e-3 + safety margin per [docs/wage_solver_stability.md](wage_solver_stability.md)); bootstrap reweighting shifts that floor by ~1 order of magnitude per draw. Cancelled job 49194150 had 38 strict-tol failures (worst Cook 0.023, worst NYC 0.032), and bench rep 1 (job 49320283) hit NYC polish_seed=0.0497 — only 0.7% under a 0.05 gate. 0.1 absorbs that tail with ~2x headroom over the bench. **Caveat:** NYC's "wrong basin" floor (~0.025) sits below 0.1, so the strict guard alone will not catch a rep that lands there — pair with a post-hoc filter in 08 that drops reps whose NYC ssq exceeds (e.g.) 0.1 or whose `wage_convergence` is non-zero. |
@@ -191,7 +191,8 @@ sacct -j <ARRAY_JOB_ID> --format=JobID,Elapsed,MaxRSS,State
 Then:
 
 - If `MaxRSS` is consistently below ~2 GB, drop `--mem` to 2g.
-- If the slowest `Elapsed` is under ~45 min, drop `-t` to 1:00:00.
+- If the slowest `Elapsed` is under ~12 h, drop `-t` to 14:00:00 (or whatever
+  2x the observed max gives, with margin for one-off slow draws).
 - If `--cpus-per-task=2` looks fully unused (it likely will), drop to 1.
 - If queue throttling is not biting at %100, raise `%N` further.
 
