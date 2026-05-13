@@ -121,10 +121,12 @@ get_everything <- function(wage_guess, cnty, qy) {
 orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_wages)
 
 
-## immigration: increase the labor supply of the lowest worker type by 10%
+## immigration: increase the labor supply of the lowest-wage worker type by 10%.
+## Targets per county are the argmin of the 2021.2 initial-equilibrium wage vector
+## from 13_initial_wages.rds: LA->1, NYC->2, Cook->4.
 total_labor[county == '6037'  & quarter_year == 2021.2, tot_1 := tot_1 * 1.1]
-total_labor[county == '36061' & quarter_year == 2021.2, tot_3 := tot_3 * 1.1]
-total_labor[county == '17031' & quarter_year == 2021.2, tot_5 := tot_5 * 1.1]
+total_labor[county == '36061' & quarter_year == 2021.2, tot_2 := tot_2 * 1.1]
+total_labor[county == '17031' & quarter_year == 2021.2, tot_4 := tot_4 * 1.1]
 
 res_wages <- new_counterfactual_wages_grid(unique(total_labor_orig$quarter_year))
 
