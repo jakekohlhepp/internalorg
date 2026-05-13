@@ -174,8 +174,8 @@ get_everything_realloc <- function(wage_guess, cnty, qy) {
 ## Reconstruct structures with the wage vector from each equilibrium.
 cf_log("Loading immigration wage solution")
 wage_vect_immigration<-read_counterfactual_rds(
-  "05_04_wages_immigration.rds",
-  legacy_filenames = "05_04_wages_immigration.rds",
+  "16_wages_immigration.rds",
+  legacy_filenames = "16_wages_immigration.rds",
   description = "immigration counterfactual wages"
 )
 

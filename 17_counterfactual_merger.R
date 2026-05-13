@@ -208,8 +208,8 @@ for (cnty in CONFIG$counties) {
 }
 save_counterfactual_rds(
   res_wages,
-  "05_06_wages_merger.rds",
-  legacy_filename = "05_06_wages_merger.rds"
+  "17_wages_merger.rds",
+  legacy_filename = "17_wages_merger.rds"
 )
 
 
@@ -261,6 +261,6 @@ for (cnty in unique(res_wages[is.finite(w1), ]$county)) {
 }
 save_counterfactual_rds(
   prod_data_new,
-  "05_06_prod_merger.rds",
-  legacy_filename = "05_06_prod_merger.rds"
+  "17_prod_merger.rds",
+  legacy_filename = "17_prod_merger.rds"
 )
