@@ -1,6 +1,7 @@
 ## Immigration counterfactual.
-## Boosts the labor supply of the lowest-wage worker type in each county by
-## 10%, then re-solves wages and writes the productivity panel.
+## Boosts total labor supply (summed across all worker types) by 10%, with
+## the entire increase concentrated in the lowest-wage worker type per
+## county. Then re-solves wages and writes the productivity panel.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
@@ -121,12 +122,25 @@ get_everything <- function(wage_guess, cnty, qy) {
 orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_wages)
 
 
-## immigration: increase the labor supply of the lowest-wage worker type by 10%.
-## Targets per county are the argmin of the 2021.2 initial-equilibrium wage vector
-## from 13_initial_wages.rds: LA->1, NYC->2, Cook->4.
-total_labor[county == '6037'  & quarter_year == 2021.2, tot_1 := tot_1 * 1.1]
-total_labor[county == '36061' & quarter_year == 2021.2, tot_2 := tot_2 * 1.1]
-total_labor[county == '17031' & quarter_year == 2021.2, tot_4 := tot_4 * 1.1]
+## immigration: increase total labor (summed across all worker types) by 10%,
+## with the entire increase concentrated in the lowest-wage worker type per
+## county. Targets are the argmin of the 2021.2 initial-equilibrium wage vector
+## from 13_initial_wages.rds: LA->1, NYC->2, Cook->4. The shock to the target
+## type is therefore 10% * sum(tot_k), not 10% of the target alone.
+tot_field_names <- counterfactual_tot_labor_field_names(CONFIG)
+add_immigrants_to_target <- function(cnty, target_idx, qy = 2021.2) {
+  base <- as.numeric(as.matrix(total_labor[
+    county == cnty & quarter_year == qy,
+    .SD, .SDcols = tot_field_names
+  ]))
+  delta <- 0.1 * sum(base)
+  target_col <- tot_field_names[target_idx]
+  total_labor[county == cnty & quarter_year == qy,
+              (target_col) := get(target_col) + delta]
+}
+add_immigrants_to_target('6037',  1)
+add_immigrants_to_target('36061', 2)
+add_immigrants_to_target('17031', 4)
 
 res_wages <- new_counterfactual_wages_grid(unique(total_labor_orig$quarter_year))
 
