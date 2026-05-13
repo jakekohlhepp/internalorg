@@ -19,7 +19,6 @@ rho             <- counterfactual_context$rho
 tild_theta      <- counterfactual_context$tild_theta
 
 n_worker_types <- CONFIG$n_worker_types
-n_task_types   <- CONFIG$n_task_types
 
 #### initial
 wage_vect_initial<-read_counterfactual_rds(
@@ -34,19 +33,15 @@ prod_data_initial<-read_counterfactual_rds(
 )
 
 
-prod_data_initial<-melt(prod_data_initial,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight", paste0("E_", seq_len(n_worker_types))), measure.vars=patterns("^B_[0-9]") )
+prod_data_initial<-melt(prod_data_initial,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight"), measure.vars=patterns("^B_[0-9]") )
 prod_data_initial[, multiplier:=avg_labor*CSPOP*new_share*weight]
 prod_data_initial[, worker_type:=str_replace(variable, "^B_[0-9]_","")]
-prod_data_initial[, type_E := fcase(
-  worker_type == "1", E_1, worker_type == "2", E_2, worker_type == "3", E_3,
-  worker_type == "4", E_4, worker_type == "5", E_5
-)]
 
 firm_initial<-prod_data_initial[,.(tot_prod=sum(value)), c('s_index', "multiplier","location_id", "county", "sol_type")]
-firm_initial<-firm_initial[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)/sum(multiplier)), by=c("county", "sol_type")]
+firm_initial<-firm_initial[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)), by=c("county", "sol_type")]
 
 
-prod_data_initial<-prod_data_initial[, .(tot_prod = sum(multiplier * value) * n_task_types / sum(multiplier * type_E)), by=c("county", "worker_type","sol_type")]
+prod_data_initial<-prod_data_initial[, .(tot_prod=sum(multiplier*value)), by=c("county", "worker_type","sol_type")]
 
 
 prod_data_initial<-dcast(prod_data_initial, county+sol_type~worker_type, value.var="tot_prod")
@@ -66,20 +61,16 @@ prod_data_salestax<-read_counterfactual_rds(
 )
 
 
-prod_data_salestax<-melt(prod_data_salestax,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight", paste0("E_", seq_len(n_worker_types))), measure.vars=patterns("^B_[0-9]") )
+prod_data_salestax<-melt(prod_data_salestax,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight"), measure.vars=patterns("^B_[0-9]") )
 prod_data_salestax[, multiplier:=avg_labor*CSPOP*new_share*weight]
 prod_data_salestax[, worker_type:=str_replace(variable, "^B_[0-9]_","")]
-prod_data_salestax[, type_E := fcase(
-  worker_type == "1", E_1, worker_type == "2", E_2, worker_type == "3", E_3,
-  worker_type == "4", E_4, worker_type == "5", E_5
-)]
 
 firm_salestax<-prod_data_salestax[,.(tot_prod=sum(value)), c('s_index', "multiplier","location_id", "county", "sol_type")]
-firm_salestax<-firm_salestax[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)/sum(multiplier)), by=c("county", "sol_type")]
+firm_salestax<-firm_salestax[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)), by=c("county", "sol_type")]
 firm_salestax[, version:="Sales Tax"]
 
 
-prod_data_salestax<-prod_data_salestax[, .(tot_prod = sum(multiplier * value) * n_task_types / sum(multiplier * type_E)), by=c("county", "worker_type","sol_type")]
+prod_data_salestax<-prod_data_salestax[, .(tot_prod=sum(multiplier*value)), by=c("county", "worker_type","sol_type")]
 
 
 prod_data_salestax<-dcast(prod_data_salestax, county+sol_type~worker_type, value.var="tot_prod")
@@ -98,21 +89,17 @@ prod_data_diffusion<-read_counterfactual_rds(
 )
 
 
-prod_data_diffusion<-melt(prod_data_diffusion,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight", paste0("E_", seq_len(n_worker_types))), measure.vars=patterns("^B_[0-9]") )
+prod_data_diffusion<-melt(prod_data_diffusion,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight"), measure.vars=patterns("^B_[0-9]") )
 prod_data_diffusion[, multiplier:=avg_labor*CSPOP*new_share*weight]
 prod_data_diffusion[, worker_type:=str_replace(variable, "^B_[0-9]_","")]
-prod_data_diffusion[, type_E := fcase(
-  worker_type == "1", E_1, worker_type == "2", E_2, worker_type == "3", E_3,
-  worker_type == "4", E_4, worker_type == "5", E_5
-)]
 
 firm_diffusion<-prod_data_diffusion[,.(tot_prod=sum(value)), c('s_index', "multiplier","location_id", "county", "sol_type")]
-firm_diffusion<-firm_diffusion[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)/sum(multiplier)), by=c("county", "sol_type")]
+firm_diffusion<-firm_diffusion[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)), by=c("county", "sol_type")]
 firm_diffusion[, version:="Management Diffusion"]
 
 
 
-prod_data_diffusion<-prod_data_diffusion[, .(tot_prod = sum(multiplier * value) * n_task_types / sum(multiplier * type_E)), by=c("county", "worker_type","sol_type")]
+prod_data_diffusion<-prod_data_diffusion[, .(tot_prod=sum(multiplier*value)), by=c("county", "worker_type","sol_type")]
 
 
 prod_data_diffusion<-dcast(prod_data_diffusion, county+sol_type~worker_type, value.var="tot_prod")
@@ -131,28 +118,22 @@ prod_data_immigration<-read_counterfactual_rds(
 )
 
 
-prod_data_immigration<-melt(prod_data_immigration,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight", paste0("E_", seq_len(n_worker_types))), measure.vars=patterns("^B_[0-9]") )
+prod_data_immigration<-melt(prod_data_immigration,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight"), measure.vars=patterns("^B_[0-9]") )
 prod_data_immigration[, multiplier:=avg_labor*CSPOP*new_share*weight]
 prod_data_immigration[, worker_type:=str_replace(variable, "^B_[0-9]_","")]
-prod_data_immigration[, type_E := fcase(
-  worker_type == "1", E_1, worker_type == "2", E_2, worker_type == "3", E_3,
-  worker_type == "4", E_4, worker_type == "5", E_5
-)]
 
-## The previous /1.1 adjustment on the immigrant skill set was a manual
-## proxy for per-worker normalization (the immigration counterfactual scales
-## target labor of the immigrant skill set by 1.1). With per-worker
-## productivity now computed properly as sum(multiplier*value)/sum(multiplier*type_E),
-## the supply increase is absorbed in the denominator, so the /1.1 is
-## redundant and has been removed.
+## to get labor productivity need to adjust by 1.1 the value for the immigration group
+prod_data_immigration[worker_type==1 & county==6037, value:=value/1.1]
+prod_data_immigration[worker_type==5 & county==17031, value:=value/1.1]
+prod_data_immigration[worker_type==3 & county==36061, value:=value/1.1]
 
 firm_immigration<-prod_data_immigration[,.(tot_prod=sum(value)), c('s_index', "multiplier","location_id", "county", "sol_type")]
-firm_immigration<-firm_immigration[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)/sum(multiplier)), by=c("county", "sol_type")]
+firm_immigration<-firm_immigration[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)), by=c("county", "sol_type")]
 firm_immigration[, version:="Immigration"]
 
 
 
-prod_data_immigration<-prod_data_immigration[, .(tot_prod = sum(multiplier * value) * n_task_types / sum(multiplier * type_E)), by=c("county", "worker_type","sol_type")]
+prod_data_immigration<-prod_data_immigration[, .(tot_prod=sum(multiplier*value)), by=c("county", "worker_type","sol_type")]
 
 prod_data_immigration<-dcast(prod_data_immigration, county+sol_type~worker_type, value.var="tot_prod")
 prod_data_immigration[, version:="Immigration"]
@@ -171,21 +152,17 @@ prod_data_merger<-read_counterfactual_rds(
 )
 
 
-prod_data_merger<-melt(prod_data_merger,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight", paste0("E_", seq_len(n_worker_types))), measure.vars=patterns("^B_[0-9]") )
+prod_data_merger<-melt(prod_data_merger,id.vars=c("location_id", "avg_labor", "new_share","CSPOP", "county", "s_index","sol_type", "weight"), measure.vars=patterns("^B_[0-9]") )
 prod_data_merger[, multiplier:=avg_labor*CSPOP*new_share*weight]
 prod_data_merger[, worker_type:=str_replace(variable, "^B_[0-9]_","")]
-prod_data_merger[, type_E := fcase(
-  worker_type == "1", E_1, worker_type == "2", E_2, worker_type == "3", E_3,
-  worker_type == "4", E_4, worker_type == "5", E_5
-)]
 
 firm_merger<-prod_data_merger[,.(tot_prod=sum(value)), c('s_index', "multiplier","location_id", "county", "sol_type")]
-firm_merger<-firm_merger[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)/sum(multiplier)), by=c("county", "sol_type")]
+firm_merger<-firm_merger[, .(s_avg=weighted.mean(s_index, multiplier),labor_prod=sum(tot_prod*multiplier)), by=c("county", "sol_type")]
 firm_merger[, version:="Incr. Concentration"]
 
 
 
-prod_data_merger<-prod_data_merger[, .(tot_prod = sum(multiplier * value) * n_task_types / sum(multiplier * type_E)), by=c("county", "worker_type","sol_type")]
+prod_data_merger<-prod_data_merger[, .(tot_prod=sum(multiplier*value)), by=c("county", "worker_type","sol_type")]
 
 prod_data_merger<-dcast(prod_data_merger, county+sol_type~worker_type, value.var="tot_prod")
 prod_data_merger[, version:="Incr. Concentration"]
