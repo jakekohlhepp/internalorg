@@ -221,8 +221,8 @@ for (cnty in CONFIG$counties) {
 }
 save_counterfactual_rds(
   res_wages,
-  "05_03_wages_salestax.rds",
-  legacy_filename = "05_03_wages_salestax.rds"
+  "15_wages_salestax.rds",
+  legacy_filename = "15_wages_salestax.rds"
 )
 
 
@@ -275,8 +275,8 @@ for (cnty in unique(res_wages[is.finite(w1), ]$county)) {
 }
 save_counterfactual_rds(
   prod_data_new,
-  "05_03_prod_salestax.rds",
-  legacy_filename = "05_03_prod_salestax.rds"
+  "15_prod_salestax.rds",
+  legacy_filename = "15_prod_salestax.rds"
 )
 
 
@@ -296,6 +296,6 @@ for (cnty in unique(initial_wages[is.finite(w1), ]$county)) {
 }
 save_counterfactual_rds(
   prod_data_new,
-  "05_03_prod_initial.rds",
-  legacy_filename = "05_03_prod_initial.rds"
+  "15_prod_initial.rds",
+  legacy_filename = "15_prod_initial.rds"
 )

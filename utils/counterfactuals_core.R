@@ -290,7 +290,22 @@ build_counterfactual_tild_theta <- function(working_data, market_parms, rho,
 build_counterfactual_market_context <- function(working_data, all_results,
                                                 config = CONFIG) {
   market_parms <- get_counterfactual_market_parms(all_results)
-  total_labor <- compute_counterfactual_total_labor(working_data, config)
+  ## Prefer the saved baseline-equilibrium total labor written by 13_
+  ## (model_labor at each market's final wages). If the file isn't there
+  ## yet (first-time run before 13_ has been re-executed), fall back to
+  ## the data-anchored aggregate. Downstream counterfactuals should target
+  ## the baseline equilibrium, not the data anchor, because for markets
+  ## where 13_ used WLS (Tier 2) the data target is structurally
+  ## unreachable.
+  saved_total_labor_path <- counterfactual_data_path("13_total_labor.rds", config)
+  if (file.exists(saved_total_labor_path)) {
+    total_labor <- data.table::as.data.table(readRDS(saved_total_labor_path))
+    message("Loaded baseline-equilibrium total_labor from ", saved_total_labor_path)
+  } else {
+    total_labor <- compute_counterfactual_total_labor(working_data, config)
+    message("No 13_total_labor.rds found; using data-anchored ",
+            "compute_counterfactual_total_labor() (re-run 13_ to refresh).")
+  }
   guess_setup <- build_counterfactual_initial_guess(working_data, market_parms, config)
   tild_theta <- build_counterfactual_tild_theta(
     working_data,
@@ -314,14 +329,14 @@ load_counterfactual_context <- function(extra_packages = NULL, config = CONFIG) 
   ensure_counterfactual_dirs(config)
 
   working_data <- read_counterfactual_rds(
-    "05_00_working_data.rds",
-    legacy_filenames = "05_00_working_data.rds",
+    "13_working_data.rds",
+    legacy_filenames = "13_working_data.rds",
     description = "baseline counterfactual working data",
     config = config
   )
   initial_wages <- read_counterfactual_rds(
-    "05_00_initial_wages.rds",
-    legacy_filenames = "05_00_initial_wages.rds",
+    "13_initial_wages.rds",
+    legacy_filenames = "13_initial_wages.rds",
     description = "baseline counterfactual wages",
     config = config
   )
@@ -1168,6 +1183,77 @@ counterfactual_solve_wage_market_pso <- function(fn, start, label = NULL,
   result$converged <- is.finite(result$residual) && result$residual <= target_tol
   result$target_tol <- target_tol
   result
+}
+
+#' BBsolve-based wage solver for the counterfactual labor-clearing problem.
+#'
+#' Tries BB::BBsolve twice from the same seed: once without Nelder-Mead polish
+#' (works for markets where the spectral step finds the root cleanly --
+#' empirically 17031 converges to ~1e-9 in ~2s with this) and once with NM
+#' polish (works for markets where the spectral residual gets stuck near the
+#' basin but NM polish closes the gap -- empirically 36061 converges to
+#' ~1e-8 with this). Returns whichever attempt has the smaller residual norm.
+#'
+#' For markets where neither attempt converges to target_tol (empirically:
+#' 6037 in the JMP), the residual vector is reported so callers can apply a
+#' partial-alignment fall-back (drop the worst residual component, fix the
+#' corresponding wage, and re-anchor that target to the model's prediction
+#' at the converged wages).
+counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
+                                                     target_tol = CONFIG$counterfactual_wage_tol,
+                                                     config = CONFIG) {
+  start <- pmax(as.numeric(start), config$numeric_floor)
+  fn_safe <- counterfactual_safe_wage_fn(fn, config)
+
+  start_label <- if (is.null(label)) "initial seed" else paste0(label, " initial seed")
+  best_result <- counterfactual_candidate_result(fn_safe, start, "start", start_label)
+
+  for (use_NM in c(FALSE, TRUE)) {
+    res <- tryCatch(
+      BB::BBsolve(
+        par = start,
+        fn = fn_safe,
+        control = list(
+          maxit = config$counterfactual_bbsolve_maxit,
+          tol = min(target_tol, 1e-8),
+          trace = FALSE,
+          NM = use_NM,
+          noimp = 100
+        ),
+        quiet = TRUE
+      ),
+      error = function(e) {
+        warning(
+          "BBsolve (NM=", use_NM, ") failed",
+          if (!is.null(label)) paste0(" for ", label), ": ",
+          conditionMessage(e),
+          call. = FALSE
+        )
+        NULL
+      }
+    )
+
+    if (!is.null(res) &&
+        !is.null(res$par) &&
+        all(is.finite(res$par)) &&
+        all(res$par > 0)) {
+      cand <- counterfactual_candidate_result(
+        fn_safe,
+        res$par,
+        method = paste0("bbsolve_NM=", use_NM),
+        message = if (is.null(res$message)) NA_character_ else as.character(res$message),
+        termcd = as.integer(if (is.null(res$convergence)) NA_integer_ else res$convergence)
+      )
+      if (counterfactual_better_result(cand, best_result)) {
+        best_result <- cand
+      }
+    }
+  }
+
+  best_result$converged <- is.finite(best_result$residual) &&
+    best_result$residual <= target_tol
+  best_result$target_tol <- target_tol
+  best_result
 }
 
 counterfactual_store_wage_solution <- function(wage_table, result, cnty, qy,

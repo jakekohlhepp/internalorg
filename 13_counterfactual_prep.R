@@ -296,34 +296,242 @@ solve_wage_abs<-function(x){
   return(sum(abs(solve_wages(x))))
 }
 
+## Same body as solve_wages through the labor-aggregation step, but returns
+## the per-worker-type aggregate (the new_total_labor row) rather than the
+## clearing gap. Used after the solver loop to record the baseline-
+## equilibrium labor amounts (which downstream counterfactuals must target
+## instead of the data anchor for markets where Tier 2 WLS was needed).
+eval_total_labor <- function(wage_guess){
+  counter_res <- copy(working_data[county == cnty & quarter_year == qy,
+                                   ..solve_wages_market_cols])
+  new_theta <- matrix(market_parms[grep(paste0(cnty, ":avg_labor:B"), names(market_parms))],
+                      ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  w_mat <- matrix(wage_guess, ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  new_tild_theta <- w_mat + (rho[cnty])^(-1) * new_theta
+  new_tild_theta <- sweep(new_tild_theta, 2, apply(new_tild_theta, 2, min))
+
+  solve_org <- function(alpha, gamma){
+    counterfactual_org_outputs(
+      cost_matrix = new_tild_theta,
+      alpha = alpha,
+      gamma = gamma,
+      wage_guess = wage_guess,
+      new_theta = new_theta,
+      innertol = innertol,
+      with_s_index = FALSE,
+      with_b = FALSE,
+      config = CONFIG
+    )
+  }
+
+  counter_res[, c("c_endog", "q_endog", e_field_names) :=
+                solve_org(as.numeric(.SD), gamma_invert),
+              by = c("location_id"),
+              .SDcols = task_mix_cols]
+  counter_res[, Q := q_endog * avg_labor + qual_exo]
+  counter_res[, C := c_endog * avg_labor + cost_exo]
+  counter_res[C < 0, C := 0]
+
+  counter_res[, newprice := counterfactual_best_response_prices(
+    cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy)
+  )]
+  counter_res[, new_share := counterfactual_logit_shares(
+    Q, newprice, weight, rho[cnty]
+  )]
+
+  out <- counter_res[, setNames(
+    lapply(seq_len(n_worker_types), function(idx) {
+      sum(weight * new_share * CSPOP * get(e_field_names[idx]) * avg_labor)
+    }),
+    tot_field_names
+  )]
+  stopifnot(nrow(out) == 1)
+  as.numeric(out)
+}
+
 
 res_wages <- new_counterfactual_wages_grid(
   unique(total_labor_orig$quarter_year),
   include_solution_type = FALSE
 )
 
+## Per-market log of which markets fell through to the weighted least-squares
+## fall-back (and the resulting per-component residuals there). Empty list ==
+## every market cleared in 5D via BBsolve.
+wls_fallback_log <- list()
+
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
-    print(paste("*******", cnty, qy, "- shared baseline solve"))
+    print(paste("*******", cnty, qy, "- BBsolve baseline solve"))
     start <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
-    quad_wages <- counterfactual_solve_wage_market_pso(
+
+    ## Tier 1: try to solve the full 5-equation labor-clearing system with
+    ## BBsolve (NM=FALSE then NM=TRUE, keep whichever has smaller max-abs).
+    quad_wages <- counterfactual_solve_wage_market_bbsolve(
       solve_wages,
       start,
       label = paste("baseline", cnty, qy),
       target_tol = CONFIG$counterfactual_wage_tol
     )
+
+    if (!isTRUE(quad_wages$converged)) {
+      ## Tier 2: weighted least-squares minimization on log-wages. The
+      ## 5-equation labor-clearing system is rank-deficient at the estimated
+      ## parameters for some markets, so no positive wage vector zeros every
+      ## residual. Instead of relocating the entire residual onto one worker
+      ## type (partial alignment), distribute it across all five by minimising
+      ##   sum_k target_labor_k * r_k(w)^2 ,
+      ## i.e. a weighted SSQ on the log-scale labor-clearing residuals, with
+      ## weights proportional to the data labor target. This preserves the
+      ## data anchor (no target_labor edits) and produces small-but-nonzero
+      ## residuals spread across all worker types.
+      target_at_market <- as.numeric(
+        total_labor[county == cnty & quarter_year == qy,
+                    .SD, .SDcols = tot_field_names]
+      )
+      wls_weights <- pmax(target_at_market, CONFIG$numeric_floor)
+
+      wls_obj <- function(log_w) {
+        w <- pmax(exp(log_w), CONFIG$numeric_floor)
+        r <- tryCatch(
+          as.numeric(solve_wages(w)),
+          error = function(e) rep(NA_real_, n_worker_types)
+        )
+        if (length(r) != n_worker_types || any(!is.finite(r))) {
+          return(.Machine$double.xmax)
+        }
+        sum(wls_weights * r^2)
+      }
+
+      start_log <- log(pmax(as.numeric(start), CONFIG$numeric_floor))
+      bb_log <- log(pmax(as.numeric(quad_wages$par), CONFIG$numeric_floor))
+      start_val <- wls_obj(start_log)
+      bb_val    <- wls_obj(bb_log)
+      best_log  <- if (is.finite(bb_val) && bb_val < start_val) bb_log else start_log
+
+      message("[", cnty, " ", qy, "] full 5D BBsolve did not converge ",
+              "(max_abs=", signif(quad_wages$residual, 4),
+              "); falling back to WLS minimisation (weights = target_labor).")
+
+      opt_res <- tryCatch(
+        stats::optim(par = best_log, fn = wls_obj, method = "Nelder-Mead",
+                     control = list(maxit = 5000, reltol = 1e-12, trace = 0)),
+        error = function(e) {
+          warning("WLS optim failed for ", cnty, " ", qy, ": ",
+                  conditionMessage(e), call. = FALSE)
+          NULL
+        }
+      )
+
+      if (!is.null(opt_res) && all(is.finite(opt_res$par))) {
+        w_ls <- pmax(exp(opt_res$par), CONFIG$numeric_floor)
+        r_ls <- tryCatch(as.numeric(solve_wages(w_ls)),
+                         error = function(e) rep(NA_real_, n_worker_types))
+        res_norm <- counterfactual_residual_norm(r_ls)
+        wls_fallback_log[[paste(cnty, qy)]] <- list(
+          county = cnty, quarter_year = qy,
+          wls_weighted_ssq = opt_res$value,
+          max_abs_resid = res_norm,
+          residual_components = r_ls,
+          wages = w_ls,
+          target_labor = target_at_market
+        )
+        quad_wages <- list(
+          par = w_ls,
+          residual = res_norm,
+          residual_components = r_ls,
+          method = "wls_NM_logwage",
+          termcd = as.integer(opt_res$convergence),
+          message = paste0(
+            "WLS NM on log-wages; weighted_ssq=",
+            signif(opt_res$value, 4),
+            ", max_abs=", signif(res_norm, 4)
+          ),
+          target_tol = CONFIG$counterfactual_wage_tol,
+          converged = is.finite(res_norm) && res_norm <= CONFIG$counterfactual_wage_tol
+        )
+      } else {
+        warning("[", cnty, " ", qy, "] WLS fall-back failed; ",
+                "leaving BBsolve best wages as the baseline.", call. = FALSE)
+      }
+    }
+
     counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy)
   }
 }
+
+cat("\nWLS fall-back summary (markets that did not clear in 5D):\n")
+if (length(wls_fallback_log) == 0L) {
+  cat("  (none; every market converged under BBsolve in 5D)\n")
+} else {
+  for (entry in wls_fallback_log) {
+    cat(sprintf(
+      "  county=%s qy=%s  weighted_ssq=%.4g  max_abs_resid=%.4g\n",
+      entry$county, as.character(entry$quarter_year),
+      entry$wls_weighted_ssq, entry$max_abs_resid
+    ))
+    cat("    residual_components: ",
+        paste(signif(entry$residual_components, 3), collapse = ", "), "\n", sep = "")
+    cat("    wages:               ",
+        paste(signif(entry$wages, 4), collapse = ", "), "\n", sep = "")
+  }
+}
+
+## Compute and persist the BASELINE-EQUILIBRIUM total labor (model_labor
+## evaluated at each market's final wages). For markets that cleared
+## under Tier 1, this equals the data anchor by construction. For markets
+## that fell through to WLS (Tier 2), this differs from the data anchor:
+## the WLS optimum lives at wages where model_labor does not equal the
+## data target, and downstream counterfactuals (14_-17_) must target
+## *this* equilibrium labor amount, not the unreachable data target.
+baseline_total_labor <- copy(total_labor)
+for (cnty in CONFIG$counties) {
+  for (qy in get_counterfactual_focus_quarter()) {
+    final_wages <- as.numeric(unlist(
+      res_wages[county == cnty & quarter_year == qy,
+                paste0("w", seq_len(n_worker_types)), with = FALSE],
+      use.names = FALSE
+    ))
+    if (length(final_wages) != n_worker_types ||
+        any(!is.finite(final_wages)) ||
+        any(final_wages <= 0)) {
+      next
+    }
+    model_tot <- eval_total_labor(final_wages)
+    baseline_total_labor[county == cnty & quarter_year == qy,
+                          (tot_field_names) := as.list(model_tot)]
+  }
+}
+cat("\nBaseline-equilibrium total labor (model_labor at final wages):\n")
+for (cnty in CONFIG$counties) {
+  for (qy in get_counterfactual_focus_quarter()) {
+    data_row  <- as.numeric(total_labor[county == cnty & quarter_year == qy,
+                                          .SD, .SDcols = tot_field_names])
+    eq_row    <- as.numeric(baseline_total_labor[county == cnty & quarter_year == qy,
+                                                  .SD, .SDcols = tot_field_names])
+    pct <- 100 * (eq_row - data_row) / pmax(abs(data_row), .Machine$double.eps)
+    cat(sprintf("  %s %s\n", cnty, as.character(qy)))
+    for (k in seq_len(n_worker_types)) {
+      cat(sprintf("    type=%d  data=%-12.4g  baseline_eq=%-12.4g  pct=%+.2f%%\n",
+                  k, data_row[k], eq_row[k], pct[k]))
+    }
+  }
+}
+
 save_counterfactual_rds(
   res_wages,
-  "05_00_initial_wages.rds",
-  legacy_filename = "05_00_initial_wages.rds"
+  "13_initial_wages.rds",
+  legacy_filename = "13_initial_wages.rds"
 )
 save_counterfactual_rds(
   working_data,
-  "05_00_working_data.rds",
-  legacy_filename = "05_00_working_data.rds"
+  "13_working_data.rds",
+  legacy_filename = "13_working_data.rds"
+)
+save_counterfactual_rds(
+  baseline_total_labor,
+  "13_total_labor.rds",
+  legacy_filename = NULL
 )
 
 
