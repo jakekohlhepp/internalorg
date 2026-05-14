@@ -37,6 +37,8 @@ The main structural split is:
 1. `01_build_data.R`
    - writes the full-sample descriptive panel `01_staff_task_full.rds`
    - writes the estimation-base panel `01_working.rds`
+   - runs the worker-type clustering in `cluster.R`; the county cut-height
+     rule is documented in `docs/worker_type_clustering.md`
 2. `04_estimation_sample.R`
    - adds estimation-only enrichments such as PPI, minimum wages,
      `dye_instrument`, `org_cost`, and `log_rel_mkt`

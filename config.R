@@ -73,6 +73,17 @@ CONFIG <- list(
   # Number of task types (columns of assignment matrix B)
   n_task_types = 5,
 
+  # Quantile of within-firm min_cutlevel used to set the county-wide cut height
+  # in the worker-type clustering. The original specification used the max
+  # (set 1.0 to recover it), which makes a single outlier firm-quarter dictate
+  # the cut height for every salon in the county and over-collapses typical
+  # salons to <5 types. The cut applied to each firm-quarter is
+  # max(county_quantile, firm_min_cutlevel), so the >5-cluster firms still
+  # fall back to their own min_cutlevel; under complete linkage this is
+  # equivalent to "cut at county_quantile, then complete-linkage-merge the
+  # excess clusters."
+  cutlevel_quantile = 0.9,
+
   # ---------------------------------------------------------------------------
   # Numerical parameters
   # ---------------------------------------------------------------------------
