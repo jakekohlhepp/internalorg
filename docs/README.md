@@ -11,6 +11,8 @@ This folder now separates active workflow documentation from archived process no
 - `pipeline_schematic.html` - visual overview of the current pipeline
 - `mk_tasks_cosmo_summary.md` - stage-0 task construction note
 - `legacy_import_data_issue.md` - targeted note on the legacy-duration fix
+- `worker_type_clustering.md` - cluster.R cut-height rule and the
+  `cutlevel_quantile` config knob
 - `02_estimation_walkthrough.md` - estimator walkthrough
 - `STYLE_GUIDE.md` - coding conventions
 
