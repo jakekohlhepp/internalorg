@@ -46,6 +46,10 @@ nul
 # Any file with "smoke" anywhere in the name is local-only.
 *smoke*
 
+# Slurm submit scripts (local-only). Use sbatch --wrap or a generic helper
+# instead of one .sl per R script.
+*.sl
+
 # IDE
 .vscode/
 .idea/
