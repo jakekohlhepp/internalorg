@@ -58,7 +58,9 @@ worker_type_lookup_artifact <- list(
   worker_type_lookup = baseline_assignment$worker_type_lookup,
   supported_staff_keys = baseline_assignment$supported_staff_keys,
   reference_firms = baseline_assignment$reference_firms,
-  county_cutlevels = baseline_assignment$county_cutlevels
+  county_cutlevels = baseline_assignment$county_cutlevels,
+  effective_cutlevels = baseline_assignment$effective_cutlevels,
+  cutlevel_quantile = baseline_assignment$cutlevel_quantile
 )
 saveRDS(worker_type_lookup_artifact, 'mkdata/data/01_worker_type_lookup.rds')
 
@@ -68,12 +70,19 @@ aux_data <- list(
   qcew = readRDS('mkdata/data/qcew_county.rds')
 )
 
+## Under the lower county_cutlevel produced by cutlevel_quantile < 1, more
+## firm-quarters surface with multiple worker types and the cross-firm
+## gamma-component graph occasionally has disconnected components. Pass
+## allow_disconnected_gamma = TRUE so the baseline build silently drops the
+## handful of disconnected firm-quarters (matching long-standing bootstrap
+## behavior) instead of erroring out on a `stopifnot` assertion.
 working_results <- build_working_from_labels(
   feature_results$staff_task,
   worker_type_lookup_artifact,
   aux_data,
   CONFIG,
-  mode = 'baseline'
+  mode = 'baseline',
+  options = list(allow_disconnected_gamma = TRUE)
 )
 
 ## 01_working.rds is the estimation-base branch. It is already restricted to
