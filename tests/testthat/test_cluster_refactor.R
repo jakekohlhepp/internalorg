@@ -189,6 +189,69 @@ test_that('bootstrap-mode rebuild reuses baseline worker labels exactly', {
   )
 })
 
+test_that('cutlevel_quantile = 1.0 reproduces the legacy max(min_cutlevel) behavior', {
+  baseline_features <- build_staff_task_features(make_cluster_fixture(), TEST_CLUSTER_CONFIG)
+
+  cfg_no_q  <- TEST_CLUSTER_CONFIG  # no cutlevel_quantile -> defaults to 1.0
+  cfg_max_q <- c(TEST_CLUSTER_CONFIG, list(cutlevel_quantile = 1.0))
+
+  baseline_no_q <- assign_worker_types_baseline(
+    baseline_features$staff_task,
+    baseline_features$staffnum_xwalk,
+    cfg_no_q
+  )
+  baseline_max_q <- assign_worker_types_baseline(
+    baseline_features$staff_task,
+    baseline_features$staffnum_xwalk,
+    cfg_max_q
+  )
+
+  expect_equal(
+    baseline_no_q$within_firm_assignments[order(location_id, quarter_year, staff_id)],
+    baseline_max_q$within_firm_assignments[order(location_id, quarter_year, staff_id)]
+  )
+
+  # County cutlevel under quantile = 1.0 must equal max(min_cutlevel) by county.
+  expected <- baseline_features$staff_task[, .(expected = max(min_cutlevel)), by = county]
+  observed <- unique(baseline_max_q$effective_cutlevels[, .(county, county_cutlevel)])
+  cmp <- merge(observed, expected, by = "county")
+  expect_equal(cmp$county_cutlevel, cmp$expected, tolerance = 1e-12)
+
+  # And the effective per-firm cut equals the county-wide max (since max >= every firm's min).
+  expect_true(all(baseline_max_q$effective_cutlevels$effective_cutlevel ==
+                    baseline_max_q$effective_cutlevels$county_cutlevel))
+})
+
+test_that('cutlevel_quantile < 1.0 lowers the county cut to the chosen quantile and
+                                  the effective per-firm cut never falls below min_cutlevel', {
+  baseline_features <- build_staff_task_features(make_cluster_fixture(), TEST_CLUSTER_CONFIG)
+  cfg_q90 <- c(TEST_CLUSTER_CONFIG, list(cutlevel_quantile = 0.5))
+
+  q90_assignment <- assign_worker_types_baseline(
+    baseline_features$staff_task,
+    baseline_features$staffnum_xwalk,
+    cfg_q90
+  )
+
+  expected <- baseline_features$staff_task[
+    , .(expected = as.numeric(stats::quantile(min_cutlevel, 0.5, type = 7, na.rm = TRUE))),
+    by = county
+  ]
+  observed <- unique(q90_assignment$effective_cutlevels[, .(county, county_cutlevel)])
+  cmp <- merge(observed, expected, by = "county")
+  expect_equal(cmp$county_cutlevel, cmp$expected, tolerance = 1e-12)
+
+  # The effective per-firm cut must be >= that firm's own min_cutlevel
+  # (so it never produces more than n_worker_types clusters).
+  ec <- q90_assignment$effective_cutlevels
+  expect_true(all(ec$effective_cutlevel >= ec$min_cutlevel - 1e-12))
+  expect_true(all(ec$effective_cutlevel >= ec$county_cutlevel - 1e-12))
+
+  # types_observed_firm must respect the n_worker_types cap.
+  observed_types <- unique(q90_assignment$staff_task_labeled[, .(location_id, quarter_year, types_observed_firm)])
+  expect_true(all(observed_types$types_observed_firm <= TEST_CLUSTER_CONFIG$n_worker_types))
+})
+
 test_that('build_working_from_labels fails on missing supported keys', {
   baseline <- build_staff_task_features(make_cluster_fixture(), TEST_CLUSTER_CONFIG)
   baseline_assignment <- assign_worker_types_baseline(

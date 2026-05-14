@@ -520,10 +520,16 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
     }
   }
 
-  staff_task[, county_cutlevel := max(min_cutlevel), by = county]
+  cutlevel_quantile <- if (is.null(config$cutlevel_quantile)) 1.0 else config$cutlevel_quantile
+  stopifnot(is.numeric(cutlevel_quantile), length(cutlevel_quantile) == 1,
+            cutlevel_quantile >= 0, cutlevel_quantile <= 1)
+  staff_task[, county_cutlevel :=
+               as.numeric(stats::quantile(min_cutlevel, cutlevel_quantile, type = 7, na.rm = TRUE)),
+             by = county]
+  staff_task[, effective_cutlevel := pmax(county_cutlevel, min_cutlevel)]
   staff_task[
     ,
-    type_within_firm := within_firm_clust(as.matrix(.SD), county_cutlevel[1]),
+    type_within_firm := within_firm_clust(as.matrix(.SD), effective_cutlevel[1]),
     by = c("location_id", "quarter_year"),
     .SDcols = raw_btilde_cols
   ]
@@ -663,6 +669,9 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
     supported_staff_keys = unique(worker_type_lookup[, .(location_id, quarter_year, staff_id)]),
     reference_firms = reference_firms,
     county_cutlevels = unique(staff_task[, .(county, county_cutlevel)]),
+    effective_cutlevels = unique(staff_task[, .(county, location_id, quarter_year,
+                                                min_cutlevel, county_cutlevel, effective_cutlevel)]),
+    cutlevel_quantile = cutlevel_quantile,
     within_firm_assignments = within_firm_assignments
   )
 }
