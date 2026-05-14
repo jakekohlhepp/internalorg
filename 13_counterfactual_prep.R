@@ -375,83 +375,112 @@ for (cnty in CONFIG$counties) {
     )
 
     if (!isTRUE(quad_wages$converged)) {
-      ## Tier 2: weighted least-squares minimization on log-wages. The
-      ## 5-equation labor-clearing system is rank-deficient at the estimated
-      ## parameters for some markets, so no positive wage vector zeros every
-      ## residual. Instead of relocating the entire residual onto one worker
-      ## type (partial alignment), distribute it across all five by minimising
-      ##   sum_k target_labor_k * r_k(w)^2 ,
-      ## i.e. a weighted SSQ on the log-scale labor-clearing residuals, with
-      ## weights proportional to the data labor target. This preserves the
-      ## data anchor (no target_labor edits) and produces small-but-nonzero
-      ## residuals spread across all worker types.
+      ## Tier 2: reduced 4-equation root-finding. The 5-equation labor-
+      ## clearing system is rank-deficient at the estimated parameters for
+      ## markets where two or more worker-type skill rows of theta are near-
+      ## collinear (LA: rho(theta_1, theta_3)=0.97, rho(theta_1, theta_2)=0.89).
+      ## At those parameters no positive wage vector zeros every residual.
+      ## Rather than spread the irreducible mis-fit across all five via WLS
+      ## weighting, drop the labor-clearing equation most aligned with the
+      ## Jacobian's left null space, hold one wage at its Tier-1 best, and
+      ## solve the remaining 4-on-4 system with nleqslv. The dropped residual
+      ## becomes a single documented, irreducible mis-fit; the kept four
+      ## zero to machine precision.
+      bb_wages <- pmax(as.numeric(quad_wages$par), CONFIG$numeric_floor)
       target_at_market <- as.numeric(
         total_labor[county == cnty & quarter_year == qy,
                     .SD, .SDcols = tot_field_names]
       )
-      wls_weights <- pmax(target_at_market, CONFIG$numeric_floor)
-
-      wls_obj <- function(log_w) {
-        w <- pmax(exp(log_w), CONFIG$numeric_floor)
-        r <- tryCatch(
-          as.numeric(solve_wages(w)),
-          error = function(e) rep(NA_real_, n_worker_types)
-        )
-        if (length(r) != n_worker_types || any(!is.finite(r))) {
-          return(.Machine$double.xmax)
-        }
-        sum(wls_weights * r^2)
-      }
-
-      start_log <- log(pmax(as.numeric(start), CONFIG$numeric_floor))
-      bb_log <- log(pmax(as.numeric(quad_wages$par), CONFIG$numeric_floor))
-      start_val <- wls_obj(start_log)
-      bb_val    <- wls_obj(bb_log)
-      best_log  <- if (is.finite(bb_val) && bb_val < start_val) bb_log else start_log
 
       message("[", cnty, " ", qy, "] full 5D BBsolve did not converge ",
               "(max_abs=", signif(quad_wages$residual, 4),
-              "); falling back to WLS minimisation (weights = target_labor).")
+              "); switching to reduced 4-equation root-finder.")
 
-      opt_res <- tryCatch(
-        stats::optim(par = best_log, fn = wls_obj, method = "Nelder-Mead",
-                     control = list(maxit = 5000, reltol = 1e-12, trace = 0)),
+      num_jac_5 <- function(w, h_frac = 1e-6) {
+        r0 <- as.numeric(solve_wages(w))
+        J <- matrix(0, length(r0), n_worker_types)
+        for (j in seq_len(n_worker_types)) {
+          wp <- w
+          h <- h_frac * max(abs(w[j]), 1)
+          wp[j] <- w[j] + h
+          J[, j] <- (as.numeric(solve_wages(wp)) - r0) / h
+        }
+        J
+      }
+      J_bb <- num_jac_5(bb_wages)
+      sv_bb <- svd(J_bb)
+      left_null  <- sv_bb$u[, n_worker_types]
+      right_null <- sv_bb$v[, n_worker_types]
+
+      drop_cfg <- CONFIG$tier2_drop_residual_by_county[[cnty]]
+      drop_k <- if (!is.null(drop_cfg)) as.integer(drop_cfg) else which.max(abs(left_null))
+      fix_cfg <- CONFIG$tier2_fix_wage_by_county[[cnty]]
+      fix_j <- if (!is.null(fix_cfg)) as.integer(fix_cfg) else which.max(abs(right_null))
+
+      message("[", cnty, " ", qy, "] reduced system: drop residual ", drop_k,
+              " (|u_", drop_k, "|=", signif(abs(left_null[drop_k]), 3),
+              "); fix wage ", fix_j, " at BB best ",
+              signif(bb_wages[fix_j], 4),
+              " (|v_", fix_j, "|=", signif(abs(right_null[fix_j]), 3), ").")
+
+      r_reduced <- function(w_free) {
+        w_full <- numeric(n_worker_types)
+        w_full[fix_j] <- bb_wages[fix_j]
+        w_full[-fix_j] <- pmax(w_free, CONFIG$numeric_floor)
+        r_full <- as.numeric(solve_wages(w_full))
+        r_full[-drop_k]
+      }
+
+      start_free <- bb_wages[-fix_j]
+      red_res <- tryCatch(
+        nleqslv::nleqslv(
+          x = start_free, fn = r_reduced,
+          method = "Broyden", global = "dbldog",
+          control = list(xtol = 1e-12, ftol = 1e-10,
+                         maxit = CONFIG$counterfactual_nleqslv_maxit,
+                         allowSingular = TRUE, cndtol = 1e-14, trace = 0)
+        ),
         error = function(e) {
-          warning("WLS optim failed for ", cnty, " ", qy, ": ",
+          warning("Reduced 4-eq nleqslv failed for ", cnty, " ", qy, ": ",
                   conditionMessage(e), call. = FALSE)
           NULL
         }
       )
 
-      if (!is.null(opt_res) && all(is.finite(opt_res$par))) {
-        w_ls <- pmax(exp(opt_res$par), CONFIG$numeric_floor)
-        r_ls <- tryCatch(as.numeric(solve_wages(w_ls)),
-                         error = function(e) rep(NA_real_, n_worker_types))
-        res_norm <- counterfactual_residual_norm(r_ls)
+      if (!is.null(red_res) && all(is.finite(red_res$x))) {
+        w_red <- numeric(n_worker_types)
+        w_red[fix_j] <- bb_wages[fix_j]
+        w_red[-fix_j] <- pmax(red_res$x, CONFIG$numeric_floor)
+        r_full <- as.numeric(solve_wages(w_red))
+        kept_max <- max(abs(r_full[-drop_k]))
+
         wls_fallback_log[[paste(cnty, qy)]] <- list(
           county = cnty, quarter_year = qy,
-          wls_weighted_ssq = opt_res$value,
-          max_abs_resid = res_norm,
-          residual_components = r_ls,
-          wages = w_ls,
+          strategy = "reduced_4eq",
+          drop_residual = drop_k,
+          fix_wage = fix_j,
+          fix_wage_value = bb_wages[fix_j],
+          kept_max_abs = kept_max,
+          dropped_residual = r_full[drop_k],
+          residual_components = r_full,
+          wages = w_red,
           target_labor = target_at_market
         )
         quad_wages <- list(
-          par = w_ls,
-          residual = res_norm,
-          residual_components = r_ls,
-          method = "wls_NM_logwage",
-          termcd = as.integer(opt_res$convergence),
-          message = paste0(
-            "WLS NM on log-wages; weighted_ssq=",
-            signif(opt_res$value, 4),
-            ", max_abs=", signif(res_norm, 4)
+          par = w_red,
+          residual = kept_max,
+          residual_components = r_full,
+          method = sprintf("reduced_4eq[drop=%d,fix=%d]", drop_k, fix_j),
+          termcd = as.integer(red_res$termcd),
+          message = sprintf(
+            "Reduced 4-eq nleqslv: drop k=%d, fix w_%d=%.4g; kept_max=%.4e, dropped_resid=%+.4e",
+            drop_k, fix_j, bb_wages[fix_j], kept_max, r_full[drop_k]
           ),
           target_tol = CONFIG$counterfactual_wage_tol,
-          converged = is.finite(res_norm) && res_norm <= CONFIG$counterfactual_wage_tol
+          converged = is.finite(kept_max) && kept_max <= CONFIG$counterfactual_wage_tol
         )
       } else {
-        warning("[", cnty, " ", qy, "] WLS fall-back failed; ",
+        warning("[", cnty, " ", qy, "] reduced 4-eq solve failed; ",
                 "leaving BBsolve best wages as the baseline.", call. = FALSE)
       }
     }
@@ -460,16 +489,25 @@ for (cnty in CONFIG$counties) {
   }
 }
 
-cat("\nWLS fall-back summary (markets that did not clear in 5D):\n")
+cat("\nTier-2 fall-back summary (markets that did not clear in 5D):\n")
 if (length(wls_fallback_log) == 0L) {
   cat("  (none; every market converged under BBsolve in 5D)\n")
 } else {
   for (entry in wls_fallback_log) {
-    cat(sprintf(
-      "  county=%s qy=%s  weighted_ssq=%.4g  max_abs_resid=%.4g\n",
-      entry$county, as.character(entry$quarter_year),
-      entry$wls_weighted_ssq, entry$max_abs_resid
-    ))
+    if (identical(entry$strategy, "reduced_4eq")) {
+      cat(sprintf(
+        "  county=%s qy=%s  strategy=reduced_4eq  drop_k=%d  fix_j=%d (=%.4g)  kept_max=%.4g  dropped_resid=%+.4g\n",
+        entry$county, as.character(entry$quarter_year),
+        entry$drop_residual, entry$fix_wage, entry$fix_wage_value,
+        entry$kept_max_abs, entry$dropped_residual
+      ))
+    } else {
+      cat(sprintf(
+        "  county=%s qy=%s  strategy=WLS  weighted_ssq=%.4g  max_abs_resid=%.4g\n",
+        entry$county, as.character(entry$quarter_year),
+        entry$wls_weighted_ssq, entry$max_abs_resid
+      ))
+    }
     cat("    residual_components: ",
         paste(signif(entry$residual_components, 3), collapse = ", "), "\n", sep = "")
     cat("    wages:               ",

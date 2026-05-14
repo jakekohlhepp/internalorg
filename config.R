@@ -233,6 +233,26 @@ CONFIG <- list(
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
   counterfactual_wage_tol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_WAGE_TOL", unset = "0.01")),
+  ## Tier-2 fallback strategy when the 5-equation labor-clearing system is
+  ## rank-deficient at the estimated parameters. The system collapses to rank
+  ## ~4 in wage space when two or more worker-type skill rows of theta are
+  ## near-collinear (LA's types 1, 2, 3 have pairwise theta-row correlations
+  ## 0.77-0.97). The reduced solver drops one labor-clearing residual and
+  ## fixes one wage at the BBsolve Tier-1 best, then solves the remaining
+  ## 4x4 root-finding problem with nleqslv. The dropped equation becomes a
+  ## documented, irreducible mis-fit; the kept 4 zero to machine precision.
+  ##
+  ## tier2_drop_residual_by_county: which worker type's labor-clearing
+  ##   residual to drop, by county FIPS. If unset for a county, the index is
+  ##   chosen automatically as argmax |u_k| from the SVD of the numerical
+  ##   Jacobian at the Tier-1 best (the row with the largest projection on
+  ##   the left null space). For LA (6037), worker type 1's residual carries
+  ##   ~98% of the irreducible direction, so we hardcode drop=1.
+  ## tier2_fix_wage_by_county: which wage to hold fixed at its BBsolve value,
+  ##   by county. If unset, chosen automatically as argmax |v_j| from the
+  ##   right null space of the same SVD.
+  tier2_drop_residual_by_county = list("6037" = 1L),
+  tier2_fix_wage_by_county = list(),
   # PSO search halfwidth in log-wage space for counterfactual_solve_wage_market_pso.
   # Default 6 -> wages explored in roughly [exp(-6), exp(6)] = [0.0025, 403].
   # Distinct from pso_search_halfwidth (=2000) because the estimation PSO
