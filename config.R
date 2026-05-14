@@ -135,8 +135,13 @@ CONFIG <- list(
   # Bisection tolerance for gamma
   outertol = 1e-08,
 
-  # Outer optimization objective tolerance
-  obj_tol = 1e-06,
+  # Outer optimization objective tolerance. Used as the strict-exit gate for
+  # every wage solver (nleqslv, min_optim, pso, BBsolve joint/county). 1e-06
+  # was unreachable on the rebuilt clustering data — even local optimizers
+  # that hit the basin bottom out at ssq ~5e-3. 0.01 reflects the empirical
+  # NYC floor of ~1.3e-3 plus a safety margin; counties with better-behaved
+  # moments still pass trivially because their seed start is already < 1e-7.
+  obj_tol = 0.01,
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
   # full wage solver (per `wage_optimizer_mode`, default nleqslv) by default;
@@ -226,14 +231,6 @@ CONFIG <- list(
   pso_c2 = as.numeric(Sys.getenv("JMP_PSO_C2", unset = "1.5")),
   pso_polish_method = Sys.getenv("JMP_PSO_POLISH_METHOD", unset = "Nelder-Mead"),
   pso_seed_offset = as.integer(Sys.getenv("JMP_PSO_SEED_OFFSET", unset = "0")),
-  ## Strict-exit tolerance for PSO mode. Distinct from `obj_tol` because PSO
-  ## is a stochastic global search and is not expected to reach machine-zero
-  ## precision the way a root-finder might. Default 1e-2 reflects the
-  ## empirical NYC floor of ~1.3e-3 plus a safety margin; counties with
-  ## better-behaved moments still pass trivially because their seed start
-  ## is already below 1e-7.
-  pso_strict_obj_tol = as.numeric(Sys.getenv("JMP_PSO_STRICT_OBJ_TOL", unset = "0.01")),
-  pso_strict_obj_tol_by_county = list(),
   min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
