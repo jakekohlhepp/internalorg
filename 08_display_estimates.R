@@ -276,7 +276,7 @@ summary_moments[model_interact == "Log Market Share" & other_part == "", other_p
 summary_moments[model_interact == "Price" & other_part == ":task_mix", other_part := "Quarter-Task Mix"]
 summary_moments[model_interact == "Price" & other_part == "avg_labor:E_raw", other_part := "Labor Demand"]
 summary_moments[model_interact == "Price" & other_part == "avg_labor:", other_part := "County-Quarter-Labor"]
-summary_moments[model_interact == "Log Market Share" & other_part == "hausman_other_price", other_part := "County-Hausman Instrument"]
+summary_moments[model_interact == "Log Market Share" & other_part == "dye_instrument", other_part := "County-Dye Instrument"]
 summary_moments[model_interact == "Log Market Share" & other_part == "avg_labor:B_raw", other_part := "County-Task Assignments"]
 stopifnot(nrow(summary_moments[is.na(other_part) | other_part == "", ]) == 0)
 
