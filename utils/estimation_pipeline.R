@@ -169,7 +169,7 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
   mm_2 <- model.matrix(xnam4, data = estim_matrix)
 
   xnam <- c(
-    "hausman_other_price",
+    "dye_instrument",
     "factor(quarter_year)",
     paste0("avg_labor:", names(working_data)[grep("^B_raw_[0-9]_", names(working_data))])
   )
@@ -312,7 +312,7 @@ build_demand_iv_formula <- function(data, config = CONFIG) {
   as.formula(paste0(
     "log_rel_mkt ~ ",
     paste0(exog_terms, collapse = " + "),
-    " - 1 | factor(county):cust_price | factor(county):hausman_other_price"
+    " - 1 | factor(county):cust_price | factor(county):dye_instrument"
   ))
 }
 
