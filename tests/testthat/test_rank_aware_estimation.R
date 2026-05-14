@@ -72,7 +72,7 @@ test_that("rank_aware_2sls matches direct solve on estimation sample", {
     "-1"
   ))
   z_formula <- as.formula(paste0(
-    "~factor(county):hausman_other_price+",
+    "~factor(county):dye_instrument+",
     "factor(county):factor(quarter_year)+",
     paste0("factor(county):avg_labor:", b_raw_cols, collapse = "+"),
     "-1"
