@@ -1024,7 +1024,7 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
   parscale_by_county <- solver_value(config, "min_optim_parscale_wage_by_county", list())
   maxit_per_county <- solver_value(config, "min_optim_maxit", 5000L)
   reltol <- solver_value(config, "min_optim_reltol", config$obj_tol)
-  strict_obj_tol <- solver_value(config, "obj_tol", 1e-6)
+  strict_obj_tol <- solver_value(config, "obj_tol", 0.01)
   max_restarts <- solver_value(config, "min_optim_max_restarts", 3L)
   restart_jitter <- solver_value(config, "min_optim_restart_jitter", 0.05)
   multistart_n_by_county <- solver_value(config, "min_optim_n_multistarts_by_county", list())
@@ -1389,7 +1389,7 @@ pso_solve <- function(fn, lower, upper, seed_particle,
 #' configured optim polisher (default Nelder-Mead) twice: once from the PSO
 #' global best, once from the seed start. The county solution is the lowest
 #' of (raw PSO, polish-from-PSO, polish-from-seed). The strict-exit guard
-#' (pso_strict_obj_tol) fires the same way as in min_optim mode.
+#' (obj_tol) fires the same way as in min_optim mode.
 estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
                                          config = CONFIG, clust = NULL,
                                          solver_state = NULL,
@@ -1404,8 +1404,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
 
   parscale_w_default <- solver_value(config, "min_optim_parscale_wage", 20)
   parscale_by_county <- solver_value(config, "min_optim_parscale_wage_by_county", list())
-  strict_obj_tol_default <- solver_value(config, "pso_strict_obj_tol", 0.01)
-  strict_obj_tol_by_county <- solver_value(config, "pso_strict_obj_tol_by_county", list())
+  strict_obj_tol <- solver_value(config, "obj_tol", 0.01)
   reltol <- solver_value(config, "min_optim_reltol", config$obj_tol)
   polish_maxit <- solver_value(config, "min_optim_maxit", 5000L)
   polish_method <- solver_value(config, "pso_polish_method", "Nelder-Mead")
@@ -1583,11 +1582,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     result_par <- candidates[[best_label]]$par
     result_value <- candidates[[best_label]]$value
 
-    strict_tol <- if (!is.null(strict_obj_tol_by_county[[cnty_key]])) {
-      strict_obj_tol_by_county[[cnty_key]]
-    } else {
-      strict_obj_tol_default
-    }
+    strict_tol <- strict_obj_tol
 
     result <- list(
       par = result_par, value = result_value, x = result_par,
@@ -1612,10 +1607,10 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
 
     if (result_value > strict_tol) {
       stop(sprintf(
-        paste0("PSO+polish did not reach pso_strict_obj_tol for county %s ",
+        paste0("PSO+polish did not reach obj_tol for county %s ",
                "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, ",
                "halfwidth=%g, parscale=%g): best objective %.6g exceeds ",
-               "pso_strict_obj_tol=%.6g."),
+               "obj_tol=%.6g."),
         cnty, pso_res$value, polish_pso$value, polish_seed$value,
         halfwidth, parscale_w, result_value, strict_tol
       ), call. = FALSE)
