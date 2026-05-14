@@ -57,8 +57,14 @@ max(staff_task[county == '17031']$min_cutlevel)
 max(staff_task[county == '36061']$min_cutlevel)
 max(staff_task[county == '06037']$min_cutlevel)
 
-staff_task[, county_cutlevel := max(min_cutlevel), by = county]
-staff_task[, type_within_firm := within_firm_clust(as.matrix(.SD), county_cutlevel[1]),
+cutlevel_quantile <- if (is.null(CONFIG$cutlevel_quantile)) 1.0 else CONFIG$cutlevel_quantile
+stopifnot(is.numeric(cutlevel_quantile), length(cutlevel_quantile) == 1,
+          cutlevel_quantile >= 0, cutlevel_quantile <= 1)
+staff_task[, county_cutlevel :=
+             as.numeric(stats::quantile(min_cutlevel, cutlevel_quantile, type = 7, na.rm = TRUE)),
+           by = county]
+staff_task[, effective_cutlevel := pmax(county_cutlevel, min_cutlevel)]
+staff_task[, type_within_firm := within_firm_clust(as.matrix(.SD), effective_cutlevel[1]),
            by = c("location_id", "quarter_year"),
            .SDcols = colnames(staff_task)[colnames(staff_task) %like% "^Btilde_raw_"]]
 staff_task[, types_observed_firm := max(type_within_firm), by = c("location_id", "quarter_year")]
