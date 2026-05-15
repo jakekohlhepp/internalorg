@@ -63,10 +63,14 @@ Reviewed the salon transaction data pipeline from raw data (`compiled_trxns.rds`
 
 **Resolution**: The `total_app_time` overwrite line (`tasks[!is.na(total_app_time), duration := total_app_time]`) has been completely removed. The script now uses the original `duration` column throughout. Assertions confirm `duration` is always available and non-negative. The average computation for multi-task allocation now uses clean `duration` values only.
 
-> **Update (Apr 2026)**: Removing the `total_app_time` overwrite exposed a separate
-> issue: 14 salons contain legacy-import data with placeholder durations (0 or 5 min)
-> that the overwrite had partially masked. These are now handled by a dedicated
-> legacy-import detection and drop step. See `docs/legacy_import_data_issue.md`.
+> **Update (Apr 2026, revised May 2026)**: Removing the `total_app_time` overwrite
+> exposed a separate issue: a small set of salons contain legacy-import data with
+> placeholder durations (0 or 5 min) that the overwrite had partially masked.
+> The active fix is a hard-coded transition-date drop covering 10 salons
+> (388,569 task-rows / 2.82% of post-melt data). See
+> `docs/legacy_import_data_issue.md` for the current list and counts and
+> `docs/historical/duration_reliability_2026-04-08.md` for the analysis that
+> produced the 10-salon list.
 
 ---
 

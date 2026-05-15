@@ -35,13 +35,17 @@
   - 6 = Nail/Spa/Eye/Misc.
 - Creates customer demographic flags (male_flag, female_flag, child_flag)
 
-### 4b. Legacy Import Detection (after allocation)
-- Detects location-quarters where >80% of rows share the same short duration (<= 15 min),
-  indicating placeholder values from data imported from a prior POS system
-- Only flags locations that also have quarters with normal durations (>= 30 min median),
-  confirming the short durations are artifacts, not the salon's true operating pattern
-- Drops flagged rows (228K rows, 1.66% of data, across 14 locations)
-- See `docs/legacy_import_data_issue.md` for full details
+### 4b. Legacy Import Drop (after allocation)
+- Applies a hard-coded list of 10 `(location_id, transition_start)` pairs that
+  identify salons whose pre-Boulevard transaction history was imported from a
+  prior POS system with placeholder durations
+- Drops every row dated before each salon's transition month
+- Total dropped: 388,569 rows (2.82% of post-melt rows, 310,668 appointments)
+  across 10 locations
+- The 10-salon list and transition dates come from the offline transition
+  analysis in `docs/historical/duration_reliability_2026-04-08.md`
+- See `docs/legacy_import_data_issue.md` for the full per-salon breakdown,
+  evidence, and verification notes
 
 ### 5. Output
 - Saves processed data to `mkdata/data/00_tasks_cosmo.rds`
