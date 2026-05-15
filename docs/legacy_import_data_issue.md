@@ -1,166 +1,181 @@
 # Legacy Import Data Issue
 
 **Date identified**: 2026-04-07
-**Status**: Fix implemented (branch `fix/legacy-import-drop`)
-**Impact**: 228,343 rows (1.66%) across 14 locations dropped from `00_tasks_cosmo.rds`
+**Status**: Active in `00_mk_tasks_cosmo.R` (legacy_cutoffs block)
+**Impact**: 388,569 rows (2.82%) across 10 locations dropped from `00_tasks_cosmo.rds`
+**Detection method**: hard-coded location/transition-date list from
+`docs/historical/duration_reliability_2026-04-08.md`
 
 ---
 
 ## Summary
 
-Fourteen salons in the dataset contain historical transaction records imported from
-a prior point-of-sale system when the business migrated to the platform. These legacy
-records have placeholder duration values (typically 0 or 5 minutes) that do not
-reflect actual appointment times, producing extreme outlier values in
+Ten salons in the dataset carry historical transaction records that were imported
+from a prior point-of-sale system when the salon migrated to the platform. These
+imported records have placeholder duration values (typically 0, 5, or 15 minutes)
+that do not reflect actual appointment times, producing extreme outliers in
 revenue-per-minute (`rev_labor`) and distorting downstream regressions.
 
-The fix detects and drops these legacy-period rows at the `00_mk_tasks_cosmo.R`
-stage, before any downstream aggregation.
+`00_mk_tasks_cosmo.R` drops every row dated *before* each salon's transition
+month, using a hard-coded list of `(location_id, transition_start)` pairs. The
+list and the transition dates come from the monthly short-duration / the platform-
+feature-onset analysis in `docs/historical/duration_reliability_2026-04-08.md`.
+
+This is a more aggressive trim than an earlier quarter-level detection rule
+considered (and described in a previous version of this note): the transition
+rule drops *all* of a salon's pre-transition history rather than just the
+quarters that individually trip a placeholder-duration mode test.
 
 ---
 
 ## How the Issue Was Discovered
 
-The productivity-specialization regressions in `01_01_stylized_facts.R` showed a
-coefficient approximately 2x larger than the published results. Investigation traced
-the change to a single Manhattan salon (`8310d870`) with `rev_labor` of 43--55
-(vs. a dataset P99 of ~8). All 10 of the top Cook's-distance observations in the
-bivariate regression belonged to this one salon.
+The productivity-specialization regressions in the stylized-facts script showed a
+bivariate S-Index coefficient of roughly 0.22 — about twice the manuscript value
+of 0.11. The change traced to a single Manhattan salon (`8310d870`) with
+`rev_labor` of 43--55 (vs. a dataset P99 of ~8). All 10 of the top
+Cook's-distance observations in the bivariate regression belonged to this one
+salon.
 
-Further analysis revealed the salon's extreme `rev_labor` came from its pre-2018Q3
-period, where all appointments had `duration = 5` minutes regardless of service type
---- clearly a placeholder, not a real measurement. The salon's post-2018Q3 data
-showed normal durations (~60 min median) and normal `rev_labor` (~250).
+Further analysis revealed `8310d870`'s extreme `rev_labor` came from its
+pre-2018Q3 period, where appointments had `duration = 5` minutes regardless of
+service type --- clearly a placeholder. The salon's post-2018Q3 data showed
+normal durations (~60 min median) and normal `rev_labor` (~250).
 
-A dataset-wide investigation found 13 additional salons with the same pattern.
+A dataset-wide investigation in `docs/historical/duration_reliability_2026-04-08.md`
+found 9 additional salons with the same "switch from a placeholder duration to
+real durations at a single transition month, accompanied by the first appearance
+of the platform-native booking features" pattern. Across those 10 salons, the
+pre-transition history accounts for 81.6% of all `duration <= 5` appointments
+and 95.2% of `duration <= 5 & revenue >= $100` appointments.
 
 ---
 
 ## Evidence for Legacy Imports
 
 The hypothesis that these are imported historical records (not ongoing recording
-failures) is supported by multiple independent lines of evidence:
+failures) is supported by:
 
-### 1. Bad durations always start at the salon's first transaction
+### 1. Sharp transition month
 
-For all 14 affected locations, the placeholder-duration period begins at the
-salon's very first observed date and ends abruptly. No salon develops bad durations
-in the middle of its history.
+For each affected salon, monthly short-duration share drops sharply from very
+high to near-zero at a single month, and the share stays low for the remainder
+of the salon's history.
 
-### 2. the platform-specific features are absent
+### 2. the platform-native features turn on at the transition
 
-In the placeholder-duration period:
-- `prebooked` is 0.000 for 13/14 locations (the exception, `8310d870`, has 0.09)
-- `was_staff_requested` is 0.000 for 13/14 locations
-- `first_prebook`, `first_tip`, and `first_staffreq` dates from the stylized
-  facts data align precisely with the duration transition
+`prebooked` and `was_staff_requested` are essentially absent before the
+transition month and switch on at or just after it. Both fields are native to
+the platform's booking system and would not exist in records imported from a
+legacy POS.
 
-These features are native to the platform's booking system and would not exist in
-data imported from a legacy POS system.
+### 3. Duration values consistent with unit-conversion artifacts
 
-### 3. Low customer overlap across periods
+The pre-transition periods contain fractional duration values like 2.5, 3.17,
+and 1.67 minutes that are consistent with automated unit conversions
+(e.g. seconds to minutes) during import. Unaffected salons never show this
+pattern.
 
-Only 12--53% of customers observed in the bad-duration period ever appear again in
-the good-duration period, consistent with imported customer rosters rather than an
-active customer base.
+### 4. `total_app_time` is corrupted in lockstep with `duration`
 
-### 4. Duration values suggest unit-conversion artifacts
+In the bad period, `total_app_time` shows the same placeholder values as
+`duration`. This rules out swapping in `total_app_time` as a correction (the
+old pipeline's approach) and confirms the *appointment record* is imported,
+not just the duration field.
 
-The bad-duration periods show fractional values like 2.5, 3.17, and 1.67 minutes,
-consistent with automated unit conversions (e.g., seconds to minutes) during import.
-Non-affected salons never show this pattern.
+### 5. Unaffected salons start with realistic durations
 
-### 5. Non-affected salons start with normal durations
-
-Among the 498 unaffected salons, median duration in their first 90 days is ~49
-minutes. Affected salons show ~5 minutes or 0 minutes in the same window.
-
-### 6. `total_app_time` is also corrupted
-
-The `total_app_time` field (a service-level booking slot length) shows the same
-placeholder values as `duration` in the affected periods. This rules out using
-`total_app_time` as a correction and confirms the entire appointment record is
-imported, not just the duration field.
+Across the 498 unaffected locations, median duration in their first 90 days is
+roughly 49 minutes. The 10 affected salons show roughly 5 minutes or 0 minutes
+in the same window.
 
 ---
 
-## Affected Locations
+## Affected Locations (drop counts)
 
-14 locations, 228,343 rows (1.66% of data), 190,066 appointments.
+10 locations, 388,569 rows (2.82% of data after proportional duration allocation,
+13,760,364 rows total), 310,668 appointments. Counts are post-melt: a single
+multi-task appointment can produce several rows.
 
-| Location ID (prefix) | City | Default dur | Legacy period | Transition to | Bad rows | % of salon |
-|---|---|---|---|---|---|---|
-| `23468507` | Spring Lake, NJ | 0 min | 2011Q2--2018Q4 | 2019Q1 (45 min) | 149,977 | 79.5% |
-| `b9f5c7cf` | Costa Mesa, CA | 0 min | 2018Q1--2019Q1 | 2019Q3 (57 min) | 28,024 | 60.4% |
-| `191172d5` | Chicago, IL | 0 min | 2017Q2--2019Q2 | 2019Q3 (60 min) | 23,998 | 52.2% |
-| `01fbf61d` | Southbury, CT | 5 min | 2014Q4--2017Q4 | 2020Q2 (31 min) | 8,195 | 15.7% |
-| `ccb54cfa` | Oakbrook Terr, IL | 15 min | 2020Q1--2020Q3 | 2021Q1 (45 min) | 6,713 | 41.3% |
-| `1b7912af` | Frederick, MD | 10 min | 2020Q1--2021Q1 | 2021Q3 (83 min) | 5,349 | 71.2% |
-| `f44c05e5` | Portsmouth, NH | 5 min | 2020Q1--2020Q3 | 2021Q1 (60 min) | 3,929 | 23.3% |
-| `1e80128d` | Chicago, IL | 15 min | 2020Q2--2020Q2 | 2021Q1 (30 min) | 2,083 | 7.1% |
-| `c7ea80fe` | New York, NY | 15 min | 2017Q3--2017Q3 | 2020Q2 (38 min) | 1 | 0.0% |
-| `4e20bf8c` | Santa Monica, CA | 15 min | 2021Q3--2021Q3 | 2020Q1 (60 min) | 1 | 0.0% |
-| `b0ec6cfd` | Oakland, CA | 15 min | 2020Q2--2020Q2 | 2020Q3 (60 min) | 58 | 1.2% |
-| `26e16e5d` | Carrboro, NC | 15 min | 2020Q4--2020Q4 | 2021Q1 (60 min) | 10 | 0.2% |
-| `0cb3db09` | Kailua, HI | 15 min | 2018Q1--2018Q1 | 2019Q4 (60 min) | 3 | 0.0% |
-| `74b5e484` | Charlottesville, VA | 15 min | 2018Q2--2018Q2 | 2018Q3 (45 min) | 2 | 0.0% |
+| Location ID (prefix) | Transition | First date | Last pre-date | Rows dropped | Appts dropped |
+|---|---|---|---|---|---|
+| `23468507` | 2020-02-01 | 2011-06-21 | 2020-01-31 | 173,099 | 139,669 |
+| `8310d870` | 2018-09-01 | 2016-01-05 | 2018-08-31 |  56,726 |  33,916 |
+| `b9f5c7cf` | 2019-08-01 | 2018-01-11 | 2019-07-31 |  34,980 |  32,315 |
+| `01fbf61d` | 2020-04-01 | 2014-09-25 | 2020-03-31 |  34,036 |  28,786 |
+| `fb282d29` | 2019-01-01 | 2016-04-05 | 2018-12-30 |  26,574 |  23,182 |
+| `a413d2fc` | 2018-07-01 | 2015-02-12 | 2018-06-30 |  24,989 |  21,118 |
+| `191172d5` | 2019-08-01 | 2017-04-14 | 2019-07-06 |  24,197 |  20,265 |
+| `f44c05e5` | 2020-12-01 | 2020-01-02 | 2020-11-25 |   9,276 |   7,691 |
+| `ec64ba65` | 2018-11-01 | 2016-07-10 | 2018-10-31 |   2,457 |   2,056 |
+| `f4938ca8` | 2019-04-01 | 2018-08-21 | 2019-03-30 |   2,235 |   1,670 |
 
 ### Locations in the estimation sample
 
 The estimation sample covers Cook County IL (17031), New York County NY (36061),
-and Los Angeles County CA (06037), quarters 2018Q1--2021Q2 excluding 2020Q2--Q3.
+and Los Angeles County CA (06037), quarters 2018Q1–2021Q2 excluding 2020Q2–Q3.
 
-Two affected locations potentially fall in estimation counties:
-- `191172d5` (Chicago, 60654 = Cook County): bad quarters through 2019Q2, all within
-  the estimation window
-- `1e80128d` (Chicago, 60611 = Cook County): bad quarter 2020Q2, which is already
-  excluded from estimation
+Two of the affected locations sit in estimation counties and overlap the
+estimation window:
 
-Salon `8310d870` (Manhattan) --- the original outlier that prompted this
-investigation --- does NOT trigger the detection rule because its bad-duration
-period has mode_pct < 80% after proportional allocation. Its extreme `rev_labor` is
-addressed separately by the downstream exclusion of firm-quarters with
-`rev_labor > 42.80` or by the fact that its bad quarters (pre-2018Q1) mostly fall
-outside the estimation window. See "Relationship to salon 8310d870" below.
+- `8310d870` (Manhattan, NY): pre-transition runs 2016Q1–2018Q2; the
+  overlap with the estimation window is 2018Q1–Q2, two quarters that the trim
+  now removes.
+- `191172d5` (Chicago, IL = Cook County): pre-transition runs 2017Q2–2019Q2;
+  the overlap is 2018Q1–2019Q2, six quarters that the trim now removes.
+
+The other eight salons sit outside the estimation counties (the trim still
+affects them for the full-sample stylized facts in `02_stylized_facts.R`).
 
 ---
 
-## Detection Rule
+## Detection Method (as implemented)
 
-A location-quarter is flagged as legacy import data if all three conditions hold:
+`00_mk_tasks_cosmo.R` does not run an in-script detection rule. It applies a
+hard-coded list of 10 `(location_id, transition_start)` pairs produced by the
+offline transition-analysis documented in
+`docs/historical/duration_reliability_2026-04-08.md`. For each listed location,
+every row with `date < transition_start` is dropped. Other locations are kept
+in full.
 
-1. **>80% of rows** share the same rounded duration value (indicating a system
-   default rather than real measurements)
-2. That duration is **<= 15 minutes** (too short to represent a real salon
-   appointment for the vast majority of services)
-3. The same location has **at least one other quarter with median duration >= 30
-   minutes** (confirming the salon eventually recorded real durations, so the short
-   ones are not the salon's true operating pattern)
+The offline transition analysis flagged a salon as legacy-like when:
 
-This rule correctly identifies all 14 legacy-import locations while producing zero
-false positives among the 498 unaffected locations. Unaffected salons start with
-realistic durations (~49 min median) from their first observed transaction.
+1. The salon had a very high share of `duration <= 5` appointments at the start
+   of its observed history.
+2. That share dropped sharply at a single month and stayed near zero afterward.
+3. the platform-native features (`prebooked`, `was_staff_requested`) turned on at
+   or just after that month.
+
+The 10 salons that met all three conditions account for 81.6% of all
+`duration <= 5` appointments and 95.2% of the appointments with
+`duration <= 5 & revenue >= $100` --- i.e., almost all of the most suspicious
+records in the raw data.
+
+An earlier draft of this note (now superseded) proposed an automated
+quarter-level detection rule (mode_pct > 0.8, mode_dur <= 15 min, plus a
+"good" quarter with median >= 30 min). That rule would have flagged 14
+location-quarters with 228k rows. The transition-date rule that is actually
+implemented is more aggressive: it covers a different (mostly disjoint) set of
+salons and removes the *entire* pre-transition history per salon rather than
+just the bad quarters.
 
 ---
 
 ## Relationship to Salon `8310d870`
 
-Salon `8310d870-fb13-414b-ba6c-2902eaf0276f` (Manhattan, Upper East Side) was the
-outlier that originally triggered this investigation. Its pre-2018Q3 data has
-`duration = 5` minutes for most appointments, producing `rev_labor` of 43--55.
+Salon `8310d870-fb13-414b-ba6c-2902eaf0276f` (Manhattan, Upper East Side) was
+the outlier that originally triggered this investigation. Its pre-2018Q3 data
+has `duration = 5` for most appointments, producing `rev_labor` of 43--55.
 
-However, this salon does NOT trigger the 80% mode-pct detection rule in the
-post-allocation data because the proportional splitting across task categories
-creates variation in the allocated durations. The salon's bad quarters (2016Q1 --
-2018Q2) largely fall before the estimation window (2018Q1--2021Q2), with only
-2018Q1--Q2 overlapping.
+Under the implemented transition rule (`transition_start = 2018-09-01`), every
+row dated before 2018-09-01 is dropped from this salon: 56,726 task-rows /
+33,916 appointments, covering 2016-01-05 through 2018-08-31. The salon's
+2018-09-01-onward data is retained at face value.
 
-The old pipeline handled this salon via `total_app_time` replacement
-(`tasks[!is.na(total_app_time), duration := total_app_time]`), which was
-intentionally not restored in the refactor (see below). The salon's impact on
-results is mitigated by:
-1. Only 2 of its quarters fall in the estimation window
-2. Downstream winsorization or trimming can address residual outliers
+This makes the new pipeline strictly tougher on `8310d870` than the old
+`mk_tasks_cosmo.R`, which had attempted to repair its durations by overwriting
+with `total_app_time` (a fix that didn't actually work: `total_app_time` is
+itself corrupted in the legacy period).
 
 ---
 
@@ -170,56 +185,102 @@ The old pipeline (`mk_tasks_cosmo.R`) contained the line:
 ```r
 tasks[!is.na(total_app_time), duration := total_app_time]
 ```
-This replaced the appointment-level `duration` with the service-level
-`total_app_time` for 69% of rows, partially masking the legacy import issue.
+This replaced appointment-level `duration` with service-level `total_app_time`
+for ~69% of rows, partially masking the legacy import issue.
 
-This replacement was intentionally NOT restored because:
+The replacement was intentionally not restored in the refactor because:
 
-1. **`total_app_time` is equally corrupted** in legacy-import periods (same
-   placeholder values as `duration`)
-2. **Conceptual mismatch**: `duration` is appointment-level; `total_app_time` is
-   service-level. Replacing one with the other changes the meaning of the
-   proportional allocation step.
-3. **The replacement affected 69% of all rows**, far beyond the 1.66% that are
-   actually problematic. It compressed the right tail of the `rev_labor`
-   distribution for reasons unrelated to data quality.
-4. **Availability cutoff**: `total_app_time` drops to 0% from 2020Q4 onward,
-   creating a structural break in which data receives the correction.
+1. **`total_app_time` is equally corrupted in legacy-import periods** — same
+   placeholder values as `duration`, so the swap doesn't fix the bad rows.
+2. **Conceptual mismatch** — `duration` is appointment-level; `total_app_time`
+   is service-level. Replacing one with the other changes the meaning of the
+   proportional duration allocation step.
+3. **The replacement affected ~69% of all rows**, far beyond the small fraction
+   that are actually problematic. It compressed the right tail of the
+   `rev_labor` distribution for reasons unrelated to data quality.
+4. **Availability cutoff** — `total_app_time` drops to 0% from 2020Q4 onward,
+   creating a structural break in which rows receive the "correction".
 
-The targeted legacy-import drop is a cleaner solution that addresses the root cause
-(imported data with no real durations) without altering the 98.3% of rows that have
-valid duration data.
+The targeted transition-date drop addresses the root cause (imported data with
+no real durations) directly, without altering the ~97% of rows that have valid
+duration data.
 
 ---
 
 ## Implementation
 
-In `00_mk_tasks_cosmo.R`, after the proportional duration allocation step and
-before saving:
+In `00_mk_tasks_cosmo.R`, after proportional duration allocation (the melt
+step) and before the final task-category cleanup:
 
 ```r
-# Detect and drop legacy import data (see docs/legacy_import_data_issue.md)
-tasks[, quarter_year := year(date) + quarter(date)/10]
-lq_stats <- tasks[, .(
-  mode_dur = as.numeric(names(sort(table(round(duration, 1)), decreasing=TRUE)[1])),
-  mode_pct = max(table(round(duration, 1))) / .N
-), by = .(location_id, quarter_year)]
-has_good <- tasks[, .(med_dur = median(duration)), by = .(location_id, quarter_year)
-  ][med_dur >= 30, .(has_good_quarter = TRUE), by = location_id]
-legacy_lq <- lq_stats[mode_pct > 0.8 & mode_dur <= 15]
-legacy_lq <- merge(legacy_lq, has_good, by = "location_id")
-tasks <- tasks[!paste(location_id, quarter_year) %in%
-               legacy_lq[, paste(location_id, quarter_year)]]
-tasks[, quarter_year := NULL]
+n_before_legacy <- nrow(tasks)
+legacy_cutoffs <- data.table(
+  location_id = c(
+    "8310d870-fb13-414b-ba6c-2902eaf0276f",
+    "191172d5-2e41-4cf7-b94f-5b15145f18ec",
+    "b9f5c7cf-38d0-42ec-9669-2304d7abfedd",
+    "f44c05e5-5c88-4ab5-99ab-32ac1ee1d470",
+    "23468507-cec2-458d-a053-ac09060d4721",
+    "01fbf61d-01ef-4c3a-9a88-3e64cc8f99fe",
+    "fb282d29-cc1f-41ab-87b1-b33cdba2ea3f",
+    "ec64ba65-7a8e-49be-a8ca-e04dd0be4ff2",
+    "a413d2fc-b120-4b5f-b13c-c5fac327866d",
+    "f4938ca8-a8cf-49a7-9358-1df7ca32e336"
+  ),
+  transition_start = as.Date(c(
+    "2018-09-01", "2019-08-01", "2019-08-01", "2020-12-01", "2020-02-01",
+    "2020-04-01", "2019-01-01", "2018-11-01", "2018-07-01", "2019-04-01"
+  ))
+)
+
+tasks <- merge(tasks, legacy_cutoffs, by = "location_id", all.x = TRUE)
+n_legacy <- nrow(tasks[!is.na(transition_start) & date < transition_start])
+tasks <- tasks[is.na(transition_start) | date >= transition_start]
+tasks[, transition_start := NULL]
+
+message("Dropped ", n_legacy, " legacy-import rows (",
+        round(100 * n_legacy / n_before_legacy, 2), "%) from ",
+        nrow(legacy_cutoffs), " locations")
 ```
+
+The run-time message reports the values cited above (388,569 rows, 2.82%, 10
+locations) when run against the current `compiled_trxns.rds`.
 
 ---
 
-## Verification
+## Verification (run 2026-05-15)
 
-After applying the fix, confirm:
-- No firm-quarter in the estimation sample has `rev_labor` > 20 from a
-  legacy-duration artifact
-- The productivity-specialization regression coefficient returns to the range
-  reported in the published paper (~0.11 in the bivariate specification)
-- Summary statistics (N, mean, percentiles) are close to published values
+Re-running `02_stylized_facts.R` against the post-trim `00_tasks_cosmo.rds`:
+
+- The full-sample stylized-facts panel has 4,495 firm-quarters
+  (manuscript: 4,599; loss of 104 firm-quarters from the 10-salon
+  pre-transition history that is now excluded).
+- Labor-productivity dispersion (`results/out/tables/02_dispersion.tex`):
+  max `rev_labor` is **15.04**, down from the manuscript's 42.80 (which was
+  pinned at the old `rev_labor < 42.80` cap, dominated by `8310d870`'s
+  pre-2018Q3 placeholder durations). Mean falls from 1.81 to 1.61; median
+  is essentially unchanged (1.38 → 1.35); P75 1.94 vs. 2.05. S-index
+  distribution is unchanged.
+- Bivariate `std_rev_labor ~ std_sindex` (col 1 of
+  `02_productivity_sindex.tex` vs. `01_01_productivity_sindex.tex`):
+  - manuscript: 0.110* (SE 0.056), R² 0.058
+  - new      : 0.283*** (SE 0.050), R² 0.076
+- The coefficient is roughly 2.6× the manuscript value, more precisely
+  estimated, and stays in the 0.17–0.31 range across all seven fixed-effect
+  specifications (vs. 0.07–0.14 in the manuscript). The earlier expectation
+  that the coefficient would "return to ~0.11 after the trim" (a guess based
+  on an intermediate state of the refactor) was wrong: the manuscript's small
+  coefficient was depressed by the `total_app_time` overwrite that compressed
+  the right tail of `rev_labor`. After the swap is removed AND the legacy
+  pre-period is dropped, the S-Index/productivity relationship is strictly
+  stronger than in the published paper.
+- Teamwork bivariate coefficient (col 1 of `02_productivity_teamwork.tex`):
+  0.066** → 0.239***, same direction.
+- S-Index → teamwork coefficient in `02_management_practices.tex` (col 1)
+  is essentially unchanged: 0.6551 → 0.6564.
+
+The drop counts above come from re-running the `00_mk_tasks_cosmo.R`
+preprocessing through line 320 against the current `compiled_trxns.rds`
+(2026-05-15). To re-verify, run `00_mk_tasks_cosmo.R` and look for the
+`message("Dropped X legacy-import rows ...")` line near the end of the legacy
+block.
