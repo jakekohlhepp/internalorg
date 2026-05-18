@@ -140,11 +140,11 @@ cf_data_dir <- if (!is.null(get0("CONFIG"))) CONFIG$counterfactual_data_dir else
 cat("counterfactual data dir =", cf_data_dir, "\n")
 
 candidates <- c(
-  baseline           = file.path(cf_data_dir, "05_00_initial_wages.rds"),
-  diffusion          = file.path(cf_data_dir, "14_counterfactual_diffusion_wages.rds"),
-  sales_tax          = file.path(cf_data_dir, "15_counterfactual_sales_tax_wages.rds"),
-  immigration        = file.path(cf_data_dir, "16_counterfactual_immigration_wages.rds"),
-  merger             = file.path(cf_data_dir, "17_counterfactual_merger_wages.rds")
+  baseline           = file.path(cf_data_dir, "13_initial_wages.rds"),
+  diffusion          = file.path(cf_data_dir, "14_wages_diffusion.rds"),
+  sales_tax          = file.path(cf_data_dir, "15_wages_salestax.rds"),
+  immigration        = file.path(cf_data_dir, "16_wages_immigration.rds"),
+  merger             = file.path(cf_data_dir, "17_wages_merger.rds")
 )
 for (nm in names(candidates)) {
   scan_wage_table(candidates[[nm]], nm)

@@ -204,6 +204,75 @@ test_that("counterfactual_labor_gap respects the requested scale", {
                                  "6037-2021.2-5"))
 })
 
+test_that("counterfactual BBsolve wage solver works in log-wage space", {
+  skip_if_not_installed("BB")
+
+  cfg <- modifyList(TEST_CONFIG, list(
+    n_worker_types = 2,
+    counterfactual_bbsolve_maxit = 200
+  ))
+  target_wages <- c(2, 3)
+  wage_gap <- function(wages) log(wages / target_wages)
+
+  result <- counterfactual_solve_wage_market_bbsolve(
+    wage_gap,
+    start = c(1, 1),
+    target_tol = 1e-8,
+    config = cfg
+  )
+
+  expect_true(result$converged)
+  expect_equal(result$par, target_wages, tolerance = 1e-5)
+})
+
+test_that("full wage fallback uses stable seeds without leaking RNG state", {
+  skip_if_not_installed("nleqslv")
+
+  cfg <- modifyList(TEST_CONFIG, list(
+    n_worker_types = 2,
+    counterfactual_nleqslv_maxit = 100
+  ))
+  wage_gap <- function(wages) log(wages / c(2, 3))
+
+  set.seed(99)
+  before <- .Random.seed
+  result <- counterfactual_full_5d_retry(
+    wage_gap,
+    start_par = c(1, 1),
+    label = "smoke baseline 6037",
+    target_tol = 1e-8,
+    config = cfg
+  )
+
+  expect_true(result$converged)
+  expect_identical(.Random.seed, before)
+  expect_false(identical(
+    counterfactual_stable_seed("abc"),
+    counterfactual_stable_seed("abcd")
+  ))
+})
+
+test_that("counterfactual runners reference current wage artifact names", {
+  runner <- readLines(file.path(PROJECT_ROOT, "run_counterfactuals.R"))
+  checker <- readLines(file.path(PROJECT_ROOT, "run_counterfactual_check.R"))
+  combined <- c(runner, checker)
+
+  expect_true(any(grepl("13_initial_wages[.]rds", runner)))
+  expect_true(any(grepl("14_wages_diffusion[.]rds", checker)))
+  expect_false(any(grepl(
+    paste(
+      "05_00_initial_wages[.]rds",
+      "05_02_wages_diffusion[.]rds",
+      "05_03_wages_salestax[.]rds",
+      "05_04_wages_immigration[.]rds",
+      "05_06_wages_merger[.]rds",
+      "14_counterfactual_diffusion_wages[.]rds",
+      sep = "|"
+    ),
+    combined
+  )))
+})
+
 test_that("new_counterfactual_wages_grid produces the schema 14-17 expect", {
   grid_with <- new_counterfactual_wages_grid(c(2021.1, 2021.2),
                                              include_solution_type = TRUE,

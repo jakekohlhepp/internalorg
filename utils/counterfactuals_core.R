@@ -206,9 +206,17 @@ counterfactual_tot_labor_field_names <- function(config = CONFIG) {
 }
 
 compute_counterfactual_total_labor <- function(working_data, config = CONFIG) {
+  ## Target uses the hybrid E_raw_* column (raw observed firm-level employment
+  ## when present; filled with model prediction when the firm is outside the
+  ## estimation sample). The pure-model E_* columns hold the frictional
+  ## fixed-point prediction and have structural zeros for worker types the
+  ## skill matrix happens to dominate, which would make the baseline target
+  ## itself 0 and the wage solver clear trivially at 0 = 0. The fill at
+  ## 13_counterfactual_prep.R:175-179 ensures E_raw_* is complete by the time
+  ## this function runs.
   working_data[, {
     totals <- lapply(seq_len(config$n_worker_types), function(idx) {
-      sum(weight * salon_share_subdiv * CSPOP * get(paste0("E_", idx)) * avg_labor)
+      sum(weight * salon_share_subdiv * CSPOP * get(paste0("E_raw_", idx)) * avg_labor)
     })
     setNames(totals, paste0("tot_", seq_len(config$n_worker_types)))
   }, by = c("county", "quarter_year")]
@@ -787,6 +795,30 @@ counterfactual_better_result <- function(candidate, incumbent) {
   is.finite(candidate$residual) && candidate$residual < incumbent$residual
 }
 
+counterfactual_stable_seed <- function(label = NULL, salt = 0L) {
+  label <- if (is.null(label)) "" else paste(as.character(label), collapse = " ")
+  code_points <- utf8ToInt(label)
+  if (length(code_points) == 0L) {
+    code_points <- 0L
+  }
+  raw_seed <- 20260516 + as.integer(salt) +
+    sum((seq_along(code_points) * code_points) %% .Machine$integer.max)
+  seed <- as.integer(raw_seed %% .Machine$integer.max)
+  if (is.na(seed) || seed <= 0L) 1L else seed
+}
+
+counterfactual_preserve_rng <- function() {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  function() {
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
+}
+
 counterfactual_multistarts <- function(start, additional_starts = list(),
                                        config = CONFIG) {
   start <- pmax(as.numeric(start), config$numeric_floor)
@@ -864,6 +896,9 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
   fn <- counterfactual_safe_wage_fn(fn, config)
   starts <- counterfactual_multistarts(start, additional_starts, config)
   best_result <- NULL
+  solve_log_wages <- function(log_wages) {
+    fn(exp(log_wages))
+  }
 
   for (idx in seq_along(starts)) {
     positive_start <- starts[[idx]]
@@ -878,9 +913,6 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
       best_result <- start_result
     }
 
-    solve_log_wages <- function(log_wages) {
-      fn(exp(log_wages))
-    }
     control <- modifyList(
       list(
         xtol = 1e-10,
@@ -980,8 +1012,9 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
       bb_control
     )
 
+    bb_start <- log(pmax(best_result$par, config$numeric_floor))
     bb_result <- tryCatch(
-      BB::BBsolve(best_result$par, fn, control = bb_control),
+      BB::BBsolve(bb_start, solve_log_wages, control = bb_control),
       error = function(e) {
         warning("BBsolve fallback failed",
                 if (!is.null(label)) paste0(" for ", label), ": ",
@@ -992,11 +1025,11 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
 
     if (!is.null(bb_result) &&
         !is.null(bb_result$par) &&
-        all(is.finite(bb_result$par)) &&
-        all(bb_result$par > 0)) {
+        all(is.finite(bb_result$par))) {
+      bb_par <- pmax(exp(as.numeric(bb_result$par)), config$numeric_floor)
       candidate <- counterfactual_candidate_result(
         fn,
-        bb_result$par,
+        bb_par,
         "BBsolve_fallback",
         "BBsolve fallback after residual above target"
       )
@@ -1007,8 +1040,13 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
   }
 
   if (!is.finite(best_result$residual) || best_result$residual > target_tol) {
+    broyden_start <- log(pmax(best_result$par, config$numeric_floor))
     broyden_result <- tryCatch(
-      pracma::broyden(fn, best_result$par, maxiter = config$counterfactual_broyden_maxit),
+      pracma::broyden(
+        solve_log_wages,
+        broyden_start,
+        maxiter = config$counterfactual_broyden_maxit
+      ),
       error = function(e) {
         warning("broyden polish failed",
                 if (!is.null(label)) paste0(" for ", label), ": ",
@@ -1019,11 +1057,11 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
 
     if (!is.null(broyden_result) &&
         !is.null(broyden_result$zero) &&
-        all(is.finite(broyden_result$zero)) &&
-        all(broyden_result$zero > 0)) {
+        all(is.finite(broyden_result$zero))) {
+      broyden_par <- pmax(exp(as.numeric(broyden_result$zero)), config$numeric_floor)
       candidate <- counterfactual_candidate_result(
         fn,
-        broyden_result$zero,
+        broyden_par,
         paste(best_result$method, "broyden_polish", sep = "+"),
         "broyden polish after residual above target"
       )
@@ -1204,6 +1242,8 @@ counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
                                                      config = CONFIG) {
   start <- pmax(as.numeric(start), config$numeric_floor)
   fn_safe <- counterfactual_safe_wage_fn(fn, config)
+  fn_log <- function(log_wages) as.numeric(fn_safe(exp(log_wages)))
+  start_log <- log(start)
 
   start_label <- if (is.null(label)) "initial seed" else paste0(label, " initial seed")
   best_result <- counterfactual_candidate_result(fn_safe, start, "start", start_label)
@@ -1211,8 +1251,8 @@ counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
   for (use_NM in c(FALSE, TRUE)) {
     res <- tryCatch(
       BB::BBsolve(
-        par = start,
-        fn = fn_safe,
+        par = start_log,
+        fn = fn_log,
         control = list(
           maxit = config$counterfactual_bbsolve_maxit,
           tol = min(target_tol, 1e-8),
@@ -1235,11 +1275,11 @@ counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
 
     if (!is.null(res) &&
         !is.null(res$par) &&
-        all(is.finite(res$par)) &&
-        all(res$par > 0)) {
+        all(is.finite(res$par))) {
+      res_par <- pmax(exp(as.numeric(res$par)), config$numeric_floor)
       cand <- counterfactual_candidate_result(
         fn_safe,
-        res$par,
+        res_par,
         method = paste0("bbsolve_NM=", use_NM),
         message = if (is.null(res$message)) NA_character_ else as.character(res$message),
         termcd = as.integer(if (is.null(res$convergence)) NA_integer_ else res$convergence)
@@ -1249,6 +1289,244 @@ counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
       }
     }
   }
+
+  best_result$converged <- is.finite(best_result$residual) &&
+    best_result$residual <= target_tol
+  best_result$target_tol <- target_tol
+  best_result
+}
+
+#' Full-5D wage solver fallback. Tries multistart nleqslv (Broyden+dbldog,
+#' Newton+dbldog, Broyden+qline) and minimizer-based attempts (L-BFGS-B and
+#' Nelder-Mead on the SSR of all five labor-clearing residuals), then a
+#' global PSO search on SSR. Never drops a residual; never fixes a wage.
+#' Returns the same shape as counterfactual_solve_wage_market_bbsolve.
+counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
+                                         target_tol = CONFIG$counterfactual_wage_tol,
+                                         config = CONFIG) {
+  restore_rng <- counterfactual_preserve_rng()
+  on.exit(restore_rng(), add = TRUE)
+  fn_safe <- counterfactual_safe_wage_fn(fn, config)
+  start_par <- pmax(as.numeric(start_par), config$numeric_floor)
+  best_result <- counterfactual_candidate_result(
+    fn_safe, start_par, "fallback_seed",
+    if (is.null(label)) "seed" else paste0(label, " fallback seed")
+  )
+  log_start <- log(start_par)
+  fn_log_root <- function(log_w) as.numeric(fn_safe(exp(log_w)))
+  ssr_log     <- function(log_w) sum(fn_log_root(log_w)^2)
+
+  take <- function(name, par_log, message = NULL, termcd = NA_integer_) {
+    par_lin <- pmax(exp(as.numeric(par_log)), config$numeric_floor)
+    cand <- counterfactual_candidate_result(fn_safe, par_lin, name, message, termcd)
+    if (counterfactual_better_result(cand, best_result)) {
+      best_result <<- cand
+      base::message(sprintf(
+        "    [%s] %s: NEW best  residual=%.6g  components=[%s]",
+        if (is.null(label)) "fallback" else label, name,
+        cand$residual,
+        paste(signif(cand$residual_components, 4), collapse = ", ")
+      ))
+    } else {
+      base::message(sprintf(
+        "    [%s] %s: residual=%.6g  (no improvement; best=%.6g)",
+        if (is.null(label)) "fallback" else label, name,
+        cand$residual, best_result$residual
+      ))
+    }
+  }
+
+  cleared <- function() {
+    is.finite(best_result$residual) && best_result$residual <= target_tol
+  }
+
+  ## Build the multistart starting set: the seed plus log-Gaussian
+  ## perturbations around it. The "running best" is always prepended fresh at
+  ## the start of each method, so each subsequent method begins from the
+  ## cumulative best found so far. This implements feed-forward across
+  ## methods: rootfinders refine over each other's basins, and the minimizers
+  ## then polish from the best basin discovered.
+  n_starts    <- solver_value(config, "counterfactual_fallback_multistarts", 5L)
+  perturb_sd  <- solver_value(config, "counterfactual_fallback_perturb_log_sd", 0.5)
+  seed_base   <- counterfactual_stable_seed(label)
+  set.seed(seed_base)
+  perturbation_set <- list(log_start)
+  for (i in seq_len(max(0L, as.integer(n_starts) - 1L))) {
+    perturbation_set[[i + 1L]] <- log_start +
+      stats::rnorm(length(log_start), 0, perturb_sd)
+  }
+
+  ## Returns the start list for a method: running best (live), then the
+  ## perturbations. Deduped so we don't repeat the BBsolve seed when it
+  ## happens to coincide with the running best.
+  current_starts <- function() {
+    running_best_log <- log(pmax(best_result$par, config$numeric_floor))
+    c(list(running_best_log), perturbation_set)
+  }
+
+  run_nleqslv <- function(method, global_method, tag) {
+    base::message(sprintf(
+      "  [%s] === %s phase (multistart=%d, includes running best) ===",
+      if (is.null(label)) "fallback" else label, tag,
+      length(current_starts())
+    ))
+    starts <- current_starts()
+    for (i in seq_along(starts)) {
+      if (cleared()) return(invisible())
+      res <- tryCatch(
+        nleqslv::nleqslv(
+          starts[[i]], fn_log_root, method = method, global = global_method,
+          control = list(xtol = 1e-12, ftol = 1e-10,
+                         maxit = config$counterfactual_nleqslv_maxit,
+                         allowSingular = TRUE, cndtol = 1e-14, trace = 0)
+        ),
+        error = function(e) {
+          warning("[", label, "] ", tag, " start ", i, " errored: ",
+                  conditionMessage(e), call. = FALSE); NULL
+        }
+      )
+      if (!is.null(res)) take(paste0(tag, "_start", i), res$x,
+                              as.character(res$message), as.integer(res$termcd))
+    }
+  }
+
+  ## 1. nleqslv Broyden + dbldog (multistart)
+  run_nleqslv("Broyden", "dbldog", "nleqslv_Broyden_dbldog")
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## 2. nleqslv Newton + dbldog (multistart)
+  run_nleqslv("Newton",  "dbldog", "nleqslv_Newton_dbldog")
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## 3. nleqslv Broyden + qline (alternative globalization)
+  run_nleqslv("Broyden", "qline",  "nleqslv_Broyden_qline")
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## 4. L-BFGS-B on SSR — multistart from running best + perturbations
+  base::message(sprintf(
+    "  [%s] === L-BFGS-B SSR phase (multistart=%d, includes running best) ===",
+    if (is.null(label)) "fallback" else label,
+    length(current_starts())
+  ))
+  starts <- current_starts()
+  for (i in seq_along(starts)) {
+    if (cleared()) break
+    res <- tryCatch(
+      stats::optim(starts[[i]], ssr_log, method = "L-BFGS-B",
+                   control = list(maxit = 5000, factr = 1e7)),
+      error = function(e) {
+        warning("[", label, "] L-BFGS-B SSR start ", i, " errored: ",
+                conditionMessage(e), call. = FALSE); NULL
+      }
+    )
+    if (!is.null(res)) take(paste0("LBFGSB_SSR_start", i), res$par,
+                            as.character(res$message), as.integer(res$convergence))
+  }
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## 5. Nelder-Mead on SSR — multistart from running best + perturbations
+  base::message(sprintf(
+    "  [%s] === Nelder-Mead SSR phase (multistart=%d, includes running best) ===",
+    if (is.null(label)) "fallback" else label,
+    length(current_starts())
+  ))
+  starts <- current_starts()
+  for (i in seq_along(starts)) {
+    if (cleared()) break
+    res <- tryCatch(
+      stats::optim(starts[[i]], ssr_log, method = "Nelder-Mead",
+                   control = list(maxit = 20000, reltol = 1e-14)),
+      error = function(e) {
+        warning("[", label, "] NM SSR start ", i, " errored: ",
+                conditionMessage(e), call. = FALSE); NULL
+      }
+    )
+    if (!is.null(res)) take(paste0("NM_SSR_start", i), res$par,
+                            as.character(res$message), as.integer(res$convergence))
+  }
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## 6. LHS-dfsane wide-multistart root-finder. Uniformly samples log-wage
+  ## space around the running best with a wider half-width than the Gaussian
+  ## perturbation_set, then runs BB::dfsane (derivative-free spectral
+  ## residual) from each start. Catches cases where the prior phases are all
+  ## trapped in a spurious local minimum of SSR (e.g., Cook 17031 2021.2,
+  ## where every other fallback method floored at residual ~1 but uniform
+  ## starts at halfwidth=2.5 located a different basin clearing to ~1e-6).
+  if (!cleared() && requireNamespace("BB", quietly = TRUE)) {
+    lhs_n         <- as.integer(solver_value(config, "counterfactual_lhs_dfsane_n_starts", 8L))
+    lhs_halfwidth <- solver_value(config, "counterfactual_lhs_dfsane_halfwidth", 2.5)
+    lhs_maxit     <- as.integer(solver_value(config, "counterfactual_lhs_dfsane_maxit", 600L))
+    base::message(sprintf(
+      "  [%s] === LHS-dfsane phase (n_starts=%d, halfwidth=%g uniform log-wage) ===",
+      if (is.null(label)) "fallback" else label, lhs_n, lhs_halfwidth
+    ))
+    set.seed(counterfactual_stable_seed(label, 17L))
+    center_log <- log(pmax(best_result$par, config$numeric_floor))
+    for (i in seq_len(lhs_n)) {
+      if (cleared()) break
+      perturb <- stats::runif(length(center_log), -lhs_halfwidth, lhs_halfwidth)
+      s_par_log <- center_log + perturb
+      res <- tryCatch(
+        BB::dfsane(par = s_par_log, fn = fn_log_root, method = 2,
+                   control = list(maxit = lhs_maxit, tol = 1e-6, M = 10,
+                                  noimp = 100, trace = FALSE)),
+        error = function(e) {
+          warning("[", label, "] LHS_dfsane start ", i, " errored: ",
+                  conditionMessage(e), call. = FALSE); NULL
+        })
+      if (!is.null(res)) {
+        take(paste0("LHS_dfsane_start", i),
+             as.numeric(res$par),
+             as.character(res$message), NA_integer_)
+      }
+    }
+    if (cleared()) {
+      best_result$converged <- TRUE
+      best_result$target_tol <- target_tol
+      return(best_result)
+    }
+  }
+
+  ## 7. PSO global search on SSR using the in-house `pso_solve` from
+  ## structural_solver.R (no external pso package dependency). Box is centered
+  ## on the current best (log space) with a configurable half-width. Last-
+  ## resort because each fn eval calls solve_wages for every firm in the
+  ## market.
+  halfwidth   <- solver_value(config, "counterfactual_fallback_pso_halfwidth", 3)
+  n_particles <- as.integer(solver_value(config, "counterfactual_fallback_pso_particles", 40L))
+  n_iter      <- as.integer(solver_value(config, "counterfactual_fallback_pso_iter", 100L))
+  pso_w       <- solver_value(config, "pso_w", 0.7)
+  pso_c1      <- solver_value(config, "pso_c1", 1.5)
+  pso_c2      <- solver_value(config, "pso_c2", 1.5)
+  ## Always trace PSO gbest progress in fallback context (every 10 iters)
+  pso_trace   <- 1L
+  center      <- log(pmax(best_result$par, config$numeric_floor))
+  set.seed(counterfactual_stable_seed(label, 31L))
+  base::message(sprintf(
+    "  [%s] === PSO SSR phase (particles=%d, iters=%d, halfwidth=%g around running best) ===",
+    if (is.null(label)) "fallback" else label,
+    n_particles, n_iter, halfwidth
+  ))
+  res <- tryCatch(
+    pso_solve(
+      fn = ssr_log,
+      lower = center - halfwidth,
+      upper = center + halfwidth,
+      seed_particle = center,
+      n_particles = n_particles, n_iter = n_iter,
+      w = pso_w, c1 = pso_c1, c2 = pso_c2,
+      trace = pso_trace,
+      label = if (is.null(label)) "fallback" else label
+    ),
+    error = function(e) {
+      warning("[", label, "] PSO SSR errored: ",
+              conditionMessage(e), call. = FALSE); NULL
+    }
+  )
+  if (!is.null(res)) take("PSO_SSR", res$par,
+                          paste("pso_solve ssq=", signif(res$value, 6)),
+                          NA_integer_)
 
   best_result$converged <- is.finite(best_result$residual) &&
     best_result$residual <= target_tol

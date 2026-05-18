@@ -175,8 +175,10 @@ counterfactual_steps <- list(
     dependencies = c("config.R", "utils/counterfactuals_core.R", "13_counterfactual_prep.R"),
     required_inputs_any = baseline_inputs,
     outputs = c(
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("13_total_labor.rds"),
+      counterfactual_data_path("13_prod_initial.rds")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -187,12 +189,13 @@ counterfactual_steps <- list(
     dependencies = c("config.R", "utils/counterfactuals_core.R", "14_counterfactual_diffusion.R"),
     required_inputs_any = list(
       parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("13_total_labor.rds")
     ),
     outputs = c(
-      counterfactual_data_path("05_02_wages_diffusion.rds"),
-      counterfactual_data_path("05_02_prod_diffusion.rds")
+      counterfactual_data_path("14_wages_diffusion.rds"),
+      counterfactual_data_path("14_prod_diffusion.rds")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -203,13 +206,13 @@ counterfactual_steps <- list(
     dependencies = c("config.R", "utils/counterfactuals_core.R", "15_counterfactual_sales_tax.R"),
     required_inputs_any = list(
       parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("13_total_labor.rds")
     ),
     outputs = c(
-      counterfactual_data_path("05_03_wages_salestax.rds"),
-      counterfactual_data_path("05_03_prod_salestax.rds"),
-      counterfactual_data_path("05_03_prod_initial.rds")
+      counterfactual_data_path("15_wages_salestax.rds"),
+      counterfactual_data_path("15_prod_salestax.rds")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -220,12 +223,13 @@ counterfactual_steps <- list(
     dependencies = c("config.R", "utils/counterfactuals_core.R", "16_counterfactual_immigration.R"),
     required_inputs_any = list(
       parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("13_total_labor.rds")
     ),
     outputs = c(
-      counterfactual_data_path("05_04_wages_immigration.rds"),
-      counterfactual_data_path("05_04_prod_immigration.rds")
+      counterfactual_data_path("16_wages_immigration.rds"),
+      counterfactual_data_path("16_prod_immigration.rds")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -236,12 +240,13 @@ counterfactual_steps <- list(
     dependencies = c("config.R", "utils/counterfactuals_core.R", "17_counterfactual_merger.R"),
     required_inputs_any = list(
       parameter_inputs,
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("13_total_labor.rds")
     ),
     outputs = c(
-      counterfactual_data_path("05_06_wages_merger.rds"),
-      counterfactual_data_path("05_06_prod_merger.rds")
+      counterfactual_data_path("17_wages_merger.rds"),
+      counterfactual_data_path("17_prod_merger.rds")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -251,20 +256,20 @@ counterfactual_steps <- list(
     enabled = RUN_CF_06_SUMMARY,
     dependencies = c("config.R", "utils/counterfactuals_core.R", "18_counterfactual_summary.R"),
     required_inputs_any = list(
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_03_prod_initial.rds"),
-      counterfactual_data_path("05_02_wages_diffusion.rds"),
-      counterfactual_data_path("05_02_prod_diffusion.rds"),
-      counterfactual_data_path("05_03_wages_salestax.rds"),
-      counterfactual_data_path("05_03_prod_salestax.rds"),
-      counterfactual_data_path("05_04_wages_immigration.rds"),
-      counterfactual_data_path("05_04_prod_immigration.rds"),
-      counterfactual_data_path("05_06_wages_merger.rds"),
-      counterfactual_data_path("05_06_prod_merger.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_prod_initial.rds"),
+      counterfactual_data_path("14_wages_diffusion.rds"),
+      counterfactual_data_path("14_prod_diffusion.rds"),
+      counterfactual_data_path("15_wages_salestax.rds"),
+      counterfactual_data_path("15_prod_salestax.rds"),
+      counterfactual_data_path("16_wages_immigration.rds"),
+      counterfactual_data_path("16_prod_immigration.rds"),
+      counterfactual_data_path("17_wages_merger.rds"),
+      counterfactual_data_path("17_prod_merger.rds")
     ),
     outputs = c(
-      counterfactual_output_path("05_06_tot_counterfactuals.tex", "tables"),
-      counterfactual_output_path("05_06_bytype_counterfactuals.tex", "tables")
+      counterfactual_output_path("18_tot_counterfactuals.tex", "tables"),
+      counterfactual_output_path("18_bytype_counterfactuals.tex", "tables")
     ),
     skip_if_inputs_missing = TRUE
   ),
@@ -274,9 +279,9 @@ counterfactual_steps <- list(
     enabled = RUN_CF_07_FIGURES,
     dependencies = c("config.R", "utils/counterfactuals_core.R", "19_counterfactual_figures.R"),
     required_inputs_any = list(
-      counterfactual_data_path("05_00_initial_wages.rds"),
-      counterfactual_data_path("05_00_working_data.rds"),
-      counterfactual_data_path("05_04_wages_immigration.rds")
+      counterfactual_data_path("13_initial_wages.rds"),
+      counterfactual_data_path("13_working_data.rds"),
+      counterfactual_data_path("16_wages_immigration.rds")
     ),
     outputs = c(
       counterfactual_output_path("05_07_realloc_scatter.png", "figures"),
