@@ -375,113 +375,45 @@ for (cnty in CONFIG$counties) {
     )
 
     if (!isTRUE(quad_wages$converged)) {
-      ## Tier 2: reduced 4-equation root-finding. The 5-equation labor-
-      ## clearing system is rank-deficient at the estimated parameters for
-      ## markets where two or more worker-type skill rows of theta are near-
-      ## collinear (LA: rho(theta_1, theta_3)=0.97, rho(theta_1, theta_2)=0.89).
-      ## At those parameters no positive wage vector zeros every residual.
-      ## Rather than spread the irreducible mis-fit across all five via WLS
-      ## weighting, drop the labor-clearing equation most aligned with the
-      ## Jacobian's left null space, hold one wage at its Tier-1 best, and
-      ## solve the remaining 4-on-4 system with nleqslv. The dropped residual
-      ## becomes a single documented, irreducible mis-fit; the kept four
-      ## zero to machine precision.
-      bb_wages <- pmax(as.numeric(quad_wages$par), CONFIG$numeric_floor)
+      ## Full-5D fallback. NEVER drops a residual. Tries nleqslv (Broyden/dbldog
+      ## and Newton/dbldog) and minimizer-based attempts (L-BFGS-B and
+      ## Nelder-Mead on SSR) over all five residuals. Keeps the best result
+      ## (lowest max-abs residual norm) across attempts.
+      message("[", cnty, " ", qy, "] full 5D BBsolve did not converge ",
+              "(max_abs=", signif(quad_wages$residual, 4),
+              "); trying nleqslv and minimizer fallbacks on full 5D system.")
+
       target_at_market <- as.numeric(
         total_labor[county == cnty & quarter_year == qy,
                     .SD, .SDcols = tot_field_names]
       )
 
-      message("[", cnty, " ", qy, "] full 5D BBsolve did not converge ",
-              "(max_abs=", signif(quad_wages$residual, 4),
-              "); switching to reduced 4-equation root-finder.")
-
-      num_jac_5 <- function(w, h_frac = 1e-6) {
-        r0 <- as.numeric(solve_wages(w))
-        J <- matrix(0, length(r0), n_worker_types)
-        for (j in seq_len(n_worker_types)) {
-          wp <- w
-          h <- h_frac * max(abs(w[j]), 1)
-          wp[j] <- w[j] + h
-          J[, j] <- (as.numeric(solve_wages(wp)) - r0) / h
-        }
-        J
-      }
-      J_bb <- num_jac_5(bb_wages)
-      sv_bb <- svd(J_bb)
-      left_null  <- sv_bb$u[, n_worker_types]
-      right_null <- sv_bb$v[, n_worker_types]
-
-      drop_cfg <- CONFIG$tier2_drop_residual_by_county[[cnty]]
-      drop_k <- if (!is.null(drop_cfg)) as.integer(drop_cfg) else which.max(abs(left_null))
-      fix_cfg <- CONFIG$tier2_fix_wage_by_county[[cnty]]
-      fix_j <- if (!is.null(fix_cfg)) as.integer(fix_cfg) else which.max(abs(right_null))
-
-      message("[", cnty, " ", qy, "] reduced system: drop residual ", drop_k,
-              " (|u_", drop_k, "|=", signif(abs(left_null[drop_k]), 3),
-              "); fix wage ", fix_j, " at BB best ",
-              signif(bb_wages[fix_j], 4),
-              " (|v_", fix_j, "|=", signif(abs(right_null[fix_j]), 3), ").")
-
-      r_reduced <- function(w_free) {
-        w_full <- numeric(n_worker_types)
-        w_full[fix_j] <- bb_wages[fix_j]
-        w_full[-fix_j] <- pmax(w_free, CONFIG$numeric_floor)
-        r_full <- as.numeric(solve_wages(w_full))
-        r_full[-drop_k]
-      }
-
-      start_free <- bb_wages[-fix_j]
-      red_res <- tryCatch(
-        nleqslv::nleqslv(
-          x = start_free, fn = r_reduced,
-          method = "Broyden", global = "dbldog",
-          control = list(xtol = 1e-12, ftol = 1e-10,
-                         maxit = CONFIG$counterfactual_nleqslv_maxit,
-                         allowSingular = TRUE, cndtol = 1e-14, trace = 0)
-        ),
-        error = function(e) {
-          warning("Reduced 4-eq nleqslv failed for ", cnty, " ", qy, ": ",
-                  conditionMessage(e), call. = FALSE)
-          NULL
-        }
+      fb_result <- counterfactual_full_5d_retry(
+        solve_wages,
+        start_par = quad_wages$par,
+        label = paste("baseline", cnty, qy),
+        target_tol = CONFIG$counterfactual_wage_tol
       )
 
-      if (!is.null(red_res) && all(is.finite(red_res$x))) {
-        w_red <- numeric(n_worker_types)
-        w_red[fix_j] <- bb_wages[fix_j]
-        w_red[-fix_j] <- pmax(red_res$x, CONFIG$numeric_floor)
-        r_full <- as.numeric(solve_wages(w_red))
-        kept_max <- max(abs(r_full[-drop_k]))
+      if (counterfactual_better_result(fb_result, quad_wages)) {
+        quad_wages <- fb_result
+      }
 
+      if (!isTRUE(quad_wages$converged)) {
         wls_fallback_log[[paste(cnty, qy)]] <- list(
           county = cnty, quarter_year = qy,
-          strategy = "reduced_4eq",
-          drop_residual = drop_k,
-          fix_wage = fix_j,
-          fix_wage_value = bb_wages[fix_j],
-          kept_max_abs = kept_max,
-          dropped_residual = r_full[drop_k],
-          residual_components = r_full,
-          wages = w_red,
+          strategy = "full_5d_best_effort",
+          method = quad_wages$method,
+          residual_norm = quad_wages$residual,
+          residual_components = quad_wages$residual_components,
+          wages = quad_wages$par,
           target_labor = target_at_market
         )
-        quad_wages <- list(
-          par = w_red,
-          residual = kept_max,
-          residual_components = r_full,
-          method = sprintf("reduced_4eq[drop=%d,fix=%d]", drop_k, fix_j),
-          termcd = as.integer(red_res$termcd),
-          message = sprintf(
-            "Reduced 4-eq nleqslv: drop k=%d, fix w_%d=%.4g; kept_max=%.4e, dropped_resid=%+.4e",
-            drop_k, fix_j, bb_wages[fix_j], kept_max, r_full[drop_k]
-          ),
-          target_tol = CONFIG$counterfactual_wage_tol,
-          converged = is.finite(kept_max) && kept_max <= CONFIG$counterfactual_wage_tol
-        )
-      } else {
-        warning("[", cnty, " ", qy, "] reduced 4-eq solve failed; ",
-                "leaving BBsolve best wages as the baseline.", call. = FALSE)
+        warning("[", cnty, " ", qy, "] no full-5D method cleared target_tol=",
+                signif(CONFIG$counterfactual_wage_tol, 4),
+                "; keeping best attempt (method=", quad_wages$method,
+                ", residual=", signif(quad_wages$residual, 4), ").",
+                call. = FALSE)
       }
     }
 
@@ -489,25 +421,16 @@ for (cnty in CONFIG$counties) {
   }
 }
 
-cat("\nTier-2 fall-back summary (markets that did not clear in 5D):\n")
+cat("\nFull-5D fall-back summary (markets that did not clear under BBsolve):\n")
 if (length(wls_fallback_log) == 0L) {
   cat("  (none; every market converged under BBsolve in 5D)\n")
 } else {
   for (entry in wls_fallback_log) {
-    if (identical(entry$strategy, "reduced_4eq")) {
-      cat(sprintf(
-        "  county=%s qy=%s  strategy=reduced_4eq  drop_k=%d  fix_j=%d (=%.4g)  kept_max=%.4g  dropped_resid=%+.4g\n",
-        entry$county, as.character(entry$quarter_year),
-        entry$drop_residual, entry$fix_wage, entry$fix_wage_value,
-        entry$kept_max_abs, entry$dropped_residual
-      ))
-    } else {
-      cat(sprintf(
-        "  county=%s qy=%s  strategy=WLS  weighted_ssq=%.4g  max_abs_resid=%.4g\n",
-        entry$county, as.character(entry$quarter_year),
-        entry$wls_weighted_ssq, entry$max_abs_resid
-      ))
-    }
+    cat(sprintf(
+      "  county=%s qy=%s  strategy=%s  best_method=%s  max_abs_resid=%.4g\n",
+      entry$county, as.character(entry$quarter_year),
+      entry$strategy, entry$method, entry$residual_norm
+    ))
     cat("    residual_components: ",
         paste(signif(entry$residual_components, 3), collapse = ", "), "\n", sep = "")
     cat("    wages:               ",
@@ -570,6 +493,88 @@ save_counterfactual_rds(
   baseline_total_labor,
   "13_total_labor.rds",
   legacy_filename = NULL
+)
+
+## ----------------------------------------------------------------------------
+## Baseline-equilibrium firm-level productivity panel.
+## Loops over each (county, quarter) at the cleared wages from res_wages and
+## records the firm-level B (swept by min-theta), E, s_index, c_endog, q_endog,
+## Q, C, newprice, new_share. Downstream 18_counterfactual_summary.R reads
+## this as the "Initial" baseline against which 14_/15_/16_/17_ counterfactual
+## panels are compared.
+##
+## Previously this panel was written by 15_counterfactual_sales_tax.R at the
+## end of its run, which meant any 15 failure (timeout or non-convergence on
+## the sales-tax perturbation) left the baseline panel stale. The panel
+## logically belongs to 13 because it depends only on the baseline wages.
+## ----------------------------------------------------------------------------
+b_field_names <- counterfactual_b_field_names(CONFIG)
+prod_initial_market_cols <- c(
+  "location_id", "county", "quarter_year", "gamma_invert", "avg_labor",
+  task_mix_cols, "qual_exo", "cost_exo", "weight", "cust_price", "CSPOP"
+)
+
+compute_initial_prod_panel <- function(cnty, qy, wage_vec) {
+  counter_res <- copy(working_data[county == cnty & quarter_year == qy,
+                                   ..prod_initial_market_cols])
+  if (nrow(counter_res) == 0L) return(counter_res)
+
+  new_theta <- matrix(market_parms[grep(paste0(cnty, ":avg_labor:B"), names(market_parms))],
+                      ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  w_mat <- matrix(wage_vec, ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  new_tild_theta <- w_mat + (rho[cnty])^(-1) * new_theta
+  new_tild_theta <- sweep(new_tild_theta, 2, apply(new_tild_theta, 2, min))
+
+  output_fields <- c("c_endog", "q_endog", "s_index", e_field_names, b_field_names)
+  counter_res[, (output_fields) := counterfactual_org_outputs(
+    cost_matrix = new_tild_theta,
+    alpha = as.numeric(.SD),
+    gamma = gamma_invert,
+    wage_guess = wage_vec,
+    new_theta = new_theta,
+    innertol = innertol,
+    with_s_index = TRUE,
+    with_swept_b = TRUE,
+    config = CONFIG
+  ), by = c("location_id"), .SDcols = task_mix_cols]
+
+  counter_res[, Q := q_endog * avg_labor + qual_exo]
+  counter_res[, C := c_endog * avg_labor + cost_exo]
+  counter_res[C < 0, C := 0]
+  counter_res[, newprice := counterfactual_best_response_prices(
+    cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy)
+  )]
+  counter_res[, new_share := counterfactual_logit_shares(
+    Q, newprice, weight, rho[cnty]
+  )]
+  counter_res[, sol_type := NA_character_]
+  counter_res
+}
+
+prod_initial_panel <- data.table()
+for (cnty in CONFIG$counties) {
+  for (qy in get_counterfactual_focus_quarter()) {
+    final_wages <- as.numeric(unlist(
+      res_wages[county == cnty & quarter_year == qy,
+                paste0("w", seq_len(n_worker_types)), with = FALSE],
+      use.names = FALSE
+    ))
+    if (length(final_wages) != n_worker_types ||
+        any(!is.finite(final_wages)) ||
+        any(final_wages <= 0)) {
+      message("[", cnty, " ", qy, "] skipping initial prod panel (bad wages).")
+      next
+    }
+    panel <- compute_initial_prod_panel(cnty, qy, final_wages)
+    if (nrow(panel) == 0L) next
+    prod_initial_panel <- rbind(prod_initial_panel, panel, fill = TRUE)
+  }
+}
+
+save_counterfactual_rds(
+  prod_initial_panel,
+  "13_prod_initial.rds",
+  legacy_filename = "15_prod_initial.rds"
 )
 
 

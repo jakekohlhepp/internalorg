@@ -280,22 +280,5 @@ save_counterfactual_rds(
 )
 
 
-## save productivity panel of original (unshocked rho)
-rho <- rho_orig
-prod_data_new <- data.table()
-for (cnty in unique(initial_wages[is.finite(w1), ]$county)) {
-  for (qy in unique(initial_wages[is.finite(w1), ]$quarter_year)) {
-    wage_vec <- as.numeric(initial_wages[county == cnty & quarter_year == qy,
-                                         paste0("w", seq_len(n_worker_types)), with = FALSE])
-    prod_data_new <- rbind(
-      prod_data_new,
-      data.table(county = cnty, quarter_year = qy, sol_type = NA,
-                 get_prod(wage_vec, cnty, qy, "reorg"))
-    )
-  }
-}
-save_counterfactual_rds(
-  prod_data_new,
-  "15_prod_initial.rds",
-  legacy_filename = "15_prod_initial.rds"
-)
+## Baseline (unshocked-rho) productivity panel is now written by
+## 13_counterfactual_prep.R as `13_prod_initial.rds`, not here.

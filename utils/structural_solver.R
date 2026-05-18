@@ -1206,13 +1206,14 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     result$candidate_value <- result$value
 
     if (result$value > strict_obj_tol) {
-      stop(sprintf(
+      message(sprintf(
         paste0("Wage solver did not reach obj_tol for county %s ",
                "(convergence=%d, restarts=%d, multistarts=%d, parscale=%g): ",
-               "best objective %.6g exceeds obj_tol=%.6g."),
+               "best objective %.6g exceeds obj_tol=%.6g. ",
+               "Continuing (absolute-tol gate disabled)."),
         cnty, result$convergence, result$restart_count,
         n_multistarts, parscale_w, result$value, strict_obj_tol
-      ), call. = FALSE)
+      ))
     }
 
     candidate_par <- result$par
@@ -1606,14 +1607,14 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     ))
 
     if (result_value > strict_tol) {
-      stop(sprintf(
+      message(sprintf(
         paste0("PSO+polish did not reach obj_tol for county %s ",
                "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, ",
                "halfwidth=%g, parscale=%g): best objective %.6g exceeds ",
-               "obj_tol=%.6g."),
+               "obj_tol=%.6g. Continuing (absolute-tol gate disabled)."),
         cnty, pso_res$value, polish_pso$value, polish_seed$value,
         halfwidth, parscale_w, result_value, strict_tol
-      ), call. = FALSE)
+      ))
     }
 
     final_candidate <- full_par

@@ -28,7 +28,7 @@ wage_vect_initial<-read_counterfactual_rds(
   description = "baseline counterfactual wages"
 )
 prod_data_initial<-read_counterfactual_rds(
-  "15_prod_initial.rds",
+  "13_prod_initial.rds",
   legacy_filenames = "15_prod_initial.rds",
   description = "baseline counterfactual productivity panel"
 )
