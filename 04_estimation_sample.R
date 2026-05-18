@@ -4,11 +4,22 @@
 #' Produces two artifacts used downstream:
 #'
 #'   A. mkdata/data/04_estimation_sample.rds
-#'        Estimation-ready list consumed by 05_iv_spec_comparison.R and
-#'        06_estimation.R. Augments 01_working.rds with PPI, minimum
-#'        wage, instruments (dye_instrument, labor_instrument,
-#'        hausman_other_price), organizational cost, and the estim_matrix
-#'        projection used by the GMM routines.
+#'        Estimation-ready list consumed by 05_iv_spec_comparison.R,
+#'        06_estimation.R, and 06b_estimation_monotone.R. Augments
+#'        01_working.rds with PPI, minimum wage, organizational cost,
+#'        and the estim_matrix projection used by the GMM routines.
+#'        Instrument columns carried in estim_matrix:
+#'          - dye_instrument        (task_mix_k * ppi_inputs, k = CONFIG$dye_task_index):
+#'                                  the live excluded instrument for
+#'                                  factor(county):cust_price in 06_/06b_'s demand IV.
+#'          - hausman_other_price   (leave-own-county-out mean cust_price):
+#'                                  read only by 05_iv_spec_comparison.R for the
+#'                                  IV-specification comparison tables; NOT used by
+#'                                  06_/06b_ since the demand IV was switched to
+#'                                  dye-only.
+#'        labor_instrument (avg_wkly_wage/40 * avg_labor) is computed on working_data
+#'        but is not propagated to estim_matrix and is not currently consumed by any
+#'        estimation step.
 #'
 #'   B. results/out/tables/04_summary_stats_structural.tex
 #'        LaTeX summary-stats table for the structural estimation sample
@@ -64,8 +75,10 @@ setorder(working_data, "location_id", "quarter_year")
 working_data[, dye_instrument := get(paste0("task_mix_", CONFIG$dye_task_index)) * ppi_inputs]
 
 ## Hausman price instrument: leave-own-county-out mean customer price in the
-## same quarter. Constructed here so both 05_iv_spec_comparison.R and
-## 06_estimation.R read it from estim_matrix.
+## same quarter. Constructed here and carried in estim_matrix for
+## 05_iv_spec_comparison.R's IV-spec comparison tables. 06_estimation.R and
+## 06b_estimation_monotone.R no longer use the Hausman instrument (the demand
+## IV was switched to dye_instrument only).
 working_data[, row_id := .I]
 quarter_totals <- working_data[, .(
   quarter_sum_price = sum(cust_price),
