@@ -32,42 +32,34 @@ ensure_directory('results/out/figures')
 staff_task_path      <- file.path(CONFIG$prep_output_dir, "01_staff_task.rds")
 staff_task_full_path <- file.path(CONFIG$prep_output_dir, "01_staff_task_full.rds")
 estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
+worker_type_lookup_path <- file.path(CONFIG$prep_output_dir, "01_worker_type_lookup.rds")
 parameters_path      <- file.path("results", "data", "06_parameters.rds")
 assert_required_files(c(staff_task_path, staff_task_full_path,
-                        estimation_sample_path, parameters_path))
+                        estimation_sample_path, worker_type_lookup_path,
+                        parameters_path))
 
-##### re-run within-firm clustering at the market-wide cut level
+##### reuse the baseline within-firm assignment from 01_build_data.R so that
+##### the cutlevel and firm-type counts stay in lockstep with the upstream
+##### worker-type lookup instead of being silently re-derived here.
 staff_task <- data.table(readRDS(staff_task_path))
+worker_type_lookup_artifact <- readRDS(worker_type_lookup_path)
+effective_cutlevels <- data.table(worker_type_lookup_artifact$effective_cutlevels)
+stopifnot(all(c("location_id", "quarter_year", "types_observed_firm") %in%
+              names(effective_cutlevels)))
 
-within_firm_clust <- function(mat, cut_level) {
-  # if only one employee, return one cluster
-  if (nrow(mat) <= 1) {
-    return(c(1))
-  } else {
-    clust_res <- hclust(dist(mat, method = "euclidean"), method = 'complete')
-    clust_res <- cutree(clust_res, h = cut_level)
-    return(clust_res)
+if (isTRUE(CONFIG$verbose_logging)) {
+  for (cnty in CONFIG$counties_padded) {
+    print(max(staff_task[county == cnty]$min_cutlevel))
   }
 }
 
-
-
-# for each market, set the cut_level to be such that all firms have 5 or less types.
-max(staff_task[county == '17031']$min_cutlevel)
-max(staff_task[county == '36061']$min_cutlevel)
-max(staff_task[county == '06037']$min_cutlevel)
-
-cutlevel_quantile <- if (is.null(CONFIG$cutlevel_quantile)) 1.0 else CONFIG$cutlevel_quantile
-stopifnot(is.numeric(cutlevel_quantile), length(cutlevel_quantile) == 1,
-          cutlevel_quantile >= 0, cutlevel_quantile <= 1)
-staff_task[, county_cutlevel :=
-             as.numeric(stats::quantile(min_cutlevel, cutlevel_quantile, type = 7, na.rm = TRUE)),
-           by = county]
-staff_task[, effective_cutlevel := pmax(county_cutlevel, min_cutlevel)]
-staff_task[, type_within_firm := within_firm_clust(as.matrix(.SD), effective_cutlevel[1]),
-           by = c("location_id", "quarter_year"),
-           .SDcols = colnames(staff_task)[colnames(staff_task) %like% "^Btilde_raw_"]]
-staff_task[, types_observed_firm := max(type_within_firm), by = c("location_id", "quarter_year")]
+staff_task <- merge(
+  staff_task,
+  effective_cutlevels[, .(location_id, quarter_year, types_observed_firm)],
+  by = c("location_id", "quarter_year"),
+  all.x = TRUE
+)
+stopifnot(nrow(staff_task[is.na(types_observed_firm)]) == 0L)
 
 
 all_tasks <- ""

@@ -670,7 +670,8 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
     reference_firms = reference_firms,
     county_cutlevels = unique(staff_task[, .(county, county_cutlevel)]),
     effective_cutlevels = unique(staff_task[, .(county, location_id, quarter_year,
-                                                min_cutlevel, county_cutlevel, effective_cutlevel)]),
+                                                min_cutlevel, county_cutlevel, effective_cutlevel,
+                                                types_observed_firm)]),
     cutlevel_quantile = cutlevel_quantile,
     within_firm_assignments = within_firm_assignments
   )
