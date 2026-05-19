@@ -419,7 +419,7 @@ solve_wage_abs<-function(x){
 ## the per-worker-type aggregate (the new_total_labor row) rather than the
 ## clearing gap. Used after the solver loop to record the baseline-
 ## equilibrium labor amounts (which downstream counterfactuals must target
-## instead of the data anchor for markets where Tier 2 WLS was needed).
+## instead of the data anchor for markets where the full-5D fallback was needed).
 eval_total_labor <- function(wage_guess){
   counter_res <- copy(working_data[county == cnty & quarter_year == qy,
                                    ..solve_wages_market_cols])
@@ -474,10 +474,10 @@ res_wages <- new_counterfactual_wages_grid(
   include_solution_type = FALSE
 )
 
-## Per-market log of which markets fell through to the weighted least-squares
+## Per-market log of which markets fell through to the full-5D best-effort
 ## fall-back (and the resulting per-component residuals there). Empty list ==
 ## every market cleared in 5D via BBsolve.
-wls_fallback_log <- list()
+full5d_fallback_log <- list()
 
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
@@ -524,7 +524,7 @@ for (cnty in CONFIG$counties) {
       }
 
       if (!isTRUE(quad_wages$converged)) {
-        wls_fallback_log[[paste(cnty, qy)]] <- list(
+        full5d_fallback_log[[paste(cnty, qy)]] <- list(
           county = cnty, quarter_year = qy,
           strategy = "full_5d_best_effort",
           method = quad_wages$method,
@@ -546,10 +546,10 @@ for (cnty in CONFIG$counties) {
 }
 
 cat("\nFull-5D fall-back summary (markets that did not clear under BBsolve):\n")
-if (length(wls_fallback_log) == 0L) {
+if (length(full5d_fallback_log) == 0L) {
   cat("  (none; every market converged under BBsolve in 5D)\n")
 } else {
-  for (entry in wls_fallback_log) {
+  for (entry in full5d_fallback_log) {
     cat(sprintf(
       "  county=%s qy=%s  strategy=%s  best_method=%s  max_abs_resid=%.4g\n",
       entry$county, as.character(entry$quarter_year),
@@ -565,10 +565,11 @@ if (length(wls_fallback_log) == 0L) {
 ## Compute and persist the BASELINE-EQUILIBRIUM total labor (model_labor
 ## evaluated at each market's final wages). For markets that cleared
 ## under Tier 1, this equals the data anchor by construction. For markets
-## that fell through to WLS (Tier 2), this differs from the data anchor:
-## the WLS optimum lives at wages where model_labor does not equal the
-## data target, and downstream counterfactuals (14_-17_) must target
-## *this* equilibrium labor amount, not the unreachable data target.
+## that fell through to the full-5D fallback (Tier 2), this differs from
+## the data anchor: the fallback optimum lives at wages where model_labor
+## does not equal the data target, and downstream counterfactuals (14_-17_)
+## must target *this* equilibrium labor amount, not the unreachable data
+## target.
 baseline_total_labor <- copy(total_labor)
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
