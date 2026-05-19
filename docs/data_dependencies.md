@@ -91,14 +91,6 @@ flowchart TD
     stafffull --> gam
     gam --> gamout[results/data/09_withgammas.rds]
 
-    params --> sub10[10_substitution.R]
-    gamout --> sub10
-    sub10 --> sub10out[results/out/tables/10_*.tex]
-
-    params --> sub11[11_substitution_prod.R]
-    gamout --> sub11
-    sub11 --> sub11out[results/out/tables/11_substitute_prod.tex]
-
     params --> val[12_validate.R]
     gamout --> val
     stafffull --> val
@@ -108,6 +100,7 @@ flowchart TD
     valout --> cf[run_counterfactuals.R]
     params --> cf
     cf --> cf13[13_counterfactual_prep.R]
+    warmstarts[counterfactuals/13_warm_start_wages.rds] --> cf13
     cf13 --> cfwages[counterfactuals/13_initial_wages.rds]
     cf13 --> cfdata[counterfactuals/13_working_data.rds]
     cf13 --> cflab[counterfactuals/13_total_labor.rds]
@@ -119,6 +112,17 @@ flowchart TD
     cfscen --> cfplot[19_counterfactual_figures.R]
     cfsum --> cftables[results/out/tables/18_*_counterfactuals.tex]
     cfplot --> cffigs[results/out/figures/05_07_*.png]
+
+    cfwages --> sub20[20_substitution.R]
+    cfdata --> sub20
+    params --> sub20
+    sub20 --> sub20out[results/out/tables/20_substitute.tex]
+    sub20 --> sub20figs[results/out/figures/20_*.png]
+
+    cfwages --> sub21[21_substitution_prod.R]
+    cfdata --> sub21
+    params --> sub21
+    sub21 --> sub21out[results/out/tables/21_substitute_prod.tex]
 ```
 
 ## Current Managed Workflow
@@ -150,10 +154,10 @@ flowchart TD
 | 6 | `07_bootstrap.R` | `results/data/07_bootstrap.rds`, `results/data/07_boot_weights.rds`, `results/data/bootstrap_reps/boot_res_<i>.rds` |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
-| 9 | `10_substitution.R` | `results/out/tables/10_substitute.tex`, `results/out/figures/10_*.png` |
-| 10 | `11_substitution_prod.R` | `results/out/tables/11_substitute_prod.tex` |
-| 11 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
-| 12 | `run_counterfactuals.R` | see counterfactual runner below |
+| 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
+| 10 | `run_counterfactuals.R` | see counterfactual runner below |
+| 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` (wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`) |
+| 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` (productivity-substitution patterns at the cleared equilibrium wages) |
 
 ### Counterfactual runner: `run_counterfactuals.R`
 
@@ -165,7 +169,7 @@ carry the legacy `05_07_` prefix.
 
 | Step | Script | Primary output |
 |------|--------|----------------|
-| CF 00 | `13_counterfactual_prep.R` | `counterfactuals/13_initial_wages.rds`, `counterfactuals/13_working_data.rds`, `counterfactuals/13_total_labor.rds`, `counterfactuals/13_prod_initial.rds` |
+| CF 00 | `13_counterfactual_prep.R` | `counterfactuals/13_initial_wages.rds`, `counterfactuals/13_working_data.rds`, `counterfactuals/13_total_labor.rds`, `counterfactuals/13_prod_initial.rds` (warm-starts the labor-clearing solver from `counterfactuals/13_warm_start_wages.rds` if present; see `compile_warm_start_wages.R`) |
 | CF 02 | `14_counterfactual_diffusion.R` | `counterfactuals/14_wages_diffusion.rds`, `counterfactuals/14_prod_diffusion.rds` |
 | CF 03 | `15_counterfactual_sales_tax.R` | `counterfactuals/15_wages_salestax.rds`, `counterfactuals/15_prod_salestax.rds` |
 | CF 04 | `16_counterfactual_immigration.R` | `counterfactuals/16_wages_immigration.rds`, `counterfactuals/16_prod_immigration.rds` |

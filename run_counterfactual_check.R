@@ -5,8 +5,6 @@
 
 scripts <- c(
   "09_invert_gammas.R",
-  "10_substitution.R",
-  "11_substitution_prod.R",
   "12_validate.R",
   "13_counterfactual_prep.R",
   "14_counterfactual_diffusion.R",
@@ -14,7 +12,9 @@ scripts <- c(
   "16_counterfactual_immigration.R",
   "17_counterfactual_merger.R",
   "18_counterfactual_summary.R",
-  "19_counterfactual_figures.R"
+  "19_counterfactual_figures.R",
+  "20_substitution.R",
+  "21_substitution_prod.R"
 )
 
 results <- list()

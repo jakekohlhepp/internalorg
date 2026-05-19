@@ -42,10 +42,10 @@ source("run_all.R")
 | 6 | `07_bootstrap.R` | `results/data/07_boot_weights.rds`, `results/data/07_bootstrap.rds`, `results/data/bootstrap_reps/boot_res_<i>.rds` | Bayesian bootstrap; SLURM array-ready via `run_bootstrap_array.sl` (see `docs/bootstrap_slurm.md`). |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `08_time_effects.tex`, `08_model_fit.tex`, `08_wages_skills_<county>.tex` | Render the estimation tables for the JMP draft. |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` | Invert gammas back onto the full panel. |
-| 9 | `10_substitution.R` | `results/out/tables/10_substitute.tex` | Wage-substitution patterns. |
-| 10 | `11_substitution_prod.R` | `results/out/tables/11_substitute_prod.tex` | Productivity-substitution patterns. |
-| 11 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex` | Model validation; produces the counterfactual-pipeline hand-off file. |
-| 12 | `run_counterfactuals.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_*.rds`–`17_*.rds`, `results/out/tables/18_tot_counterfactuals.tex`, `18_bytype_counterfactuals.tex`, `results/out/figures/05_07_*.png` | Run the `13_*`–`19_*` counterfactual scenarios using a shared setup/output layer. |
+| 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex` | Model validation; produces the counterfactual-pipeline hand-off file. |
+| 10 | `run_counterfactuals.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_*.rds`–`17_*.rds`, `results/out/tables/18_tot_counterfactuals.tex`, `18_bytype_counterfactuals.tex`, `results/out/figures/05_07_*.png` | Run the `13_*`–`19_*` counterfactual scenarios using a shared setup/output layer. |
+| 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` | Wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`. |
+| 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` | Productivity-substitution patterns at the cleared equilibrium wages. |
 
 ### Manual Analysis Scripts
 
@@ -82,8 +82,6 @@ refactor_estimation/
 |-- 07_bootstrap.R
 |-- 08_display_estimates.R
 |-- 09_invert_gammas.R
-|-- 10_substitution.R
-|-- 11_substitution_prod.R
 |-- 12_validate.R
 |-- 13_counterfactual_prep.R
 |-- 14_counterfactual_diffusion.R
@@ -92,7 +90,10 @@ refactor_estimation/
 |-- 17_counterfactual_merger.R
 |-- 18_counterfactual_summary.R
 |-- 19_counterfactual_figures.R
+|-- 20_substitution.R
+|-- 21_substitution_prod.R
 |-- run_counterfactuals.R
+|-- compile_warm_start_wages.R
 |-- utils/constrained_demand_iv.R
 |-- utils/counterfactuals_core.R
 |-- utils/estimation_pipeline.R

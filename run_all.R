@@ -22,12 +22,12 @@
 #'   6. Bayesian bootstrap (07_bootstrap.R)
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
-#'   9. Substitution patterns (10_substitution.R)
-#'  10. Productivity substitution patterns (11_substitution_prod.R)
-#'  11. Validate model (12_validate.R)
-#'  12. Counterfactual pipeline (run_counterfactuals.R)
+#'   9. Validate model (12_validate.R)
+#'  10. Counterfactual pipeline (run_counterfactuals.R)
+#'  11. Substitution patterns at equilibrium (20_substitution.R)
+#'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'
-#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_bootstrap.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/tables/10_*.tex; results/out/tables/11_substitute_prod.tex; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*
+#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_bootstrap.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
 #' =============================================================================
 
 # Clear environment
@@ -689,48 +689,12 @@ if (RUN_INVERT_GAMMAS) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 9: Substitution Patterns (10_substitution.R)
-#' -----------------------------------------------------------------------------
-
-if (RUN_SUBSTITUTION) {
-  run_pipeline_step(
-    step_label = "STEP 9",
-    script_name = "10_substitution.R",
-    deps = c("config.R",
-             "results/data/06_parameters.rds",
-             "results/data/09_withgammas.rds"),
-    outputs = c("results/out/tables/10_substitute.tex"),
-    required_inputs = c("results/data/06_parameters.rds",
-                        "results/data/09_withgammas.rds"),
-    description = "substitution patterns"
-  )
-}
-
-#' -----------------------------------------------------------------------------
-#' STEP 10: Productivity Substitution Patterns (11_substitution_prod.R)
-#' -----------------------------------------------------------------------------
-
-if (RUN_SUBSTITUTION_PROD) {
-  run_pipeline_step(
-    step_label = "STEP 10",
-    script_name = "11_substitution_prod.R",
-    deps = c("config.R",
-             "results/data/06_parameters.rds",
-             "results/data/09_withgammas.rds"),
-    outputs = c("results/out/tables/11_substitute_prod.tex"),
-    required_inputs = c("results/data/06_parameters.rds",
-                        "results/data/09_withgammas.rds"),
-    description = "productivity substitution patterns"
-  )
-}
-
-#' -----------------------------------------------------------------------------
-#' STEP 11: Validate Model (12_validate.R)
+#' STEP 9: Validate Model (12_validate.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_VALIDATE) {
   run_pipeline_step(
-    step_label = "STEP 11",
+    step_label = "STEP 9",
     script_name = "12_validate.R",
     deps = c("config.R",
              "results/data/06_parameters.rds",
@@ -746,12 +710,12 @@ if (RUN_VALIDATE) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 12: Counterfactual Pipeline (run_counterfactuals.R)
+#' STEP 10: Counterfactual Pipeline (run_counterfactuals.R)
 #' -----------------------------------------------------------------------------
 
 if (RUN_COUNTERFACTUALS) {
   message("\n", strrep("-", 70))
-  message("STEP 12: Checking run_counterfactuals.R")
+  message("STEP 10: Checking run_counterfactuals.R")
   message(strrep("-", 70))
 
   if (!file.exists("results/data/06_parameters.rds")) {
@@ -780,7 +744,7 @@ if (RUN_COUNTERFACTUALS) {
         log_complete(success = TRUE)
 
         step6_time <- difftime(Sys.time(), step6_start, units = "mins")
-        message("STEP 12 complete (", round(step6_time, 2), " minutes)")
+        message("STEP 10 complete (", round(step6_time, 2), " minutes)")
 
         pipeline_results[["run_counterfactuals.R"]] <- list(
           ran = TRUE, success = TRUE, duration = as.numeric(step6_time),
@@ -799,13 +763,55 @@ if (RUN_COUNTERFACTUALS) {
         stop("Counterfactual pipeline failed: ", e$message)
       })
     } else {
-      message("STEP 12 skipped (no changes detected)")
+      message("STEP 10 skipped (no changes detected)")
       pipeline_results[["run_counterfactuals.R"]] <- list(
         ran = FALSE, success = TRUE, duration = 0,
         error = NULL, skipped = TRUE
       )
     }
   }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 11: Substitution Patterns at Equilibrium (20_substitution.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_SUBSTITUTION) {
+  run_pipeline_step(
+    step_label = "STEP 11",
+    script_name = "20_substitution.R",
+    deps = c("config.R",
+             "utils/counterfactuals_core.R",
+             "results/data/06_parameters.rds",
+             "results/data/counterfactuals/13_initial_wages.rds",
+             "results/data/counterfactuals/13_working_data.rds"),
+    outputs = c("results/out/tables/20_substitute.tex"),
+    required_inputs = c("results/data/06_parameters.rds",
+                        "results/data/counterfactuals/13_initial_wages.rds",
+                        "results/data/counterfactuals/13_working_data.rds"),
+    description = "substitution patterns at equilibrium wages"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 12: Productivity Substitution Patterns at Equilibrium (21_substitution_prod.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_SUBSTITUTION_PROD) {
+  run_pipeline_step(
+    step_label = "STEP 12",
+    script_name = "21_substitution_prod.R",
+    deps = c("config.R",
+             "utils/counterfactuals_core.R",
+             "results/data/06_parameters.rds",
+             "results/data/counterfactuals/13_initial_wages.rds",
+             "results/data/counterfactuals/13_working_data.rds"),
+    outputs = c("results/out/tables/21_substitute_prod.tex"),
+    required_inputs = c("results/data/06_parameters.rds",
+                        "results/data/counterfactuals/13_initial_wages.rds",
+                        "results/data/counterfactuals/13_working_data.rds"),
+    description = "productivity substitution patterns at equilibrium wages"
+  )
 }
 
 #' -----------------------------------------------------------------------------
