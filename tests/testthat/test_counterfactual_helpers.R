@@ -323,6 +323,52 @@ test_that("counterfactual_store_wage_solution writes into the correct row", {
   expect_true(all(is.infinite(other$w1)))
 })
 
+test_that("counterfactual_store_wage_solution coerces zero-length / NULL message to NA_character_", {
+  ## stats::optim()$message is NULL for Nelder-Mead (and L-BFGS-B with no
+  ## diagnostic). Earlier we passed that through as character(0), which
+  ## caused data.table::set() to abort the 13_ run after the full-5D
+  ## fallback. The store helper must defend against that.
+  grid <- new_counterfactual_wages_grid(2021.2,
+                                        include_solution_type = FALSE,
+                                        config = TEST_CONFIG)
+  base_result <- list(
+    par = c(1, 2, 3, 4, 5),
+    residual = 0.5,
+    residual_components = rep(0.5, 5),
+    method = "NM_SSR_start1",
+    termcd = 0L,
+    converged = FALSE,
+    target_tol = 0.01
+  )
+
+  for (msg in list(NULL, character(0))) {
+    grid_copy <- copy(grid)
+    result <- c(base_result, list(message = msg))
+    expect_silent(
+      counterfactual_store_wage_solution(grid_copy, result, "6037", 2021.2,
+                                         config = TEST_CONFIG)
+    )
+    row <- grid_copy[county == "6037" & quarter_year == 2021.2]
+    expect_true(is.na(row$message))
+  }
+})
+
+test_that("counterfactual_candidate_result normalizes NULL / character(0) message to NA_character_", {
+  fn <- function(par) rep(0, length(par))
+  res_null <- counterfactual_candidate_result(fn, c(1, 2, 3, 4, 5),
+                                              "NM_SSR_start1", message = NULL)
+  res_empty <- counterfactual_candidate_result(fn, c(1, 2, 3, 4, 5),
+                                               "LBFGSB_SSR_start1",
+                                               message = character(0))
+  expect_identical(res_null$message,  NA_character_)
+  expect_identical(res_empty$message, NA_character_)
+  # Non-empty messages pass through.
+  res_real <- counterfactual_candidate_result(fn, c(1, 2, 3, 4, 5),
+                                              "nleqslv_Broyden_dbldog_start1",
+                                              message = "converged")
+  expect_identical(res_real$message, "converged")
+})
+
 test_that("get_counterfactual_market_parms preserves names from the parameter table", {
   pt <- data.table::data.table(
     demand = c(TRUE, TRUE, FALSE),

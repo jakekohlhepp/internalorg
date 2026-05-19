@@ -803,6 +803,11 @@ counterfactual_safe_wage_fn <- function(fn, config = CONFIG) {
 counterfactual_candidate_result <- function(fn, par, method, message = NULL,
                                            termcd = NA_integer_) {
   eval <- counterfactual_evaluate_wage_solution(fn, par)
+  ## stats::optim() returns $message = NULL for Nelder-Mead (and L-BFGS-B
+  ## when no diagnostic applies); as.character(NULL) is character(0), which
+  ## later crashes data.table::set() in counterfactual_store_wage_solution.
+  ## Coerce zero-length / NULL to NA_character_ at the construction boundary.
+  if (is.null(message) || length(message) == 0L) message <- NA_character_
   list(
     par = as.numeric(par),
     residual = eval$norm,
@@ -1577,7 +1582,9 @@ counterfactual_store_wage_solution <- function(wage_table, result, cnty, qy,
   data.table::set(wage_table, rows, "converged", result$converged)
   data.table::set(wage_table, rows, "method", result$method)
   data.table::set(wage_table, rows, "termcd", result$termcd)
-  data.table::set(wage_table, rows, "message", result$message)
+  msg <- result$message
+  if (is.null(msg) || length(msg) == 0L) msg <- NA_character_
+  data.table::set(wage_table, rows, "message", msg)
   data.table::set(wage_table, rows, "target_tol", result$target_tol)
   for (idx in seq_along(residual_cols)) {
     data.table::set(
