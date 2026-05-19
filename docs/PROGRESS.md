@@ -144,10 +144,12 @@ scenarios were retired during this consolidation (see
 8. `07_bootstrap.R`
 9. `08_display_estimates.R`
 10. `09_invert_gammas.R`
-11. `10_substitution.R`
-12. `11_substitution_prod.R`
-13. `12_validate.R`
-14. `run_counterfactuals.R`
+11. `12_validate.R`
+12. `run_counterfactuals.R`
+13. `20_substitution.R` (wage-substitution patterns at the cleared equilibrium
+    wages from `13_initial_wages.rds`)
+14. `21_substitution_prod.R` (productivity-substitution patterns at the
+    cleared equilibrium wages)
 
 ### Counterfactual runner
 

@@ -379,6 +379,31 @@ get_counterfactual_focus_quarter <- function(config = CONFIG) {
   max(config$estimation_quarters)
 }
 
+## Warm-start wage table written by compile_warm_start_wages.R. Returns NULL
+## when the RDS hasn't been compiled yet (cold start before any smoke run);
+## 13_counterfactual_prep.R falls back to the parm-decomposition initial guess.
+read_counterfactual_warm_starts <- function(config = CONFIG) {
+  path <- counterfactual_data_path("13_warm_start_wages.rds", config)
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+  data.table::as.data.table(readRDS(path))
+}
+
+counterfactual_warm_start_for <- function(warm_table, cnty, qy,
+                                          n_worker_types = CONFIG$n_worker_types) {
+  if (is.null(warm_table) || nrow(warm_table) == 0L) return(NULL)
+  qy_num <- suppressWarnings(as.numeric(qy))
+  row <- warm_table[county == cnty &
+                      (quarter_year == qy |
+                         (is.finite(qy_num) & quarter_year == qy_num))]
+  if (nrow(row) == 0L) return(NULL)
+  as.numeric(unlist(
+    row[1L, paste0("w", seq_len(n_worker_types)), with = FALSE],
+    use.names = FALSE
+  ))
+}
+
 new_counterfactual_wages_grid <- function(quarter_years, include_solution_type = TRUE,
                                           config = CONFIG) {
   if (include_solution_type) {

@@ -224,13 +224,132 @@ working_data[, cost_exo:=cust_price-wb_total-org_cost+mk_piece/market_parms[past
 working_data[, mean_cost_exo:=sum(cost_exo*(service_mix_id=="11111"))/sum(service_mix_id=="11111"), by=c("county", "quarter_year")]
 
 
+## ----------------------------------------------------------------------------
+## Model-consistent residual adjustment for the focus quarter. Replaces the
+## data-anchored qual_exo / cost_exo (built immediately above from B_raw,
+## E_raw, s_index) with residuals that absorb the gap to model-implied
+## B, E, s solved at the supply-regression "parm wages". The identity
+## (prices/shares fixed) collapses to:
+##   qual_exo += (q_endog_data - q_endog_model) * avg_labor
+##   cost_exo += (c_endog_data - c_endog_model) * avg_labor
+## See smoke_qual_cost_exo_endog_vs_data.R for the derivation; smoke runs
+## (smoke_13_with_model_exo) showed this overlay clears labor markets at
+## 2021.2 for all three counties.
+## Only focus-quarter rows are adjusted because the wage solver below and all
+## 14_-19_ counterfactuals operate exclusively on the focus quarter.
+## ----------------------------------------------------------------------------
+focus_qy <- get_counterfactual_focus_quarter()
+
+new_theta_by_county <- lapply(CONFIG$counties, function(cnty) {
+  matrix(market_parms[grep(paste0(cnty, ":avg_labor:B"), names(market_parms))],
+         ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+})
+names(new_theta_by_county) <- CONFIG$counties
+
+parm_wage_vec <- function(cnty, qy) {
+  w1 <- market_parms[paste0(
+    "avg_labor:factor(county)", cnty, ":factor(quarter_year)", qy
+  )]
+  diffs <- market_parms[grep(paste0(cnty, ":avg_labor:E"), names(market_parms))]
+  c(w1, w1 + diffs)
+}
+
+## B_raw columns are named `B_raw_<task>_<worker>`; flatten in the same order
+## as `as.vector(theta_demand)` (column-major over a (worker x task) matrix).
+b_raw_cols_ordered <- as.vector(vapply(
+  seq_len(n_task_types),
+  function(t) paste0("B_raw_", t, "_", seq_len(n_worker_types)),
+  character(n_worker_types)
+))
+stopifnot(all(b_raw_cols_ordered %in% names(working_data)))
+
+working_data[, q_endog_model := NA_real_]
+working_data[, c_endog_model := NA_real_]
+
+for (cnty_ in CONFIG$counties) {
+  wage_vec <- parm_wage_vec(cnty_, as.character(focus_qy))
+  if (any(!is.finite(wage_vec))) {
+    message("[", cnty_, " ", focus_qy,
+            "] skipping residual adjustment (non-finite parm wage).")
+    next
+  }
+  new_theta <- new_theta_by_county[[cnty_]]
+  w_mat <- matrix(wage_vec, ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
+  tild  <- w_mat + (guess_setup$rho[cnty_])^(-1) * new_theta
+  tild  <- sweep(tild, 2, apply(tild, 2, min), FUN = "-")
+
+  rows <- working_data[, which(county == cnty_ & quarter_year == focus_qy)]
+  for (i in rows) {
+    alpha <- as.numeric(working_data[i, ..task_mix_cols])
+    out <- counterfactual_org_outputs(
+      cost_matrix  = tild,
+      alpha        = alpha,
+      gamma        = working_data$gamma_invert[i],
+      wage_guess   = wage_vec,
+      new_theta    = new_theta,
+      innertol     = innertol,
+      with_s_index = FALSE,
+      with_b       = FALSE,
+      config       = CONFIG
+    )
+    set(working_data, i, "q_endog_model", out$q_endog)
+    set(working_data, i, "c_endog_model", out$c_endog)
+  }
+}
+
+## Data-side q_endog / c_endog using B_raw, E_raw, s_index, gamma_invert.
+working_data[, q_endog_data := NA_real_]
+working_data[, c_endog_data := NA_real_]
+for (cnty_ in CONFIG$counties) {
+  rows <- working_data[, which(county == cnty_ & quarter_year == focus_qy)]
+  if (length(rows) == 0L) next
+  theta_demand  <- new_theta_by_county[[cnty_]]
+  wage_vec_data <- parm_wage_vec(cnty_, as.character(focus_qy))
+  if (any(!is.finite(wage_vec_data))) next
+  B_mat <- as.matrix(working_data[rows, ..b_raw_cols_ordered])
+  q_vec <- as.numeric(B_mat %*% as.vector(theta_demand))
+  E_mat <- as.matrix(working_data[rows, ..e_raw_cols])
+  g_vec <- working_data$gamma_invert[rows]
+  s_vec <- working_data$s_index[rows]
+  c_vec <- as.numeric(E_mat %*% wage_vec_data) +
+    ifelse(is.finite(g_vec), g_vec * s_vec, 0)
+  set(working_data, rows, "q_endog_data", q_vec)
+  set(working_data, rows, "c_endog_data", c_vec)
+}
+
+adjust_rows <- working_data[, which(quarter_year == focus_qy &
+                                      !is.na(q_endog_model) &
+                                      !is.na(q_endog_data))]
+working_data[adjust_rows,
+             qual_exo := qual_exo + (q_endog_data - q_endog_model) * avg_labor]
+working_data[adjust_rows,
+             cost_exo := cost_exo + (c_endog_data - c_endog_model) * avg_labor]
+
+cat(sprintf(
+  "Model-consistent residual adjustment applied to %d rows at focus_qy=%s.\n",
+  length(adjust_rows), as.character(focus_qy)
+))
+
+working_data[, mean_qual_exo := sum(qual_exo * (service_mix_id == "11111")) /
+               sum(service_mix_id == "11111"),
+             by = c("county", "quarter_year")]
+working_data[, mean_cost_exo := sum(cost_exo * (service_mix_id == "11111")) /
+               sum(service_mix_id == "11111"),
+             by = c("county", "quarter_year")]
+
+working_data[, c("q_endog_model", "c_endog_model",
+                 "q_endog_data",  "c_endog_data") := NULL]
+
+
 ## trim
 
 #### solve counterfactual
 
-# start guess at estimated wages.
+# start guess at estimated wages, overridable by warm-starts from prior smoke
+# runs (see compile_warm_start_wages.R).
 initial_guess<-guess_setup$initial_guess
 rho<-guess_setup$rho
+warm_table <- read_counterfactual_warm_starts()
 
 
 solve_wages_market_cols <- c(
@@ -364,6 +483,11 @@ for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
     print(paste("*******", cnty, qy, "- BBsolve baseline solve"))
     start <- initial_guess[grep(paste0("^", cnty, "-", qy), names(initial_guess))]
+    warm <- counterfactual_warm_start_for(warm_table, cnty, as.character(qy))
+    if (!is.null(warm)) {
+      message("[", cnty, " ", qy, "] using smoke-derived warm-start wages.")
+      start <- warm
+    }
 
     ## Tier 1: try to solve the full 5-equation labor-clearing system with
     ## BBsolve (NM=FALSE then NM=TRUE, keep whichever has smaller max-abs).
