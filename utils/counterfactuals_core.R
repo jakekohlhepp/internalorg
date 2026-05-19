@@ -303,7 +303,7 @@ build_counterfactual_market_context <- function(working_data, all_results,
   ## yet (first-time run before 13_ has been re-executed), fall back to
   ## the data-anchored aggregate. Downstream counterfactuals should target
   ## the baseline equilibrium, not the data anchor, because for markets
-  ## where 13_ used WLS (Tier 2) the data target is structurally
+  ## where 13_ used the full-5D fallback (Tier 2) the data target is structurally
   ## unreachable.
   saved_total_labor_path <- counterfactual_data_path("13_total_labor.rds", config)
   if (file.exists(saved_total_labor_path)) {
