@@ -5,6 +5,21 @@ specs in the script change.
 
 ## Submission
 
+**Always submit via `sbatch run_bootstrap_array.sl`, not `sbatch --wrap`.**
+The script in this repo pins the array range (`--array=1-1100%100`), the
+bootstrap-mode env vars (`JMP_WAGE_OPTIMIZER_MODE=pso`,
+`JMP_PSO_STRICT_OBJ_TOL=0.1`, `JMP_OBJ_TOL=1e-4`), the BLAS/OpenMP thread caps,
+and the renv pre-flight. Hand-rolling those with `--wrap` is how reps go
+missing — e.g. job `51533265` was submitted as `--wrap --array=1-200%200`,
+covered only 200 of the configured 1100 reps, and would have silently produced
+a truncated `07_bootstrap.rds` if not caught. The `--wrap` convention applies
+to one-off jobs; the bootstrap has a checked-in spec, and that spec is the
+source of truth.
+
+If you do need to resubmit a range (e.g. to fill failed reps), use the script
+with an override: `sbatch --array=201-1100%100 run_bootstrap_array.sl`. Don't
+re-derive the env vars on the command line.
+
 ```bash
 # Pre-flight (once, on a login node):
 module load r/4.4.0
