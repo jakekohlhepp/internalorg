@@ -304,6 +304,15 @@ scaled_xpzx_condition <- function(fit) {
   max(sing_vals) / min(sing_vals)
 }
 
+county_label <- function(cnty) {
+  switch(as.character(cnty),
+         "17031" = "Cook",
+         "36061" = "New York",
+         "06037" = "Los Angeles",
+         "6037"  = "Los Angeles",
+         as.character(cnty))
+}
+
 extract_county_rows <- function(coef_test, suffix) {
   rbindlist(lapply(counties, function(cnty) {
     coef_name <- paste0("factor(county)", cnty, ":", suffix)
@@ -460,7 +469,7 @@ build_iv_table <- function(columns, caption, label,
       format_se(row$se)
     }, character(1))
     lines <- c(lines,
-      table_row(paste0("Price (county ", cnty, ")"), price_cells),
+      table_row(paste0("Price (", county_label(cnty), ")"), price_cells),
       table_row("", price_se_cells)
     )
 
@@ -474,7 +483,7 @@ build_iv_table <- function(columns, caption, label,
         format_se(row$se)
       }, character(1))
       lines <- c(lines,
-        table_row(paste0("Sigma (county ", cnty, ")"), sigma_cells),
+        table_row(paste0("Sigma (", county_label(cnty), ")"), sigma_cells),
         table_row("", sigma_se_cells)
       )
     }
@@ -487,7 +496,7 @@ build_iv_table <- function(columns, caption, label,
                                   weak_iv_row_name(cnty, "cust_price"),
                                   "statistic"))
     }, character(1))
-    table_row(paste0("Weak-IV F price (", cnty, ")"), values)
+    table_row(paste0("Weak-IV F price (", county_label(cnty), ")"), values)
   }, character(1))
   lines <- c(lines, weak_iv_price_rows)
 
@@ -498,7 +507,7 @@ build_iv_table <- function(columns, caption, label,
                                     weak_iv_row_name(cnty, "log_within_share"),
                                     "statistic"))
       }, character(1))
-      table_row(paste0("Weak-IV F sigma (", cnty, ")"), values)
+      table_row(paste0("Weak-IV F sigma (", county_label(cnty), ")"), values)
     }, character(1))
     lines <- c(lines, weak_iv_sigma_rows)
   }
@@ -718,7 +727,7 @@ build_first_stage_table <- function(columns, endog_specs,
         }, character(1))
         row_label <- paste0(endog$label, " on ",
                             instrument_labels[[inst_base]],
-                            " (county ", cnty, ")")
+                            " (", county_label(cnty), ")")
         lines <- c(lines,
           table_row(row_label, coef_cells),
           table_row("", se_cells)
@@ -735,7 +744,7 @@ build_first_stage_table <- function(columns, endog_specs,
                                     "statistic"))
       }, character(1))
       lines <- c(lines,
-        table_row(paste0("Weak-IV F ", endog$label, " (", cnty, ")"), values)
+        table_row(paste0("Weak-IV F ", endog$label, " (", county_label(cnty), ")"), values)
       )
     }
   }
