@@ -689,7 +689,8 @@ writeLines(table3_lines, table3_output_path)
 ## second-stage summary so the strength of each first stage is visible.
 build_first_stage_table <- function(columns, endog_specs,
                                     instrument_labels,
-                                    caption, label, notes = "") {
+                                    caption, label, notes = "",
+                                    instrument_scales = NULL) {
   n_cols <- length(columns)
   align <- paste0("l", strrep("c", n_cols))
   total_cols <- n_cols + 1L
@@ -697,6 +698,19 @@ build_first_stage_table <- function(columns, endog_specs,
   header_values <- vapply(columns, `[[`, character(1), "label")
   fe_values <- vapply(columns, `[[`, character(1), "fe_label")
   instrument_bases <- names(instrument_labels)
+
+  ## Rescaling: if `instrument_scales[[inst_base]]` is supplied, the
+  ## first-stage coefficient and standard error for (inst_base, county) are
+  ## multiplied by the corresponding scalar. Scales may be a scalar (same
+  ## across counties) or a named-by-county vector.
+  resolve_scale <- function(inst_base, cnty) {
+    if (is.null(instrument_scales)) return(1)
+    s <- instrument_scales[[inst_base]]
+    if (is.null(s)) return(1)
+    if (is.null(names(s))) return(unname(s)[1])
+    val <- s[[cnty]]
+    if (is.null(val) || is.na(val)) 1 else val
+  }
 
   lines <- c(
     "\\begin{table}[!htbp] \\centering",
@@ -713,17 +727,18 @@ build_first_stage_table <- function(columns, endog_specs,
   for (endog in endog_specs) {
     for (inst_base in instrument_bases) {
       for (cnty in counties) {
+        scale <- resolve_scale(inst_base, cnty)
         coef_cells <- vapply(columns, function(col) {
           if (!(inst_base %in% col$result$instruments)) return("")
           entry <- get_first_stage_entry(col$result$first_stages,
                                          endog$base, inst_base, cnty)
-          format_estimate(entry$estimate, entry$p_value)
+          format_estimate(entry$estimate * scale, entry$p_value)
         }, character(1))
         se_cells <- vapply(columns, function(col) {
           if (!(inst_base %in% col$result$instruments)) return("")
           entry <- get_first_stage_entry(col$result$first_stages,
                                          endog$base, inst_base, cnty)
-          format_se(entry$se)
+          format_se(entry$se * scale)
         }, character(1))
         row_label <- paste0(endog$label, " on ",
                             instrument_labels[[inst_base]],
@@ -768,15 +783,51 @@ fs_price_endog <- list(list(base = "cust_price", label = "Price"))
 fs_instrument_labels <- c(hausman_other_price = "Hausman",
                           dye_instrument = "Dye")
 
+## Within-county standard deviations of each underlying instrument, used to
+## rescale the Table 1 first-stage coefficients to within-county-SD units.
+## A coefficient beta_{c,z} multiplied by SD_c(z) reports the change in
+## cust_price associated with a one-within-county-SD increase in z.
+within_county_sd <- function(inst_name) {
+  setNames(
+    vapply(counties, function(c) {
+      sd(estim_matrix[as.character(estim_matrix$county) == c, inst_name])
+    }, numeric(1)),
+    counties
+  )
+}
+fs_table1_sds <- list(
+  hausman_other_price = within_county_sd("hausman_other_price"),
+  dye_instrument      = within_county_sd("dye_instrument")
+)
+
+fs_table1_sd_summary <- paste(
+  vapply(counties, function(c) {
+    paste0(
+      c, ": SD(Hausman)=",
+      sprintf("%.3f", fs_table1_sds$hausman_other_price[[c]]),
+      ", SD(Dye)=",
+      sprintf("%.3f", fs_table1_sds$dye_instrument[[c]])
+    )
+  }, character(1)),
+  collapse = "; "
+)
+
 fs_table1_notes <- paste0(
-  "Notes: First-stage OLS coefficients on county-specific instruments, with ",
-  "location-level clustered standard errors in parentheses, for the same ",
-  "specifications reported in Table \\ref{tab:standard_iv_comparison}. Each ",
-  "column regresses the endogenous county-specific \\texttt{cust\\_price} ",
-  "column on all exogenous controls plus the excluded instrument(s) for that ",
-  "column. Blank cells indicate that the instrument is not included in the ",
-  "column's specification. *, **, and *** denote $p<0.05$, $p<0.01$, and ",
-  "$p<0.001$. Weak-IV F rows reproduce the diagnostics from ",
+  "Notes: First-stage OLS coefficients on county-specific instruments, ",
+  "rescaled to within-county standard-deviation units: each cell reports ",
+  "$\\widehat{\\beta}_{c,z}\\times\\widehat{\\mathrm{SD}}_c(z)$, the change in ",
+  "\\texttt{cust\\_price} (county $c$) associated with a one-within-county-",
+  "standard-deviation increase in the underlying instrument $z$. Standard ",
+  "errors are rescaled by the same constant, so $t$-statistics and stars ",
+  "are unchanged. Within-county SDs of the underlying instruments used for ",
+  "the rescaling: ", fs_table1_sd_summary, ". Location-level clustered ",
+  "standard errors in parentheses, for the same specifications reported in ",
+  "Table \\ref{tab:standard_iv_comparison}. Each column regresses the ",
+  "endogenous county-specific \\texttt{cust\\_price} column on all exogenous ",
+  "controls plus the excluded instrument(s) for that column. Blank cells ",
+  "indicate that the instrument is not included in the column's ",
+  "specification. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. ",
+  "Weak-IV F rows reproduce the diagnostics from ",
   "\\texttt{summary(ivreg, diagnostics = TRUE)}."
 )
 
@@ -786,7 +837,8 @@ fs_table1_lines <- build_first_stage_table(
   instrument_labels = fs_instrument_labels,
   caption = "Standard Logit First-Stage Estimates: Instrument and Fixed-Effect Comparison",
   label = "tab:standard_iv_comparison_first_stage",
-  notes = fs_table1_notes
+  notes = fs_table1_notes,
+  instrument_scales = fs_table1_sds
 )
 fs_table1_output_path <- "results/out/tables/05_standard_iv_comparison_first_stage.tex"
 writeLines(fs_table1_lines, fs_table1_output_path)
