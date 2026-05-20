@@ -23,7 +23,6 @@ library("data.table")
 set.seed(4459665)
 
 source("config.R")
-CONFIG$skill_monotone_orientation <- "workers_rows"
 
 message("Tolerances: innertol=", CONFIG$innertol,
         ", outertol=", CONFIG$outertol, ", obj_tol=", CONFIG$obj_tol,
@@ -46,6 +45,8 @@ if (!"min_wage_levels" %in% names(estimation_sample)) {
 stopifnot(uniqueN(min_wage_levels[, .(county, quarter_year)]) == nrow(min_wage_levels))
 
 source("preamble.R")
+## Re-apply after preamble.R re-sources config.R (which resets CONFIG to env defaults).
+CONFIG$skill_monotone_orientation <- "workers_rows"
 estimation_objects <- build_estimation_setup(working_data, estim_matrix, config = CONFIG)
 beta <- estimation_objects$beta
 beta_2 <- estimation_objects$beta_2
