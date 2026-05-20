@@ -1,5 +1,5 @@
 #' =============================================================================
-#' STEP 06b: Wage-stage local identification diagnostic
+#' STEP 06c: Wage-stage local identification diagnostic
 #' =============================================================================
 #' Computes the per-county Hessian of the moment ssq at the current wage
 #' solution, eigendecomposes, and -- if the smallest eigenvalue falls below
@@ -12,9 +12,9 @@
 #'   - mkdata/data/seeit_bb.rds  (current wage block)
 #'
 #' Outputs:
-#'   - results/data/06b_wage_identification.rds (raw eigen + perturbation data)
-#'   - results/out/tables/06b_wage_eigenvalues.tex (spectrum + verdict)
-#'   - results/out/tables/06b_wage_perturbation.tex (saddle-confirmation tests)
+#'   - results/data/06c_wage_identification.rds (raw eigen + perturbation data)
+#'   - results/out/tables/06c_wage_eigenvalues.tex (spectrum + verdict)
+#'   - results/out/tables/06c_wage_perturbation.tex (saddle-confirmation tests)
 #' =============================================================================
 
 library("data.table")
@@ -172,7 +172,7 @@ for (cnty in CONFIG$counties) {
 }
 
 ensure_directory(file.path("results", "data"))
-saveRDS(results, file.path("results", "data", "06b_wage_identification.rds"))
+saveRDS(results, file.path("results", "data", "06c_wage_identification.rds"))
 
 ## ---------------------------------------------------------------------------
 ## TeX outputs
@@ -226,7 +226,7 @@ eig_xt <- xtable(eig_tab,
                  caption = "Per-county Hessian spectrum at the wage solution. The condition number is reported only when all eigenvalues are strictly positive. ``Verdict'' classifies the solution as a strict local minimum (all $\\lambda > 10^{-9}$), a flat ridge (smallest eigenvalue near zero), or a saddle (some $\\lambda < -10^{-9}$).",
                  label = "tab:wage_hessian_spectrum",
                  align = c("l", "l", rep("r", 6), "l"))
-print(eig_xt, file = file.path("results", "out", "tables", "06b_wage_eigenvalues.tex"),
+print(eig_xt, file = file.path("results", "out", "tables", "06c_wage_eigenvalues.tex"),
       include.rownames = FALSE, sanitize.text.function = identity,
       booktabs = TRUE, floating = TRUE,
       caption.placement = "top", comment = FALSE)
@@ -251,16 +251,16 @@ if (length(pert_rows) > 0) {
                     caption = "Perturbation tests along the smallest-eigenvalue direction $v$ at each county whose Hessian is not strictly positive definite. If polishing from $x^* + s v$ for any $s$ produces a materially lower ssq than at $x^*$, the original point is a saddle and a downhill direction was missed by local solvers; otherwise the negative or near-zero eigenvalue reflects a flat ridge below numerical detection.",
                     label = "tab:wage_perturbation",
                     align = c("l", "l", "r", "r", "r", "r"))
-  print(pert_xt, file = file.path("results", "out", "tables", "06b_wage_perturbation.tex"),
+  print(pert_xt, file = file.path("results", "out", "tables", "06c_wage_perturbation.tex"),
         include.rownames = FALSE, sanitize.text.function = identity,
         booktabs = TRUE, floating = TRUE,
         caption.placement = "top", comment = FALSE)
 } else {
   ## Write a stub so the output file always exists for downstream tooling.
   cat("% No counties triggered the perturbation test (all strict local minima).\n",
-      file = file.path("results", "out", "tables", "06b_wage_perturbation.tex"))
+      file = file.path("results", "out", "tables", "06c_wage_perturbation.tex"))
 }
 
-message("\nWrote results/data/06b_wage_identification.rds")
-message("Wrote results/out/tables/06b_wage_eigenvalues.tex")
-message("Wrote results/out/tables/06b_wage_perturbation.tex")
+message("\nWrote results/data/06c_wage_identification.rds")
+message("Wrote results/out/tables/06c_wage_eigenvalues.tex")
+message("Wrote results/out/tables/06c_wage_perturbation.tex")

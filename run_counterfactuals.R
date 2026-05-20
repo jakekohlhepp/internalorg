@@ -284,14 +284,14 @@ counterfactual_steps <- list(
       counterfactual_data_path("16_wages_immigration.rds")
     ),
     outputs = c(
-      counterfactual_output_path("05_07_realloc_scatter.png", "figures"),
-      counterfactual_output_path("05_07_realloc_price.png", "figures"),
-      counterfactual_output_path("05_07_realloc_marketshare.png", "figures"),
-      counterfactual_output_path("05_07_realloc_sindex.png", "figures"),
-      counterfactual_output_path("05_07_reorg_scatter.png", "figures"),
-      counterfactual_output_path("05_07_reorg_price.png", "figures"),
-      counterfactual_output_path("05_07_reorg_marketshare.png", "figures"),
-      counterfactual_output_path("05_07_reorg_sindex.png", "figures")
+      counterfactual_output_path("19_realloc_scatter.png", "figures"),
+      counterfactual_output_path("19_realloc_price.png", "figures"),
+      counterfactual_output_path("19_realloc_marketshare.png", "figures"),
+      counterfactual_output_path("19_realloc_sindex.png", "figures"),
+      counterfactual_output_path("19_reorg_scatter.png", "figures"),
+      counterfactual_output_path("19_reorg_price.png", "figures"),
+      counterfactual_output_path("19_reorg_marketshare.png", "figures"),
+      counterfactual_output_path("19_reorg_sindex.png", "figures")
     ),
     skip_if_inputs_missing = TRUE
   )

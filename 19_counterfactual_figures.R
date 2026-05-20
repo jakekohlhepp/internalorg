@@ -296,7 +296,7 @@ ggplot(aes(x=log_gamma, y=`Initial Immigrant Skill Set` ), data=imm_la[sol_type=
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_realloc_scatter.png",
+  "19_realloc_scatter.png",
   width=12, height=8, units="in"
 )
 
@@ -320,7 +320,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_realloc_price.png",
+  "19_realloc_price.png",
   width=14, height=12, units="in"
 )
 
@@ -347,7 +347,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_realloc_marketshare.png",
+  "19_realloc_marketshare.png",
   width=14, height=12, units="in"
 )
 
@@ -373,7 +373,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_realloc_sindex.png",
+  "19_realloc_sindex.png",
   width=14, height=12, units="in"
 )
 
@@ -385,7 +385,7 @@ ggplot(aes(x=log_gamma, y=Immigration ), data=imm_la[sol_type=="Reorganization"&
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_reorg_scatter.png",
+  "19_reorg_scatter.png",
   width=12, height=8, units="in"
 )
 
@@ -410,7 +410,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_reorg_price.png",
+  "19_reorg_price.png",
   width=14, height=12, units="in"
 )
 
@@ -437,7 +437,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_reorg_marketshare.png",
+  "19_reorg_marketshare.png",
   width=14, height=12, units="in"
 )
   
@@ -463,6 +463,6 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "05_07_reorg_sindex.png",
+  "19_reorg_sindex.png",
   width=14, height=12, units="in"
 )

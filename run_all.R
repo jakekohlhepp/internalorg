@@ -18,7 +18,7 @@
 #'   3. Assemble estimation sample (04_estimation_sample.R)
 #'   4. Demand IV spec comparison (05_iv_spec_comparison.R)
 #'   5. Run estimation (06_estimation.R)
-#'   5b. Wage identification diagnostic (06b_wage_identification.R)
+#'   5c. Wage identification diagnostic (06c_wage_identification.R)
 #'   6. Bayesian bootstrap (07_bootstrap.R)
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
@@ -605,19 +605,19 @@ run_pipeline_step <- function(step_label, script_name, deps, outputs,
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 5b: Wage-stage local identification diagnostic (06b_wage_identification.R)
+#' STEP 5c: Wage-stage local identification diagnostic (06c_wage_identification.R)
 #' -----------------------------------------------------------------------------
 
 if (!exists("RUN_WAGE_IDENTIFICATION") || isTRUE(RUN_WAGE_IDENTIFICATION)) {
   run_pipeline_step(
-    step_label = "STEP 5b",
-    script_name = "06b_wage_identification.R",
+    step_label = "STEP 5c",
+    script_name = "06c_wage_identification.R",
     deps = c("config.R", "preamble.R",
              "mkdata/data/04_estimation_sample.rds",
              "mkdata/data/seeit_bb.rds"),
-    outputs = c("results/data/06b_wage_identification.rds",
-                "results/out/tables/06b_wage_eigenvalues.tex",
-                "results/out/tables/06b_wage_perturbation.tex"),
+    outputs = c("results/data/06c_wage_identification.rds",
+                "results/out/tables/06c_wage_eigenvalues.tex",
+                "results/out/tables/06c_wage_perturbation.tex"),
     required_inputs = c("mkdata/data/04_estimation_sample.rds",
                         "mkdata/data/seeit_bb.rds"),
     description = "Wage-stage Hessian + perturbation diagnostic"
@@ -740,7 +740,7 @@ if (RUN_COUNTERFACTUALS) {
       tryCatch({
         source("run_counterfactuals.R", local = new.env(parent = globalenv()))
         log_message("Counterfactual pipeline completed successfully")
-        log_message("Outputs: results/data/counterfactuals/*; results/out/tables/05_06_*.tex; results/out/figures/05_07_*.png")
+        log_message("Outputs: results/data/counterfactuals/*; results/out/tables/18_*.tex; results/out/figures/19_*.png")
         log_complete(success = TRUE)
 
         step6_time <- difftime(Sys.time(), step6_start, units = "mins")

@@ -20,7 +20,7 @@ counterfactual pipeline (now numbered `13_*` through `19_*`) is wired into
 3. `05_iv_spec_comparison.R` and `06_estimation.R` consume the saved 04
    artifact. `preamble.R` exposes `build_estimation_setup()` and no longer
    mutates ambient session state when sourced.
-4. `06b_wage_identification.R` is a lightweight wage-stage Hessian +
+4. `06c_wage_identification.R` is a lightweight wage-stage Hessian +
    perturbation diagnostic that runs after `06_estimation.R` (also has a
    parallel-track companion, `06b_estimation_monotone.R`, plus
    `compare_06_vs_06b.R` / `display_06b_skills.R` outside the runner).
@@ -57,12 +57,12 @@ share the new prefix.
 | `05_04_immigration.R` | `16_counterfactual_immigration.R` | `05_04_*` | `16_*` |
 | `05_06_merger.R` | `17_counterfactual_merger.R` | `05_06_*` | `17_*` |
 | `05_06_disp_counterfactuals.R` | `18_counterfactual_summary.R` | `05_06_tot/bytype_counterfactuals.tex` | `18_tot/bytype_counterfactuals.tex` |
-| `05_07_beautiful_display.R` | `19_counterfactual_figures.R` | figure basenames unchanged (`05_07_*.png`) | figure basenames unchanged (`05_07_*.png`) |
+| `05_07_beautiful_display.R` | `19_counterfactual_figures.R` | `05_07_*.png` | `19_*.png` |
 
-The figure file basenames produced by `19_counterfactual_figures.R` still
-carry the `05_07_` prefix (see `utils/counterfactuals_core.R` /
-`19_counterfactual_figures.R`); the figure-folder output names were not
-renamed even though the script and data artifacts were.
+The figure file basenames produced by `19_counterfactual_figures.R` were
+renamed from `05_07_*.png` to `19_*.png` on 2026-05-20 so the figure
+outputs match the script number. Any external references to the legacy
+`05_07_*.png` names (e.g. JMP draft) must be updated.
 
 The `05_01_automation.R`, `05_01_no_variance.R`, and `05_05_no_frictions.R`
 scenarios were retired during this consolidation (see
@@ -140,7 +140,7 @@ scenarios were retired during this consolidation (see
 4. `04_estimation_sample.R`
 5. `05_iv_spec_comparison.R`
 6. `06_estimation.R`
-7. `06b_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
+7. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
 8. `07_bootstrap.R`
 9. `08_display_estimates.R`
 10. `09_invert_gammas.R`
@@ -176,8 +176,8 @@ The automated workflow writes:
 - `results/out/tables/05_standard_hausman_fe_comparison.tex`
 - `results/out/tables/05_nested_fe_comparison.tex`
 - `results/data/06_parameters.rds`
-- `results/data/06b_wage_identification.rds`
-- `results/out/tables/06b_wage_eigenvalues.tex`, `06b_wage_perturbation.tex`
+- `results/data/06c_wage_identification.rds`
+- `results/out/tables/06c_wage_eigenvalues.tex`, `06c_wage_perturbation.tex`
 - `results/data/07_boot_weights.rds`, `07_bootstrap.rds`,
   `bootstrap_reps/boot_res_<i>.rds`
 - `results/out/tables/08_org_price.tex`, `08_time_effects.tex`,
@@ -198,8 +198,7 @@ The automated workflow writes:
 - `results/data/counterfactuals/17_wages_merger.rds`, `17_prod_merger.rds`
 - `results/out/tables/18_tot_counterfactuals.tex`,
   `18_bytype_counterfactuals.tex`
-- `results/out/figures/05_07_realloc_*.png`, `05_07_reorg_*.png` (basenames
-  retained for back-compat with the JMP draft)
+- `results/out/figures/19_realloc_*.png`, `19_reorg_*.png`
 
 ## Standalone Analysis Scripts
 
@@ -207,7 +206,6 @@ The following scripts remain standalone on purpose:
 
 - `02_stylized_facts.R`
 - `03_spatial_corr.R`
-- `03_00_bootstrap.R` (Bayesian bootstrap; tolerances in `boot_settings.R`)
 - `06b_estimation_monotone.R`, `compare_06_vs_06b.R`, `display_06b_skills.R`
   (workers-as-rows monotone diagnostic track; see `6176a9b`)
 - `peek_skill_matrix.R`, `skill_matrix_dominance.R` (skill-matrix
@@ -233,15 +231,18 @@ Use these as the current source of truth:
 - `docs/worker_type_clustering.md`
 - `docs/bootstrap_slurm.md`
 
+## Bootstrap History
+
+The standalone `03_00_bootstrap.R` Bayesian-bootstrap script was deleted on
+2026-04-24 in commit `1e79630` ("Integrate post-estimation and
+counterfactual scripts; swap 05/06 order"). It was replaced by
+`07_bootstrap.R`, which is wired into `run_all.R` as step 6, warm-starts
+from `results/data/06_parameters.rds`, and supports SLURM array deployment
+via `run_bootstrap_array.sl` (see `docs/bootstrap_slurm.md`). `boot_settings.R`
+remains as the shared tolerance settings.
+
 ## Next Planned Work
 
-- review `03_00_bootstrap.R` to confirm it reads from the current
-  `mkdata/data/01_working.rds` path (it still references a legacy
-  `analysis_final/data/01_01_working.rds` input)
-- rename the `05_07_*` counterfactual figure basenames produced by
-  `19_counterfactual_figures.R` to match the new `19_*` prefix, or
-  explicitly document the basename freeze in
-  `docs/data_dependencies.md`
 - add the post-hoc bootstrap filter in `08_display_estimates.R` flagged
   in `docs/bootstrap_slurm.md` (drop reps whose NYC ssq is in the wrong
   basin or whose `status` / `wage_convergence` is non-zero)

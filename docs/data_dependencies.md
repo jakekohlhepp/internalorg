@@ -16,7 +16,7 @@ The main data split is explicit:
   `utils/constrained_demand_iv.R`)
 - `02_stylized_facts.R` and `03_spatial_corr.R` stay on the full-sample
   descriptive branch
-- `06b_wage_identification.R` runs after estimation as a lightweight
+- `06c_wage_identification.R` runs after estimation as a lightweight
   wage-stage Hessian + perturbation diagnostic
 - `07_bootstrap.R` through `12_validate.R` produce post-estimation artifacts
   (bootstrap draws, display tables, inverted gammas, substitution patterns,
@@ -111,7 +111,7 @@ flowchart TD
     cfscen --> cfsum[18_counterfactual_summary.R]
     cfscen --> cfplot[19_counterfactual_figures.R]
     cfsum --> cftables[results/out/tables/18_*_counterfactuals.tex]
-    cfplot --> cffigs[results/out/figures/05_07_*.png]
+    cfplot --> cffigs[results/out/figures/19_*.png]
 
     cfwages --> sub20[20_substitution.R]
     cfdata --> sub20
@@ -150,7 +150,7 @@ flowchart TD
 | 3 | `04_estimation_sample.R` | `mkdata/data/04_estimation_sample.rds`, `results/out/tables/04_summary_stats_structural.tex` |
 | 4 | `05_iv_spec_comparison.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex` |
 | 5 | `06_estimation.R` + `preamble.R` | `results/data/06_parameters.rds` |
-| 5b | `06b_wage_identification.R` | `results/data/06b_wage_identification.rds`, `results/out/tables/06b_wage_eigenvalues.tex`, `results/out/tables/06b_wage_perturbation.tex` |
+| 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` |
 | 6 | `07_bootstrap.R` | `results/data/07_bootstrap.rds`, `results/data/07_boot_weights.rds`, `results/data/bootstrap_reps/boot_res_<i>.rds` |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
@@ -163,9 +163,9 @@ flowchart TD
 
 Orchestrates the `13_*.R` through `19_*.R` scenario scripts on top of
 `results/data/06_parameters.rds` and `results/data/12_data_for_counterfactuals.rds`.
-Shared helpers live in `utils/counterfactuals_core.R`. The data artifacts
-land under `results/data/counterfactuals/`; only the figure basenames still
-carry the legacy `05_07_` prefix.
+Shared helpers live in `utils/counterfactuals_core.R`. Data artifacts land
+under `results/data/counterfactuals/` and figure basenames carry the
+matching `19_` prefix.
 
 | Step | Script | Primary output |
 |------|--------|----------------|
@@ -175,7 +175,7 @@ carry the legacy `05_07_` prefix.
 | CF 04 | `16_counterfactual_immigration.R` | `counterfactuals/16_wages_immigration.rds`, `counterfactuals/16_prod_immigration.rds` |
 | CF 06A | `17_counterfactual_merger.R` | `counterfactuals/17_wages_merger.rds`, `counterfactuals/17_prod_merger.rds` |
 | CF 06B | `18_counterfactual_summary.R` | `results/out/tables/18_tot_counterfactuals.tex`, `results/out/tables/18_bytype_counterfactuals.tex` |
-| CF 07 | `19_counterfactual_figures.R` | `results/out/figures/05_07_realloc_*.png`, `05_07_reorg_*.png` |
+| CF 07 | `19_counterfactual_figures.R` | `results/out/figures/19_realloc_*.png`, `19_reorg_*.png` |
 
 ## Standalone Analysis Scripts
 
