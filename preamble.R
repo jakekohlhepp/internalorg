@@ -92,6 +92,7 @@ spec_log <- function(x) ifelse(x == 0 | is.nan(x), 0, log(x))
 ## bisection(), find_gamma_for_sindex(), objective_gmm(), eval_moments(), and
 ## get_gammas().
 source(project_path("utils", "structural_solver.R"))
+source(project_path("utils", "wage_fallbacks.R"))
 source(project_path("utils", "estimation_pipeline.R"))
 source(project_path("utils", "constrained_demand_iv.R"))
 

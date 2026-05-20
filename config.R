@@ -232,6 +232,69 @@ CONFIG <- list(
   pso_polish_method = Sys.getenv("JMP_PSO_POLISH_METHOD", unset = "Nelder-Mead"),
   pso_seed_offset = as.integer(Sys.getenv("JMP_PSO_SEED_OFFSET", unset = "0")),
   min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
+
+  ## ---------------------------------------------------------------------------
+  ## Wage-stage layered fallbacks. Wrap the per-mode wage solver above with up
+  ## to five graduated layers that hunt for deeper basins missed by PSO + the
+  ## existing coarse polish (CONFIG$obj_tol exit). Each layer is individually
+  ## gated; defaults are tuned so the cheap layers (1, 2) run on every solo
+  ## 06 invocation, the search layers (3, 4) only fire when layer 2 flags a
+  ## non-strict-min verdict, and the heaviest backstop (5) is opt-in via env.
+  ##
+  ## In bootstrap mode (config$bootstrap_iteration not NA) all layers are
+  ## skipped by default -- the bootstrap budget cannot afford the extra polish
+  ## per rep, and the inherited 06 warm start is already at the basin the
+  ## point estimate identifies.
+  ## ---------------------------------------------------------------------------
+
+  ## Layer 1: per-county post-PSO polish at tight reltol. The existing PSO
+  ## path's polish exits at CONFIG$obj_tol (1e-2 production / 1e-4 bootstrap);
+  ## that's the tolerance smoke_06b_restart_basins.R found 06 was stopping at
+  ## above the LA basin floor (ssq=0.166 vs basin floor 0.001). Re-polishing
+  ## with reltol = 1e-4 walks past that gate.
+  wage_fallback_post_polish_enable = tolower(Sys.getenv("JMP_WAGE_FB_L1_ENABLE", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_fallback_post_polish_reltol = as.numeric(Sys.getenv("JMP_WAGE_FB_L1_RELTOL", unset = "1e-4")),
+  wage_fallback_post_polish_maxit = as.integer(Sys.getenv("JMP_WAGE_FB_L1_MAXIT", unset = "2000")),
+  wage_fallback_post_polish_threshold = as.numeric(Sys.getenv("JMP_WAGE_FB_L1_THRESHOLD", unset = "0.01")),
+
+  ## Layer 2: per-county slice-Hessian probe (diagnostic only -- emits a log
+  ## verdict, does not change the parameter vector). Mirrors 06b's eigenvalue
+  ## test exactly. Marks counties as local_min / ridge / saddle so layer 3
+  ## can target the bad ones. Cost: ~3 min/county.
+  wage_fallback_hessian_enable = tolower(Sys.getenv("JMP_WAGE_FB_L2_ENABLE", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_fallback_hessian_neg_eig_tol = as.numeric(Sys.getenv("JMP_WAGE_FB_L2_NEG_EIG_TOL", unset = "1e-9")),
+
+  ## Layer 3: per-county multistart for counties flagged saddle/ridge by
+  ## layer 2 (or any county if layer 2 is off). K random starts uniform in
+  ## [x* - scale*parscale, x* + scale*parscale]^d, polish each, keep best.
+  wage_fallback_multistart_enable = tolower(Sys.getenv("JMP_WAGE_FB_L3_ENABLE", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_fallback_multistart_k = as.integer(Sys.getenv("JMP_WAGE_FB_L3_K", unset = "4")),
+  wage_fallback_multistart_scale_mult = as.numeric(Sys.getenv("JMP_WAGE_FB_L3_SCALE_MULT", unset = "5")),
+  wage_fallback_multistart_only_flagged = tolower(Sys.getenv("JMP_WAGE_FB_L3_ONLY_FLAGGED", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+
+  ## Layer 4: re-PSO from the joint vector improved by layers 1-3. Iterate
+  ## up to repso_max_iter times; stop when no county's slice ssq improves by
+  ## more than repso_min_improvement (relative).
+  wage_fallback_repso_max_iter = as.integer(Sys.getenv("JMP_WAGE_FB_L4_MAX_ITER", unset = "2")),
+  wage_fallback_repso_min_improvement = as.numeric(Sys.getenv("JMP_WAGE_FB_L4_MIN_IMPROVEMENT", unset = "0.01")),
+
+  ## Layer 5: joint multistart. Run the entire wage solver (with layers 1-4)
+  ## K times from K perturbed joint starts, keep the run with the lowest
+  ## joint score. Off by default: each extra start is a full wage solve.
+  ## Set JMP_WAGE_FB_L5_K=4 (or similar) to enable for ship-time runs.
+  wage_fallback_joint_multistart_k = as.integer(Sys.getenv("JMP_WAGE_FB_L5_K", unset = "0")),
+  wage_fallback_joint_multistart_jitter = as.numeric(Sys.getenv("JMP_WAGE_FB_L5_JITTER", unset = "0.1")),
+
+  ## Global gates.
+  wage_fallback_skip_in_bootstrap = tolower(Sys.getenv("JMP_WAGE_FB_SKIP_BOOTSTRAP", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_fallback_verbose = tolower(Sys.getenv("JMP_WAGE_FB_VERBOSE", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   structural_bound_guard_weight = as.numeric(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD_WEIGHT", unset = "10")),

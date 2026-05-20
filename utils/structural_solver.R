@@ -1920,9 +1920,14 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
 #'     empirical case here.
 #'   - "county" (BBsolve per county; original paper-draft solver).
 #'   - "joint"  (BBsolve over the full wage vector; original paper-draft).
-estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CONFIG,
-                                     clust = NULL, solver_state = NULL,
-                                     moment_weights = NULL) {
+#' Per-mode wage-solver dispatcher. Picks the underlying solver based on
+#' `config$wage_optimizer_mode` and returns its result unchanged. The public
+#' entry point `estimate_wage_parameters()` (defined below) wraps this with
+#' the post-solve fallback layers in `utils/wage_fallbacks.R`.
+estimate_wage_parameters_dispatch <- function(start, x, beta, beta_2_subset,
+                                              config = CONFIG, clust = NULL,
+                                              solver_state = NULL,
+                                              moment_weights = NULL) {
   mode <- tolower(solver_value(config, "wage_optimizer_mode", "nleqslv"))
   if (is.null(solver_state) && solver_flag(config, "use_solver_warm_starts", TRUE)) {
     solver_state <- get_default_solver_state(reset = TRUE)
@@ -1960,4 +1965,38 @@ estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CON
 
   stop("Unknown wage_optimizer_mode: ", mode,
        ". Use 'nleqslv', 'min_optim', 'pso', 'county', or 'joint'.")
+}
+
+#' Public wage-stage entry point. Layered fallback architecture:
+#'   Layer 5 (joint multistart, opt-in) wraps:
+#'     Layer 4 (re-PSO loop) wrapping:
+#'       Layer 3 (per-county multistart on flagged counties) wrapping:
+#'         Layer 2 (per-county Hessian probe, diagnostic) wrapping:
+#'           Layer 1 (per-county tight polish) wrapping:
+#'             the existing per-mode dispatcher above.
+#'
+#' In bootstrap mode (config$bootstrap_iteration is not NA) all layers are
+#' bypassed by default; see config.R wage_fallback_skip_in_bootstrap.
+estimate_wage_parameters <- function(start, x, beta, beta_2_subset, config = CONFIG,
+                                     clust = NULL, solver_state = NULL,
+                                     moment_weights = NULL) {
+  if (wage_fallback_in_bootstrap_skip(config)) {
+    return(estimate_wage_parameters_dispatch(
+      start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+    ))
+  }
+
+  joint_k <- as.integer(solver_value(config, "wage_fallback_joint_multistart_k", 0L))
+  if (!is.na(joint_k) && joint_k > 1L) {
+    return(estimate_wage_parameters_with_joint_multistart(
+      start, x, beta, beta_2_subset, config, clust, solver_state,
+      moment_weights, K = joint_k
+    ))
+  }
+
+  result <- estimate_wage_parameters_dispatch(
+    start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
+  )
+  apply_wage_fallback_layers(result, x, beta, beta_2_subset, config,
+                             clust, solver_state, moment_weights)
 }
