@@ -63,9 +63,21 @@
 #'     is held fixed.
 #'
 #'   Table 3 (05_nested_fe_comparison.tex): nested logit using BOTH the Hausman
-#'     and Dye instruments, across all 5 FE configurations. Reports
-#'     county-specific price and sigma coefficients together with first-stage
-#'     weak-IV F statistics for each endogenous regressor.
+#'     and Dye instruments, across the four non-saturated FE configurations
+#'     (the "County$\\times$quarter; full" column is omitted because it
+#'     absorbs the instrument's identifying variation in the nested model).
+#'     Reports county-specific price and sigma coefficients together with
+#'     first-stage weak-IV F statistics for each endogenous regressor.
+#'
+#'   Table 4 (05_nested_sigma_eq_one.tex): Nested-logit instrument-set
+#'     comparison. FE is held fixed at "County$\\times$quarter; omit" so that
+#'     variation across columns is exactly the instrument set. Columns cover
+#'     six candidate sets ranging from the existing dye+hausman pair to
+#'     cost-shifter combinations and market-thickness instruments. Reports
+#'     county-specific $\\hat\\alpha_c$ (price coefficient) and $\\hat\\sigma_c$
+#'     with clustered SEs, the t-statistic $(\\hat\\sigma_c - 1)/SE$ and the
+#'     two-sided $p$-value against $H_0: \\sigma_c = 1$, plus weak-IV F
+#'     diagnostics for both endogenous regressors.
 #'
 #' Inputs:
 #'   - mkdata/data/04_estimation_sample.rds (working_data + estim_matrix built by 04_estimation_sample.R)
@@ -75,6 +87,7 @@
 #'   - results/out/tables/05_standard_iv_comparison.tex
 #'   - results/out/tables/05_standard_hausman_fe_comparison.tex
 #'   - results/out/tables/05_nested_fe_comparison.tex
+#'   - results/out/tables/05_nested_sigma_eq_one.tex
 #'   - results/out/tables/05_standard_iv_comparison_first_stage.tex
 #'   - results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex
 #' =============================================================================
@@ -416,6 +429,30 @@ stopifnot(all(is.finite(working_data$log_within_share)))
 estim_matrix$log_within_share <- working_data$log_within_share
 
 # -----------------------------------------------------------------------------
+# Additional candidate instruments for the nested-logit instrument-set table
+# -----------------------------------------------------------------------------
+## These four are constructed inline (not propagated to 04_estimation_sample)
+## because they are used only for the Table 4 instrument-comparison; the
+## production demand IV in preamble.R still uses the standard logit with
+## dye + hausman.
+##   labor_instrument:  county hourly wage x own avg_labor (already in 04)
+##   min_wage:          county-quarter minimum wage (already in 04)
+##   minwage_inst:      min_wage x own avg_labor (NEW)
+##   rival_task2_inst:  leave-self-out mean task_mix_2 in same county-quarter (NEW)
+##   n_county_rivals:   # other salons in the county-quarter (NEW)
+estim_matrix$labor_instrument <- working_data$labor_instrument
+estim_matrix$min_wage          <- working_data$min_wage
+estim_matrix$avg_labor_inst    <- working_data$avg_labor
+estim_matrix$minwage_inst      <- estim_matrix$min_wage * estim_matrix$avg_labor_inst
+.county_q_key <- paste0(estim_matrix$county, "_", estim_matrix$quarter_year)
+.county_q_n   <- ave(estim_matrix$task_mix_2, .county_q_key, FUN = length)
+.county_q_sum <- ave(estim_matrix$task_mix_2, .county_q_key, FUN = sum)
+estim_matrix$n_county_rivals <- as.integer(.county_q_n - 1L)
+estim_matrix$rival_task2_inst <- (.county_q_sum - estim_matrix$task_mix_2) /
+                                   pmax(.county_q_n - 1, 1)
+rm(.county_q_key, .county_q_n, .county_q_sum)
+
+# -----------------------------------------------------------------------------
 # Generic table builder
 # -----------------------------------------------------------------------------
 ## `columns` is a list where each element describes one column of the table:
@@ -638,11 +675,16 @@ table2_output_path <- "results/out/tables/05_standard_hausman_fe_comparison.tex"
 writeLines(table2_lines, table2_output_path)
 
 # -----------------------------------------------------------------------------
-# Table 3: nested logit with Hausman + Dye, all 5 FE specifications
+# Table 3: nested logit with Hausman + Dye, four non-saturated FE specs
 # -----------------------------------------------------------------------------
+## The fully saturated "County x quarter; full" spec is dropped here because in
+## the nested-logit setting it absorbs the instrument's identifying variation
+## and the sigma row is not separately identified.
+nested_spec_order <- setdiff(spec_order, "full_ivreg")
 
-table3_columns <- lapply(spec_order, function(spec_name) {
+table3_columns <- lapply(nested_spec_order, function(spec_name) {
   list(
+    spec_name = spec_name,
     label = spec_definitions[[spec_name]]$label,
     fe_label = spec_definitions[[spec_name]]$fe_label,
     result = fit_demand_spec(spec_name,
@@ -662,10 +704,13 @@ table3_notes <- paste0(
   "``County$\\times$quarter; omit'' drops the county-specific ", ref_quarter,
   " quarter indicators; ``Quarter only; omit'' and ``County + quarter'' use ",
   "an omitted common quarter reference; ``Quarter only; all'' includes all ",
-  "quarter fixed effects. *, **, and *** denote $p<0.05$, $p<0.01$, and ",
-  "$p<0.001$, respectively. Weak-IV rows report the diagnostics from ",
-  "\\texttt{summary(ivreg, diagnostics = TRUE)}. In a simple nested-logit ",
-  "interpretation, sigma values in $[0,1)$ are the usual RUM-consistent range."
+  "quarter fixed effects. The fully saturated ",
+  "``County$\\times$quarter; full'' spec is omitted because it absorbs the ",
+  "instrument's identifying variation in the nested model. *, **, and *** ",
+  "denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows report ",
+  "the diagnostics from \\texttt{summary(ivreg, diagnostics = TRUE)}. In a ",
+  "simple nested-logit interpretation, sigma values in $[0,1)$ are the usual ",
+  "RUM-consistent range."
 )
 
 table3_lines <- build_iv_table(
@@ -678,6 +723,200 @@ table3_lines <- build_iv_table(
 
 table3_output_path <- "results/out/tables/05_nested_fe_comparison.tex"
 writeLines(table3_lines, table3_output_path)
+
+# -----------------------------------------------------------------------------
+# Table 4: nested logit, FE held at County x quarter; omit, varying the
+#          instrument set across columns.
+# -----------------------------------------------------------------------------
+## For each (instrument set, county) cell we report alpha_hat and sigma_hat
+## with location-clustered SEs, the t-stat (sigma_hat-1)/SE and the two-sided
+## p-value under the standard-normal asymptotic. Weak-IV F rows for both
+## endogenous regressors expose when an instrument set leaves either
+## coefficient under-identified.
+build_sigma_eq_one_table <- function(columns, caption, label, notes = "",
+                                     row1_label = "Fixed effects",
+                                     row1_field = "fe_label") {
+  n_cols <- length(columns)
+  align <- paste0("l", strrep("c", n_cols))
+  total_cols <- n_cols + 1L
+  header_values <- vapply(columns, `[[`, character(1), "label")
+  row1_values <- vapply(columns, `[[`, character(1), row1_field)
+
+  lines <- c(
+    "\\begin{table}[!htbp] \\centering",
+    paste0("  \\caption{", caption, "}"),
+    paste0("  \\label{", label, "}"),
+    paste0("  \\begin{tabular}{", align, "}"),
+    "\\\\[-1.8ex]\\hline",
+    "\\hline \\\\[-1.8ex]",
+    table_row("", header_values),
+    "\\hline \\\\[-1.8ex]",
+    table_row(row1_label, row1_values)
+  )
+
+  for (cnty in counties) {
+    price_cells <- vapply(columns, function(col) {
+      row <- col$result$prices[county == cnty]
+      if (nrow(row) == 0 || is.na(row$estimate)) return("--")
+      format_estimate(row$estimate, row$p_value)
+    }, character(1))
+    price_se_cells <- vapply(columns, function(col) {
+      row <- col$result$prices[county == cnty]
+      format_se(row$se)
+    }, character(1))
+    sigma_cells <- vapply(columns, function(col) {
+      row <- col$result$sigmas[county == cnty]
+      if (nrow(row) == 0 || is.na(row$estimate)) return("--")
+      sprintf("%.4f", row$estimate)
+    }, character(1))
+    se_cells <- vapply(columns, function(col) {
+      row <- col$result$sigmas[county == cnty]
+      format_se(row$se)
+    }, character(1))
+    t_cells <- vapply(columns, function(col) {
+      row <- col$result$sigmas[county == cnty]
+      if (nrow(row) == 0 || is.na(row$estimate) || is.na(row$se) || row$se == 0) return("--")
+      t_stat <- (row$estimate - 1) / row$se
+      p_one <- 2 * pnorm(-abs(t_stat))
+      paste0(sprintf("%.3f", t_stat), estimate_stars(p_one))
+    }, character(1))
+    p_cells <- vapply(columns, function(col) {
+      row <- col$result$sigmas[county == cnty]
+      if (nrow(row) == 0 || is.na(row$estimate) || is.na(row$se) || row$se == 0) return("--")
+      t_stat <- (row$estimate - 1) / row$se
+      p_one <- 2 * pnorm(-abs(t_stat))
+      format_p_value(p_one)
+    }, character(1))
+    lines <- c(lines,
+      table_row(paste0("$\\hat\\alpha$ (county ", cnty, ")"), price_cells),
+      table_row("", price_se_cells),
+      table_row(paste0("$\\hat\\sigma$ (county ", cnty, ")"), sigma_cells),
+      table_row("", se_cells),
+      table_row(paste0("$t=(\\hat\\sigma-1)/SE$ (", cnty, ")"), t_cells),
+      table_row(paste0("$p$-value ($H_0: \\sigma=1$) (", cnty, ")"), p_cells)
+    )
+  }
+
+  ## Weak-IV F rows for both endogenous regressors so the table flags when
+  ## price (typical culprit in the nested form) is poorly instrumented.
+  for (cnty in counties) {
+    f_price <- vapply(columns, function(col) {
+      format_stat(safe_diag_value(col$result$diagnostics,
+                                  weak_iv_row_name(cnty, "cust_price"),
+                                  "statistic"))
+    }, character(1))
+    lines <- c(lines,
+      table_row(paste0("Weak-IV F $\\hat\\alpha$ (", cnty, ")"), f_price)
+    )
+  }
+  for (cnty in counties) {
+    f_sigma <- vapply(columns, function(col) {
+      format_stat(safe_diag_value(col$result$diagnostics,
+                                  weak_iv_row_name(cnty, "log_within_share"),
+                                  "statistic"))
+    }, character(1))
+    lines <- c(lines,
+      table_row(paste0("Weak-IV F $\\hat\\sigma$ (", cnty, ")"), f_sigma)
+    )
+  }
+
+  obs_values <- vapply(columns, function(col) {
+    format_int(nobs(col$result$fit))
+  }, character(1))
+
+  lines <- c(lines,
+    table_row("Observations", obs_values),
+    "\\hline \\\\[-1.8ex]",
+    paste0("\\multicolumn{", total_cols,
+           "}{p{0.92\\linewidth}}{\\footnotesize ", notes, "}\\\\"),
+    "\\end{tabular}",
+    "\\end{table}"
+  )
+  lines
+}
+
+## Instrument sets to compare. FE is held fixed at "manual" (County x quarter;
+## omit) so the variation across columns is exactly the instrument set.
+table4_instrument_sets <- list(
+  list(
+    label = "Dye + Hausman",
+    inst_label = "dye + hausman",
+    instruments = c("dye_instrument", "hausman_other_price")
+  ),
+  list(
+    label = "Cost + Thickness",
+    inst_label = "dye + labor + n\\_rivals",
+    instruments = c("dye_instrument", "labor_instrument", "n_county_rivals")
+  ),
+  list(
+    label = "Cost quartet",
+    inst_label = "dye + hausman + labor + minwage",
+    instruments = c("dye_instrument", "hausman_other_price",
+                    "labor_instrument", "minwage_inst")
+  ),
+  list(
+    label = "Cost + rivals",
+    inst_label = "dye + labor + rival\\_task2",
+    instruments = c("dye_instrument", "labor_instrument", "rival_task2_inst")
+  ),
+  list(
+    label = "Rivals + Hausman",
+    inst_label = "rival\\_task2 + n\\_rivals + hausman",
+    instruments = c("rival_task2_inst", "n_county_rivals", "hausman_other_price")
+  ),
+  list(
+    label = "All six",
+    inst_label = "all six candidates",
+    instruments = c("dye_instrument", "hausman_other_price", "labor_instrument",
+                    "minwage_inst", "rival_task2_inst", "n_county_rivals")
+  )
+)
+
+table4_columns <- lapply(table4_instrument_sets, function(spec) {
+  list(
+    label    = spec$label,
+    fe_label = spec$inst_label,  # repurposed for the "Instruments" row
+    result   = fit_demand_spec("manual", spec$instruments, "nested")
+  )
+})
+
+table4_notes <- paste0(
+  "Notes: Nested-logit 2SLS estimates holding the fixed-effect specification ",
+  "fixed at ``County$\\times$quarter; omit'' (the preferred FE from Table ",
+  "\\ref{tab:nested_fe_comparison}) and varying the instrument set across ",
+  "columns. $\\hat\\alpha$ is the coefficient on \\texttt{cust\\_price}; ",
+  "$\\hat\\sigma$ is the coefficient on \\texttt{log\\_within\\_share}; ",
+  "standard errors in parentheses are location-clustered Eicker-White HC1. ",
+  "The $t = (\\hat\\sigma - 1)/SE$ row compares $\\hat\\sigma$ to 1 under a ",
+  "standard normal asymptotic. *, **, and *** on $\\hat\\alpha$ denote ",
+  "standard significance vs.\\ 0 ($p<0.05, p<0.01, p<0.001$); on the $t$ row ",
+  "they denote rejection of $\\sigma=1$. Candidate instruments: ",
+  "\\texttt{dye\\_instrument} = $\\text{task\\_mix}_2 \\times \\text{PPI}$; ",
+  "\\texttt{hausman\\_other\\_price} = leave-own-county-out same-quarter mean ",
+  "price; \\texttt{labor\\_instrument} = county hourly wage $\\times$ own ",
+  "\\texttt{avg\\_labor}; \\texttt{minwage\\_inst} = county min wage $\\times$ ",
+  "own \\texttt{avg\\_labor}; \\texttt{rival\\_task2\\_inst} = ",
+  "leave-self-out mean \\texttt{task\\_mix\\_2} in the same county-quarter; ",
+  "\\texttt{n\\_county\\_rivals} = number of other salons in the county-quarter. ",
+  "Weak-IV $F$ rows are the diagnostics from \\texttt{summary(ivreg, ",
+  "diagnostics = TRUE)} for each endogenous regressor; values well below the ",
+  "Stock-Yogo rule-of-thumb of 10 indicate weak identification of that ",
+  "coefficient. All columns include county-specific $\\text{avg\\_labor} ",
+  "\\times B\\_raw_j$ controls and the County$\\times$quarter; omit FE; the ",
+  "instrument set is the only source of variation."
+)
+
+table4_lines <- build_sigma_eq_one_table(
+  columns = table4_columns,
+  caption = "Nested Logit Demand IV: Instrument-Set Comparison (FE held at County$\\times$quarter; omit)",
+  label = "tab:nested_sigma_eq_one",
+  notes = table4_notes,
+  row1_label = "Instruments",
+  row1_field = "fe_label"
+)
+
+table4_output_path <- "results/out/tables/05_nested_sigma_eq_one.tex"
+writeLines(table4_lines, table4_output_path)
 
 # -----------------------------------------------------------------------------
 # First-stage companion tables (standard logit only)
@@ -870,5 +1109,6 @@ cat("\nDemand IV specification comparison tables saved to:\n")
 cat("  ", table1_output_path, "\n", sep = "")
 cat("  ", table2_output_path, "\n", sep = "")
 cat("  ", table3_output_path, "\n", sep = "")
+cat("  ", table4_output_path, "\n", sep = "")
 cat("  ", fs_table1_output_path, "\n", sep = "")
 cat("  ", fs_table2_output_path, "\n", sep = "")
