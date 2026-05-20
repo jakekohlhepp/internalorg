@@ -1022,51 +1022,61 @@ fs_price_endog <- list(list(base = "cust_price", label = "Price"))
 fs_instrument_labels <- c(hausman_other_price = "Hausman",
                           dye_instrument = "Dye")
 
-## Within-county standard deviations of each underlying instrument, used to
-## rescale the Table 1 first-stage coefficients to within-county-SD units.
-## A coefficient beta_{c,z} multiplied by SD_c(z) reports the change in
-## cust_price associated with a one-within-county-SD increase in z.
-within_county_sd <- function(inst_name) {
+## Within-county standard deviations of each underlying instrument and of
+## the endogenous regressor, used to rescale the Table 1 first-stage
+## coefficients to fully standardized units. A coefficient beta_{c,z}
+## multiplied by SD_c(z) / SD_c(cust_price) reports the within-county
+## standard-deviation change in \texttt{cust\_price} associated with a
+## one-within-county-SD increase in z.
+within_county_sd <- function(var_name) {
   setNames(
     vapply(counties, function(c) {
-      sd(estim_matrix[as.character(estim_matrix$county) == c, inst_name])
+      sd(estim_matrix[as.character(estim_matrix$county) == c, var_name])
     }, numeric(1)),
     counties
   )
 }
-fs_table1_sds <- list(
+fs_table1_inst_sds <- list(
   hausman_other_price = within_county_sd("hausman_other_price"),
   dye_instrument      = within_county_sd("dye_instrument")
+)
+fs_table1_price_sd <- within_county_sd("cust_price")
+fs_table1_sds <- list(
+  hausman_other_price = fs_table1_inst_sds$hausman_other_price / fs_table1_price_sd,
+  dye_instrument      = fs_table1_inst_sds$dye_instrument      / fs_table1_price_sd
 )
 
 fs_table1_sd_summary <- paste(
   vapply(counties, function(c) {
     paste0(
-      c, ": SD(Hausman)=",
-      sprintf("%.3f", fs_table1_sds$hausman_other_price[[c]]),
+      c, ": SD(Price)=",
+      sprintf("%.3f", fs_table1_price_sd[[c]]),
+      ", SD(Hausman)=",
+      sprintf("%.3f", fs_table1_inst_sds$hausman_other_price[[c]]),
       ", SD(Dye)=",
-      sprintf("%.3f", fs_table1_sds$dye_instrument[[c]])
+      sprintf("%.3f", fs_table1_inst_sds$dye_instrument[[c]])
     )
   }, character(1)),
   collapse = "; "
 )
 
 fs_table1_notes <- paste0(
-  "Notes: First-stage OLS coefficients on county-specific instruments, ",
-  "rescaled to within-county standard-deviation units: each cell reports ",
-  "$\\widehat{\\beta}_{c,z}\\times\\widehat{\\mathrm{SD}}_c(z)$, the change in ",
-  "\\texttt{cust\\_price} (county $c$) associated with a one-within-county-",
-  "standard-deviation increase in the underlying instrument $z$. Standard ",
-  "errors are rescaled by the same constant, so $t$-statistics and stars ",
-  "are unchanged. Within-county SDs of the underlying instruments used for ",
-  "the rescaling: ", fs_table1_sd_summary, ". Location-level clustered ",
-  "standard errors in parentheses, for the same specifications reported in ",
-  "Table \\ref{tab:standard_iv_comparison}. Each column regresses the ",
-  "endogenous county-specific \\texttt{cust\\_price} column on all exogenous ",
-  "controls plus the excluded instrument(s) for that column. Blank cells ",
-  "indicate that the instrument is not included in the column's ",
-  "specification. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. ",
-  "Weak-IV F rows reproduce the diagnostics from ",
+  "Notes: Fully standardized first-stage OLS coefficients on county-specific ",
+  "instruments: each cell reports ",
+  "$\\widehat{\\beta}_{c,z}\\times\\widehat{\\mathrm{SD}}_c(z)/",
+  "\\widehat{\\mathrm{SD}}_c(\\text{cust\\_price})$, the within-county ",
+  "standard-deviation change in \\texttt{cust\\_price} (county $c$) ",
+  "associated with a one-within-county-SD increase in the underlying ",
+  "instrument $z$. Standard errors are rescaled by the same constant, so ",
+  "$t$-statistics and stars are unchanged. Within-county SDs used for the ",
+  "rescaling: ", fs_table1_sd_summary, ". Location-level clustered standard ",
+  "errors in parentheses, for the same specifications reported in Table ",
+  "\\ref{tab:standard_iv_comparison}. Each column regresses the endogenous ",
+  "county-specific \\texttt{cust\\_price} column on all exogenous controls ",
+  "plus the excluded instrument(s) for that column. Blank cells indicate ",
+  "that the instrument is not included in the column's specification. *, ",
+  "**, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows ",
+  "reproduce the diagnostics from ",
   "\\texttt{summary(ivreg, diagnostics = TRUE)}."
 )
 
