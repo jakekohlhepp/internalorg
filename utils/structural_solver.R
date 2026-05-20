@@ -450,13 +450,19 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG, start = NULL) {
     fa <- eval_f(a_prime)
     while (is.nan(fa)) {
       a_prime <- a_prime + config$bisection_nan_step
-      stopifnot(b_prime > a_prime)
+      if (b_prime <= a_prime) {
+        return(list(root = NA_real_, val = NaN, conv = FALSE,
+                    eval_count = eval_count, bracket_failure = TRUE))
+      }
       fa <- eval_f(a_prime)
     }
 
     while (fa > 0) {
       a_prime <- a_prime - config$bisection_lower_step
-      stopifnot(a_prime > 0)
+      if (a_prime <= 0) {
+        return(list(root = NA_real_, val = NaN, conv = FALSE,
+                    eval_count = eval_count, bracket_failure = TRUE))
+      }
       fa <- eval_f(a_prime)
     }
 
@@ -467,7 +473,10 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG, start = NULL) {
     }
   }
 
-  stopifnot(b_prime > a_prime)
+  if (b_prime <= a_prime) {
+    return(list(root = NA_real_, val = NaN, conv = FALSE,
+                eval_count = eval_count, bracket_failure = TRUE))
+  }
   c_mid <- (a_prime + b_prime) / 2
   fc <- eval_f(c_mid)
 
@@ -540,6 +549,19 @@ find_gamma_for_sindex <- function(cost_matrix, alpha, s_index, innertol, outerto
     config = config,
     start = gamma_start
   )
+
+  if (isTRUE(result$bracket_failure)) {
+    return(list(
+      gamma = NA_real_,
+      E = rep(NaN, config$n_worker_types),
+      B = matrix(NaN, nrow = nrow(cost_matrix), ncol = ncol(cost_matrix)),
+      is_corner = FALSE,
+      converged = FALSE,
+      entropy = NaN,
+      bisection_evals = result$eval_count,
+      bracket_failure = TRUE
+    ))
+  }
 
   if (!result$conv) {
     warning("Bisection did not converge for s_index = ", s_index,
@@ -668,9 +690,18 @@ solve_worker_rows <- function(tild_theta, rows, config = CONFIG, clust = NULL,
              paste(class(results[[first_bad]]), collapse = "/"),
              " for job index ", first_bad)
     }
-    stop("solve_worker_rows: ", sum(bad), " of ", length(results),
-         " inner solves failed in parallel workers; first failure: ", msg,
-         call. = FALSE)
+    warning("solve_worker_rows: ", sum(bad), " of ", length(results),
+            " inner solves failed; filling NaN. First failure: ", msg,
+            call. = FALSE)
+    for (i in which(bad)) {
+      results[[i]] <- list(
+        unique_id = jobs[[i]]$unique_id,
+        key = jobs[[i]]$key,
+        E = rep(NaN, n_E),
+        E_full = rep(NaN, config$n_worker_types),
+        gamma = NaN
+      )
+    }
   }
 
   E_unique <- matrix(NA_real_, nrow = n_unique, ncol = n_E)
