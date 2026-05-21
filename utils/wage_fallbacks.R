@@ -81,6 +81,32 @@ wage_fallback_log <- function(msg, config) {
   }
 }
 
+#' Format a per-county wage parameter vector (E_raw_2..n) for logging.
+wage_fallback_format_county_par <- function(par_vec) {
+  paste(sprintf("%.3f", as.numeric(par_vec)), collapse = ", ")
+}
+
+#' Write a checkpoint of the current joint wage vector to disk so a timed-out
+#' or crashed run can resume from the best-known L1/L3/L4 vector. Atomic via
+#' rename-from-tmp. Path defaults to <prep_output_dir>/06_wage_fb_checkpoint.rds.
+wage_fallback_checkpoint_write <- function(full_par, config, label) {
+  path <- solver_value(config, "wage_fallback_checkpoint_path",
+                       file.path(config$prep_output_dir,
+                                 "06_wage_fb_checkpoint.rds"))
+  if (is.null(path) || !nzchar(path) || identical(tolower(path), "none")) {
+    return(invisible())
+  }
+  tryCatch({
+    tmp <- paste0(path, ".tmp")
+    saveRDS(list(par = full_par, label = label, timestamp = Sys.time()), tmp)
+    file.rename(tmp, path)
+    wage_fallback_log(sprintf("checkpoint written (%s) -> %s", label, path), config)
+  }, error = function(e) {
+    wage_fallback_log(sprintf("checkpoint write failed (%s): %s",
+                              label, conditionMessage(e)), config)
+  })
+}
+
 #' Bound-guarded score at a candidate (theta, x) using the same combinator the
 #' existing per-county acceptance check uses (sum(g^2) + lambda*sum(bound^2)).
 #' Returns NA_real_ if the score cannot be evaluated (e.g. the structural
@@ -365,9 +391,13 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
           par_idx <- wage_fallback_county_par_idx(cnty, names(full_par))
           full_par[par_idx] <- l1$par
           wage_fallback_log(sprintf(
-            "L1 county %s polish: %.6g -> %.6g (accepted)", cnty_key,
-            l1$before_ssq, l1$after_ssq), config)
+            "L1 county %s polish: %.6g -> %.6g (accepted); wages (E_raw_2..) = %s",
+            cnty_key, l1$before_ssq, l1$after_ssq,
+            wage_fallback_format_county_par(l1$par)), config)
           any_improvement <- TRUE
+          wage_fallback_checkpoint_write(
+            full_par, config,
+            sprintf("L4 round %d post-L1 county %s", repso_iter, cnty_key))
         }
         cnty_record$layer1 <- l1
       }
@@ -402,9 +432,13 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
             par_idx <- wage_fallback_county_par_idx(cnty, names(full_par))
             full_par[par_idx] <- l3$par
             wage_fallback_log(sprintf(
-              "L3 county %s multistart: %.6g -> %.6g (accepted, K=%d)",
-              cnty_key, l3$before_ssq, l3$after_ssq, l3$K), config)
+              "L3 county %s multistart: %.6g -> %.6g (accepted, K=%d); wages (E_raw_2..) = %s",
+              cnty_key, l3$before_ssq, l3$after_ssq, l3$K,
+              wage_fallback_format_county_par(l3$par)), config)
             any_improvement <- TRUE
+            wage_fallback_checkpoint_write(
+              full_par, config,
+              sprintf("L4 round %d post-L3 county %s", repso_iter, cnty_key))
           }
           cnty_record$layer3 <- l3
         }
@@ -430,6 +464,9 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
         )
         full_par <- new_result$par
         result <- new_result
+        wage_fallback_checkpoint_write(
+          full_par, config,
+          sprintf("L4 round %d completed re-PSO", repso_iter))
       }, error = function(e) {
         warning("L4 re-PSO failed (", conditionMessage(e),
                 "); keeping pre-re-PSO vector.", call. = FALSE)
