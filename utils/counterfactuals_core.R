@@ -1459,6 +1459,41 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   run_nleqslv("Broyden", "qline",  "nleqslv_Broyden_qline")
   if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
 
+  ## 3.5. minpack.lm::nls.lm — Levenberg-Marquardt with QR damping. Distinct
+  ## from nleqslv Broyden (which updates a quasi-Jacobian via secant) and from
+  ## nleqslv Newton/dbldog (which uses an explicit Jacobian with dogleg
+  ## globalization): nls.lm uses an explicit Jacobian with Marquardt damping,
+  ## which controls the trust-region step size differently and is more robust
+  ## near ill-conditioned regions. Runs from the running best across a small
+  ## sweep of damping factors. Gated on the minpack.lm package being present;
+  ## skipped silently otherwise.
+  if (!cleared() && requireNamespace("minpack.lm", quietly = TRUE)) {
+    base::message(sprintf(
+      "  [%s] === minpack.lm::nls.lm phase (4 damping factors) ===",
+      if (is.null(label)) "fallback" else label
+    ))
+    for (factor_val in c(100, 10, 1, 0.1)) {
+      if (cleared()) break
+      center_log <- log(pmax(best_result$par, config$numeric_floor))
+      res <- tryCatch(
+        minpack.lm::nls.lm(
+          par = center_log, fn = fn_log_root,
+          control = minpack.lm::nls.lm.control(
+            maxiter = 500, factor = factor_val,
+            ftol = 1e-12, ptol = 1e-12)),
+        error = function(e) {
+          warning("[", label, "] minpack_lm factor=", factor_val, " errored: ",
+                  conditionMessage(e), call. = FALSE); NULL
+        })
+      if (!is.null(res)) {
+        take(sprintf("minpack_lm_factor%g", factor_val),
+             as.numeric(res$par),
+             as.character(res$message), NA_integer_)
+      }
+    }
+    if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+  }
+
   ## 4. L-BFGS-B on SSR — multistart from running best + perturbations
   base::message(sprintf(
     "  [%s] === L-BFGS-B SSR phase (multistart=%d, includes running best) ===",
@@ -1584,6 +1619,76 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   if (!is.null(res)) take("PSO_SSR", res$par,
                           paste("pso_solve ssq=", signif(res$value, 6)),
                           NA_integer_)
+
+  ## 8. Coordinate-descent via 1D uniroot (last-ditch refinement). For each
+  ## wage k in turn, solves the k-th log-labor residual to zero (or minimizes
+  ## |r_k| when no sign-change bracket exists) while holding the other 4 fixed,
+  ## then rotates. Several sweeps with progressively shrinking brackets so the
+  ## first sweeps capture large reallocations and later sweeps fine-tune.
+  ## Particularly effective when the residual floor is dominated by a single
+  ## coordinate at a time (e.g. LA 6037 2021.2, where 4 of 5 components were
+  ## already near zero and only w1 / w5 needed adjustment).
+  if (!cleared()) {
+    cd_n_sweeps <- as.integer(solver_value(config,
+      "counterfactual_coord_descent_sweeps", 8L))
+    cd_widths   <- solver_value(config,
+      "counterfactual_coord_descent_widths",
+      c(2.0, 1.0, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015))
+    if (length(cd_widths) < cd_n_sweeps) {
+      cd_widths <- rep_len(cd_widths, cd_n_sweeps)
+    }
+    base::message(sprintf(
+      "  [%s] === coord_descent phase (n_sweeps=%d, shrinking brackets) ===",
+      if (is.null(label)) "fallback" else label, cd_n_sweeps
+    ))
+    cur <- log(pmax(best_result$par, config$numeric_floor))
+    for (sweep_idx in seq_len(cd_n_sweeps)) {
+      if (cleared()) break
+      hw_k <- cd_widths[sweep_idx]
+      moved <- FALSE
+      for (i in seq_along(cur)) {
+        if (cleared()) break
+        ri <- function(z) {
+          x <- cur; x[i] <- z; fn_log_root(x)[i]
+        }
+        lo <- cur[i] - hw_k; hi <- cur[i] + hw_k
+        f_lo <- tryCatch(ri(lo), error = function(e) NA_real_)
+        f_hi <- tryCatch(ri(hi), error = function(e) NA_real_)
+        if (!is.finite(f_lo) || !is.finite(f_hi)) next
+        if (sign(f_lo) == sign(f_hi)) {
+          opt_i <- tryCatch(
+            stats::optimize(function(z) abs(ri(z)),
+                            lower = lo, upper = hi, tol = 1e-10),
+            error = function(e) NULL
+          )
+          if (!is.null(opt_i)) {
+            new_cur <- cur; new_cur[i] <- opt_i$minimum
+            take(sprintf("coord_descent_sweep%d_i%d_optim_hw%g",
+                         sweep_idx, i, hw_k),
+                 new_cur, "coord_descent_optim", NA_integer_)
+            if (abs(ri(opt_i$minimum)) < abs(ri(cur[i]))) {
+              cur[i] <- opt_i$minimum
+              moved <- TRUE
+            }
+          }
+          next
+        }
+        sol <- tryCatch(
+          stats::uniroot(ri, lower = lo, upper = hi,
+                         tol = 1e-12, maxiter = 300),
+          error = function(e) NULL
+        )
+        if (is.null(sol)) next
+        new_cur <- cur; new_cur[i] <- sol$root
+        take(sprintf("coord_descent_sweep%d_i%d_uniroot_hw%g",
+                     sweep_idx, i, hw_k),
+             new_cur, "coord_descent_uniroot", NA_integer_)
+        cur[i] <- sol$root
+        moved <- TRUE
+      }
+      if (!moved) break
+    }
+  }
 
   best_result$converged <- is.finite(best_result$residual) &&
     best_result$residual <= target_tol
