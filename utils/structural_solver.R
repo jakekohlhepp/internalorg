@@ -1237,14 +1237,15 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     result$candidate_value <- result$value
 
     if (result$value > strict_obj_tol) {
-      message(sprintf(
+      warning(sprintf(
         paste0("Wage solver did not reach obj_tol for county %s ",
                "(convergence=%d, restarts=%d, multistarts=%d, parscale=%g): ",
                "best objective %.6g exceeds obj_tol=%.6g. ",
-               "Continuing (absolute-tol gate disabled)."),
+               "Continuing (absolute-tol gate is soft); ",
+               "rep will be stored with wage_convergence != 0."),
         cnty, result$convergence, result$restart_count,
         n_multistarts, parscale_w, result$value, strict_obj_tol
-      ))
+      ), call. = FALSE)
     }
 
     candidate_par <- result$par
@@ -1638,14 +1639,15 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     ))
 
     if (result_value > strict_tol) {
-      message(sprintf(
+      warning(sprintf(
         paste0("PSO+polish did not reach obj_tol for county %s ",
                "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, ",
                "halfwidth=%g, parscale=%g): best objective %.6g exceeds ",
-               "obj_tol=%.6g. Continuing (absolute-tol gate disabled)."),
+               "obj_tol=%.6g. Continuing (absolute-tol gate is soft); ",
+               "rep will be stored with wage_convergence != 0."),
         cnty, pso_res$value, polish_pso$value, polish_seed$value,
         halfwidth, parscale_w, result_value, strict_tol
-      ))
+      ), call. = FALSE)
     }
 
     final_candidate <- full_par

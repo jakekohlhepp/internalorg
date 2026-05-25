@@ -75,18 +75,26 @@ Both polishes use `reltol = JMP_OBJ_TOL = 1e-4`. The "objective" is the
 squared L2 norm of the weighted per-county wage moments
 (model E – observed E across worker types 2..n_worker_types).
 
-### Gate 1 — per-county strict objective (hard error)
+### Gate 1 — per-county strict objective (soft warning)
 
-If `best > JMP_PSO_STRICT_OBJ_TOL = 0.1` for any county, the solver calls
-`stop(...)` with "PSO+polish did not reach pso_strict_obj_tol for county
-&lt;cnty&gt;". 07_bootstrap.R's `tryCatch` writes a diagnostic
-`boot_res_<i>.rds` with `status = "error"` and no parameter columns. **The
-rep is lost** — it cannot be silently replaced by the 06 warm start, because
-substituting uniform-weight estimates into the bootstrap distribution would
-bias the standard errors. To recover these reps, either tighten PSO
-settings (more particles, wider search box) and resubmit just those
-iterations via `JMP_BOOTSTRAP_ITERATION`, or accept them as legitimate
-non-convergence failures and exclude from the bootstrap distribution.
+If `best > JMP_PSO_STRICT_OBJ_TOL = 0.1` for any county, the solver emits
+a `warning("PSO+polish did not reach obj_tol for county <cnty>... ")` and
+**continues**. The candidate still passes through gate 2 (per-county accept
+vs 06 score) and gate 3 (joint accept vs 06 score); whichever wage vector
+those choose then goes into the L-BFGS-B price step as usual. The rep is
+stored in `results/data/bootstrap_reps/boot_res_<i>.rds` with a full
+parameter table; `wage_convergence` is set to `1L` (non-zero) and `status`
+becomes `wage_nonconverged` (or `wage+price_nonconverged` if price also
+non-converged). The combine pass keeps the rep — see "Post-hoc filtering
+in 08" below for how to drop these reps from the final SE distribution.
+
+History: gate 1 was originally a hard `stop()` that produced
+`status="error"` rows with no parameter columns. That was softened to a
+`message()` in commit 43303a6 (2026-05-18), and promoted to `warning()`
+on 2026-05-25 so the trip is visible in `warnings()` rather than buried
+in stderr. Reps with `wage_convergence != 0` are still safe to filter
+out via the post-hoc step in 08; nothing about this gate is silently
+substituting 06 estimates into the SE distribution.
 
 ### Gate 2 — per-county accept (soft revert)
 
@@ -124,11 +132,11 @@ return value and maps it to `status`:
 
 | `boot_res$status` | Wage outcome | Parameter columns present? |
 |---|---|---|
-| `ok` | All counties' new candidates passed gate 1, gate 2, and the joint gate 3 | Yes (new estimates) |
-| `wage_nonconverged` | Reached gate-1 strict-tol (best ≤ 0.1 for every county) BUT at least one county failed gate 2, or the joint check failed gate 3 → at least one county fell back to 06 | Yes (mix of new + 06 fallback, or all-06 in the gate-3 case) |
-| `price_nonconverged` | Wage gates all passed; L-BFGS-B price step returned non-zero convergence | Yes (wage as above; price coeffs are whatever L-BFGS-B returned at termination) |
+| `ok` | All counties' final objectives ≤ strict_tol AND all counties accepted by gate 2 AND joint gate 3 passed | Yes (new estimates) |
+| `wage_nonconverged` | At least one county exceeded the gate-1 strict_tol, OR at least one county failed gate 2, OR the joint check failed gate 3 → in any of those branches `wage_result$convergence` is 1L | Yes (mix of new + 06 fallback when gate 2/3 fired; the new candidate when only gate 1 "fired") |
+| `price_nonconverged` | Wage convergence is 0L (all gates passed) but L-BFGS-B price step returned non-zero convergence | Yes (wage as above; price coeffs are whatever L-BFGS-B returned at termination) |
 | `wage+price_nonconverged` | Both above | Yes |
-| `error` | Gate 1 fired (best > 0.1 for some county) → solver threw, rep aborted | **No** (diagnostic row only with `error_message`) |
+| `error` | An unhandled R error somewhere in the pipeline (not gate 1/2/3 — those are all soft now) → solver threw, rep aborted | **No** (diagnostic row only with `error_message`) |
 
 The price step always runs after wage (whether the wage vector is the new
 candidate, a mix, or all-06 fallback). Bootstrap reps where the wage
@@ -140,9 +148,10 @@ prices under bootstrap weights using those wage values.
 [`validate_bootstrap_results` in 07_bootstrap.R](../07_bootstrap.R)
 distinguishes two failure classes:
 
-- **`status == "error"`**: rep has no parameter columns (gate 1 fired or
-  some other unhandled exception). `stop()` is called — these reps cannot
-  enter the bootstrap distribution.
+- **`status == "error"`**: rep has no parameter columns (gate 1/2/3 are
+  all soft now, so this only happens on a genuine unhandled R error
+  upstream of `bootstrap_result_row`). `stop()` is called — these reps
+  cannot enter the bootstrap distribution.
 - **`status %in% c("wage_nonconverged", "price_nonconverged", "wage+price_nonconverged")`**:
   rep has a full parameter table (some columns may be 06 warm-start
   fallbacks per gate 2/3, or L-BFGS-B's final iterate before its own
