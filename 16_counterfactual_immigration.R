@@ -1,7 +1,13 @@
 ## Immigration counterfactual.
-## Boosts total labor supply (summed across all worker types) by 10%, with
+## Boosts total labor supply (summed across all worker types) by 5%, with
 ## the entire increase concentrated in the lowest-wage worker type per
 ## county. Then re-solves wages and writes the productivity panel.
+##
+## Magnitude history: was 10% in earlier runs; lowered to 5% after the
+## smoke_16_immigration_5pct experiment showed the production wage solver
+## converges cleanly across Cook/NYC/LA at 5% but fails to clear Cook+NYC
+## (residuals 0.12-0.75) at 10%. At 5%, all 6 (county x sol_type) markets
+## clear via standard nleqslv with no homotopy/PSO fallback needed.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
@@ -128,18 +134,18 @@ get_everything <- function(wage_guess, cnty, qy) {
 orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_wages)
 
 
-## immigration: increase total labor (summed across all worker types) by 10%,
+## immigration: increase total labor (summed across all worker types) by 5%,
 ## with the entire increase concentrated in the lowest-wage worker type per
 ## county. Targets are the argmin of the 2021.2 initial-equilibrium wage vector
 ## from 13_initial_wages.rds: LA->1, NYC->2, Cook->4. The shock to the target
-## type is therefore 10% * sum(tot_k), not 10% of the target alone.
+## type is therefore 5% * sum(tot_k), not 5% of the target alone.
 tot_field_names <- counterfactual_tot_labor_field_names(CONFIG)
 add_immigrants_to_target <- function(cnty, target_idx, qy = 2021.2) {
   base <- as.numeric(as.matrix(total_labor[
     county == cnty & quarter_year == qy,
     .SD, .SDcols = tot_field_names
   ]))
-  delta <- 0.1 * sum(base)
+  delta <- 0.05 * sum(base)
   target_col <- tot_field_names[target_idx]
   total_labor[county == cnty & quarter_year == qy,
               (target_col) := get(target_col) + delta]
