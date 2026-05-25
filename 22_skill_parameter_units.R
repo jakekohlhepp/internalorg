@@ -3,38 +3,38 @@
 #' =============================================================================
 #' Re-presents the estimated skill matrix B (worker x task; entered into the
 #' model as part of Q_j = avg_labor_j * sum_{w,t} B[w,t] * theta[w,t] + qual_exo)
-#' in three additional unit systems so the magnitudes are easier to interpret.
-#' 06 estimates the parameters; 08 reports them in raw utility units; this
-#' script transforms them into more economically meaningful scales.
+#' in two economically interpretable unit systems. 06 estimates the parameters;
+#' 08 reports them in raw utility units; this script transforms them into
+#' dollars and percentage-point market-share terms.
 #'
 #' Each column (task) is normalized so the entry for the *worst worker at that
-#' task* equals zero, and every other worker's value is the gain over that
-#' worst baseline. The worst worker is the row index with the minimum theta in
-#' the column; because every unit transformation is a positive linear scaling
-#' of theta within a column, the worst-worker identity is the same in all four
-#' unit blocks.
+#' task* equals zero (within the county), and every other worker's value is the
+#' gain over that worst baseline. The worst worker is the row index with the
+#' minimum theta in the column; because every unit transformation is a positive
+#' linear scaling of theta within a column, the worst-worker identity is the
+#' same in every unit block.
 #'
 #' Unit blocks emitted (one column block per task, side-by-side):
-#'   1. Raw (utility).            theta[w,t] - min_w theta[w,t]
-#'   2. Dollars (consumer WTP).   (theta[w,t] / |rho_c|) recentered. Reads as
+#'   1. Dollars (consumer WTP).   (theta[w,t] / |rho_c|) recentered. Reads as
 #'                                $ per (hour of labor per customer) per unit
 #'                                of B[w,t] above the worst worker. Multiply
 #'                                by avg_labor (hours/customer) and by the
 #'                                fraction of B[w,t] you move to convert into
 #'                                dollars per customer of consumer WTP.
-#'   3. % market share / 1% task  theta[w,t] * (1 - sbar_c) * Lbar_c *
+#'   2. % market share / 1% task  theta[w,t] * (1 - sbar_c) * Lbar_c *
 #'      reassignment.             alphabar_{c,t}, recentered. Reads as the
 #'                                percentage-point change in market share at
 #'                                the mean firm of moving 1% of task t mass
-#'                                from the worst worker to worker w. Reported
-#'                                for two samples: (a) all county-quarters in
-#'                                the estimation sample (pooled), and (b) only
-#'                                the counterfactual focus quarter (2021.2).
+#'                                from the worst worker to worker w. Pooled
+#'                                over all county-quarters in the estimation
+#'                                sample.
 #'
 #' The data variable avg_labor is constructed in cluster.R as
 #'   avg_labor := tot_duration / cust_count / 60
 #' where tot_duration is summed appointment minutes and the / 60 converts to
 #' hours. So Lbar above is in hours of labor per customer.
+#'
+#' All counties are stacked into one LaTeX table grouped by pack_rows.
 #'
 #' Inputs:
 #'   - results/data/06_parameters.rds (point estimates)
@@ -43,9 +43,9 @@
 #'   - mkdata/data/01_keytask.rds (task display labels)
 #'
 #' Outputs:
-#'   - results/out/tables/22_skill_units_<county>.tex (per-county wide table
-#'     with a threeparttable note block; requires \usepackage{threeparttable})
-#'   - results/data/22_skill_units.csv (long-format with all unit blocks,
+#'   - results/out/tables/22_skill_units.tex (one stacked table, all counties;
+#'     requires \usepackage{threeparttable} and \usepackage{booktabs})
+#'   - results/data/22_skill_units.csv (long-format with both unit blocks,
 #'     recentered)
 #' =============================================================================
 
@@ -55,7 +55,6 @@ library('knitr')
 library('kableExtra')
 
 source('config.R')
-source('utils/counterfactuals_core.R')  # for get_counterfactual_focus_quarter()
 
 ensure_directory('results/out/tables')
 ensure_directory('results/data')
@@ -115,8 +114,6 @@ stopifnot(all(rho < 0))
 
 
 ## ---- mean-firm scales for the share-elasticity transformation --------------
-focus_qy <- get_counterfactual_focus_quarter()
-
 mean_firm_scales <- function(filt) {
   if (nrow(filt) == 0L) return(NULL)
   list(
@@ -146,7 +143,6 @@ recenter_to_worst_worker <- function(mat) {
 unit_blocks_for <- function(cnty) {
   theta        <- theta_by_county[[cnty]]
   pooled_scale <- mean_firm_scales(wd[county == cnty])
-  focus_scale  <- mean_firm_scales(wd[county == cnty & quarter_year == focus_qy])
 
   ## Identify the worst worker per task on the raw theta. Every unit transform
   ## is a positive linear scaling of theta column-by-column, so the same row
@@ -154,14 +150,9 @@ unit_blocks_for <- function(cnty) {
   worst_worker <- apply(theta, 2, which.min)
 
   list(
-    raw          = recenter_to_worst_worker(theta),
     dollars      = recenter_to_worst_worker(theta / abs(rho[[cnty]])),
     share_pooled = recenter_to_worst_worker(share_scale_matrix(theta, pooled_scale)),
-    share_focus  = recenter_to_worst_worker(share_scale_matrix(theta, focus_scale)),
-    pooled_n     = if (is.null(pooled_scale)) NA_integer_ else pooled_scale$n_firms,
-    focus_n      = if (is.null(focus_scale))  NA_integer_ else focus_scale$n_firms,
     pooled_scale = pooled_scale,
-    focus_scale  = focus_scale,
     worst_worker = worst_worker
   )
 }
@@ -183,14 +174,6 @@ for (cnty in counties) {
       paste(sprintf("%.3f", s$alpha), collapse = ", ")
     ))
   }
-  if (!is.null(blocks$focus_scale)) {
-    s <- blocks$focus_scale
-    message(sprintf(
-      "  focus  (n=%d): Lbar=%.3f hrs/cust, (1-sbar)=%.4f, alphabar=[%s]",
-      s$n_firms, s$L, s$one_minus_s,
-      paste(sprintf("%.3f", s$alpha), collapse = ", ")
-    ))
-  }
   worst_lab <- vapply(seq_len(n_task_types),
                       function(t) paste0(task_labels[t], "=W", blocks$worst_worker[t]),
                       character(1))
@@ -199,111 +182,104 @@ for (cnty in counties) {
 }
 
 
-## ---- one wide LaTeX table per county ---------------------------------------
-unit_header_for <- function(blocks) {
-  hdr <- list(
-    "Raw (utility)" = blocks$raw,
-    "Dollars (USD)" = blocks$dollars
-  )
-  if (!is.null(blocks$share_pooled)) {
-    hdr[[sprintf("Pct.\\ Share (pooled, n=%d)", blocks$pooled_n)]] <- blocks$share_pooled
-  }
-  if (!is.null(blocks$share_focus)) {
-    hdr[[sprintf("Pct.\\ Share (%s, n=%d)",
-                 format(focus_qy), blocks$focus_n)]] <- blocks$share_focus
-  }
-  hdr
-}
-
+## ---- one stacked LaTeX table across all counties ---------------------------
 format_block <- function(mat, digits = 3L) {
   data.table(formatC(round(mat, digits), digits = digits, format = "f"))
 }
 
-## Notes block: defines each unit, the avg_labor convention, |rho|, the mean-
-## firm scaling used, and the worst-worker reference per task.
-build_notes <- function(cnty, blocks) {
-  worst_str <- paste(
-    vapply(seq_len(n_task_types), function(t) {
-      sprintf("%s = W%d", task_labels[t], blocks$worst_worker[t])
-    }, character(1)),
-    collapse = "; "
-  )
-  rho_c <- abs(rho[[cnty]])
+header_block_names <- c("Dollars (USD)", "Pct.\\ Share (pooled)")
 
-  parts <- c(
-    sprintf(
-      "Each cell is the parameter for worker $w$ at task $t$ minus the parameter for the worst worker at that same task, so the worst worker reads 0 and all others are gains relative to that baseline. Worst worker per task: %s.",
-      worst_str
-    ),
-    sprintf(
-      "\\textit{Raw} is utility units. \\textit{Dollars (USD)} divides by $|\\rho_c| = %.4f$; the result is dollars per (hour of labor per customer) per unit of $B[w,t]$. Multiply by \\texttt{avg\\_labor} (\\texttt{tot\\_duration / cust\\_count / 60}, in hours per customer) and by the fraction of $B[w,t]$ moved to convert into per-customer consumer WTP.",
-      rho_c
+build_body_for_county <- function(cnty) {
+  blocks <- units_by_county[[cnty]]
+  body <- data.table(`Worker Skill Set` = seq_len(n_worker_types))
+  body <- cbind(body,
+                format_block(blocks$dollars),
+                format_block(blocks$share_pooled))
+  setnames(body, c("worker", paste0("c", seq_len(ncol(body) - 1L))))
+  body
+}
+
+body_full <- rbindlist(lapply(counties, build_body_for_county), use.names = FALSE)
+display_cols <- c("Worker Skill Set", rep(task_labels, length(header_block_names)))
+
+output <- kable(body_full, "latex", align = "c", booktabs = TRUE, linesep = "",
+                escape = FALSE, caption = NA, label = NA,
+                col.names = display_cols)
+block_widths <- rep(n_task_types, length(header_block_names))
+header_row   <- c(" " = 1L, setNames(block_widths, header_block_names))
+output <- add_header_above(output, header_row, escape = FALSE)
+
+## Group rows by county using pack_rows.
+row_cursor <- 1L
+for (cnty in counties) {
+  end_row <- row_cursor + n_worker_types - 1L
+  output <- pack_rows(output, county_label(cnty), row_cursor, end_row,
+                      latex_align = "l", escape = FALSE)
+  row_cursor <- end_row + 1L
+}
+
+## Notes block: general unit definitions + per-county scaling constants and
+## worst-worker map (since the worst-worker baseline is county-specific).
+build_stacked_notes <- function() {
+  intro <- paste0(
+    "Each cell is the parameter for worker $w$ at task $t$ minus the parameter ",
+    "for the worst worker at that same task \\emph{within the county}, so the ",
+    "worst worker reads 0 and all others are gains relative to that ",
+    "county-specific baseline."
+  )
+  units_explain <- paste0(
+    "\\textit{Dollars (USD)} divides by $|\\rho_c|$ (county marginal utility ",
+    "of income); the result is dollars per (hour of labor per customer) per ",
+    "unit of $B[w,t]$. Multiply by \\texttt{avg\\_labor} ",
+    "(\\texttt{tot\\_duration / cust\\_count / 60}, hours per customer) and by ",
+    "the fraction of $B[w,t]$ moved to convert into per-customer consumer WTP. ",
+    "\\textit{Pct.\\ Share (pooled)} scales by ",
+    "$(1-\\bar s_c)\\,\\bar L_c\\,\\bar\\alpha_{c,t}$ over all county-quarters in ",
+    "the estimation sample; row difference $\\approx$ percentage-point change ",
+    "in market share at the mean firm from moving 1\\% of task $t$ mass from ",
+    "the worst worker to worker $w$."
+  )
+  per_county <- vapply(counties, function(cnty) {
+    blocks <- units_by_county[[cnty]]
+    s      <- blocks$pooled_scale
+    worst_str <- paste(
+      vapply(seq_len(n_task_types), function(t) {
+        sprintf("%s = W%d", task_labels[t], blocks$worst_worker[t])
+      }, character(1)),
+      collapse = "; "
     )
-  )
+    sprintf(
+      paste0("\\textit{%s}: $|\\rho_c| = %.4f$, $n = %d$, $\\bar L = %.3f$ ",
+             "hrs/cust, $1-\\bar s = %.4f$, $\\bar\\alpha = (%s)$; worst ",
+             "worker per task: %s."),
+      county_label(cnty), abs(rho[[cnty]]), s$n_firms, s$L, s$one_minus_s,
+      paste(sprintf("%.3f", s$alpha), collapse = ", "),
+      worst_str
+    )
+  }, character(1))
 
-  if (!is.null(blocks$pooled_scale)) {
-    s <- blocks$pooled_scale
-    parts <- c(parts, sprintf(
-      "\\textit{Pct.\\ Share (pooled)} scales the raw parameter by $(1-\\bar s)\\,\\bar L\\,\\bar\\alpha_t$ over $n=%d$ county-quarters: $\\bar L = %.3f$ hours/customer, $1-\\bar s = %.4f$, $\\bar\\alpha = (%s)$. Row difference $\\approx$ percentage-point change in market share at the mean firm from moving 1\\%% of task $t$ mass from the worst worker to worker $w$.",
-      s$n_firms, s$L, s$one_minus_s,
-      paste(sprintf("%.3f", s$alpha), collapse = ", ")
-    ))
-  }
-  if (!is.null(blocks$focus_scale)) {
-    s <- blocks$focus_scale
-    parts <- c(parts, sprintf(
-      "\\textit{Pct.\\ Share (%s)} uses the same scaling but restricted to the $n=%d$ firms in the counterfactual focus quarter: $\\bar L = %.3f$ hours/customer, $1-\\bar s = %.4f$, $\\bar\\alpha = (%s)$.",
-      format(focus_qy), s$n_firms, s$L, s$one_minus_s,
-      paste(sprintf("%.3f", s$alpha), collapse = ", ")
-    ))
-  }
-
-  paste(parts, collapse = " ")
+  paste(c(intro, units_explain, per_county), collapse = " ")
 }
 
 ## Manually wrap kable output in a threeparttable + tablenotes block.
 ## kableExtra::footnote(..., escape = FALSE) silently strips lone backslashes
 ## from the notes string (mangles \textit, \bar, \rho, etc.), so the wrapper
 ## is built by hand to keep the LaTeX intact.
-n_total_cols <- 1L + n_task_types * 4L  # worker col + 4 unit blocks
-for (cnty in counties) {
-  blocks <- units_by_county[[cnty]]
-  header_blocks <- unit_header_for(blocks)
+tabular_tex <- as.character(output)
+notes_tex   <- build_stacked_notes()
+wrapped <- paste0(
+  "\\begin{threeparttable}\n",
+  tabular_tex,
+  "\n\\begin{tablenotes}[para,flushleft]\n",
+  "\\footnotesize\n",
+  "\\item[] \\textit{Notes:} ", notes_tex, "\n",
+  "\\end{tablenotes}\n",
+  "\\end{threeparttable}\n"
+)
 
-  body <- data.table(`Worker Skill Set` = seq_len(n_worker_types))
-  block_widths <- integer(0)
-  for (nm in names(header_blocks)) {
-    blk <- format_block(header_blocks[[nm]])
-    body <- cbind(body, blk)
-    block_widths <- c(block_widths, n_task_types)
-  }
-  setnames(body, c("worker", paste0("c", seq_len(ncol(body) - 1L))))
-  display_cols <- c("Worker Skill Set", rep(task_labels, length(header_blocks)))
-
-  output <- kable(body, "latex", align = "c", booktabs = TRUE, linesep = "",
-                  escape = FALSE, caption = NA, label = NA,
-                  col.names = display_cols)
-  header_row <- c(" " = 1L, setNames(block_widths, names(header_blocks)))
-  output <- add_header_above(output, header_row, escape = FALSE)
-
-  tabular_tex  <- as.character(output)
-  notes_tex    <- build_notes(cnty, blocks)
-  wrapped <- paste0(
-    "\\begin{threeparttable}\n",
-    tabular_tex,
-    "\n\\begin{tablenotes}[para,flushleft]\n",
-    "\\footnotesize\n",
-    "\\item[] \\textit{Notes:} ", notes_tex, "\n",
-    "\\end{tablenotes}\n",
-    "\\end{threeparttable}\n"
-  )
-
-  out_path <- file.path("results", "out", "tables",
-                        paste0("22_skill_units_",
-                               gsub(" ", "", county_label(cnty)), ".tex"))
-  cat(wrapped, file = out_path)
-  message("Wrote ", out_path)
-}
+out_path <- file.path("results", "out", "tables", "22_skill_units.tex")
+cat(wrapped, file = out_path)
+message("Wrote ", out_path)
 
 
 ## ---- long-format CSV dump (recentered values + worst-worker map) ----------
@@ -311,7 +287,7 @@ unit_long_rows <- function() {
   rows <- list()
   for (cnty in counties) {
     blocks <- units_by_county[[cnty]]
-    for (unit_nm in c("raw", "dollars", "share_pooled", "share_focus")) {
+    for (unit_nm in c("dollars", "share_pooled")) {
       mat <- blocks[[unit_nm]]
       if (is.null(mat)) next
       for (t in seq_len(n_task_types)) for (w in seq_len(n_worker_types)) {
