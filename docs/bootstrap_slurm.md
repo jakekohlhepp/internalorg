@@ -6,7 +6,7 @@ specs in the script change.
 ## Submission
 
 **Always submit via `sbatch run_bootstrap_array.sl`, not `sbatch --wrap`.**
-The script in this repo pins the array range (`--array=1-1100%100`), the
+The script in this repo pins the array range (`--array=1-1100%200`), the
 bootstrap-mode env vars (`JMP_WAGE_OPTIMIZER_MODE=pso`,
 `JMP_PSO_STRICT_OBJ_TOL=0.1`, `JMP_OBJ_TOL=1e-4`), the BLAS/OpenMP thread caps,
 and the renv pre-flight. Hand-rolling those with `--wrap` is how reps go
@@ -17,7 +17,7 @@ to one-off jobs; the bootstrap has a checked-in spec, and that spec is the
 source of truth.
 
 If you do need to resubmit a range (e.g. to fill failed reps), use the script
-with an override: `sbatch --array=201-1100%100 run_bootstrap_array.sl`. Don't
+with an override: `sbatch --array=201-1100%200 run_bootstrap_array.sl`. Don't
 re-derive the env vars on the command line.
 
 ```bash
@@ -47,9 +47,9 @@ them into `results/data/07_bootstrap.rds` on the combine-only pass.
 | `-p general` | general partition | Memory fits well under the 232 GB/node cap; no need for `general_big` or `bigmem`. |
 | `-n 1` | one task per array element | Each rep is one process. |
 | `--cpus-per-task=2` | 2 CPUs | Each rep is single-threaded at the R level (see "Why serial" below). One core would suffice; the second is headroom for `data.table` internal threads and any OpenMP region not covered by the env-var pinning. |
-| `--mem=4g` | 4 GB | Tuned 2026-05-09 from `sacct MaxRSS`. Bench job 49320283 (full PSO+warm-start, single rep) peaked at 698 MB. 4 GB is ~5.7x headroom. |
-| `-t 2-00:00:00` | 48 h | Retuned 2026-05-12 from production array 49968490, which TIMEOUTed 53/100 first-wave tasks at -t 10:00:00. The 47 COMPLETED reps in that wave spanned 5:52-9:53 (median 8:23), with TIMEOUTs hitting the ceiling at exactly 10:00 -- the right tail of the per-rep wall distribution clearly extends past 10 h. 2 days is deliberately generous (~5x median, ~5x the max observed COMPLETED) so the array completes in one pass; tail reps that need 12-18 h won't waste a Slurm slot. Tighten in a future revision once we have the full 1100-rep wall distribution. |
-| `--array=1-1100%100` | 1100 reps, 100 concurrent | `CONFIG$bootstrap_reps` is 1100 in [config.R](../config.R). At ~5h per rep (bench job 49320283 wall = 5:22:16) with %100 concurrency, the array finishes in ~11 waves ≈ ~2.5 days wall. |
+| `--mem=4g` | 4 GB | Retuned 2026-05-25 against three production arrays (49968490 MaxRSS 842 MB, 50012608 MaxRSS 901 MB, 51533265 MaxRSS 932 MB). 4 GB is ~4.4x the worst observed; 2G would still leave ~2.2x headroom if pressure dictates. |
+| `-t 3-00:00:00` | 72 h | Retuned 2026-05-25 from production array 50012608, which CANCELLED 109 first-wave reps at the prior 2-day ceiling. COMPLETED reps spanned 3.08-44.07 h (median 7.73, p90 19.7, p95 27.9). 3 days clears the p95 tail with margin and avoids the silent truncation that the 2-day cap caused. Tighten back to 2 days if the next array shows p99 < 36h. |
+| `--array=1-1100%200` | 1100 reps, 200 concurrent | `CONFIG$bootstrap_reps` is 1100 in [config.R](../config.R). At ~8h median per rep, %200 finishes the array in ~5.5 waves ≈ ~2-2.5 days wall (vs ~4-5 days at %100). 200 tasks × 2 CPUs = 400 CPUs ≈ 1.5% of TotalCPUs=26240; well under any fairshare cost. Drop to %100 if queue-priority pressure shows up. |
 | OMP/OpenBLAS/MKL/vecLib `_NUM_THREADS=1` | env vars | Force BLAS/OpenMP single-threaded so we don't silently oversubscribe the 2 allocated cores. Required because the R-level backend is serial (next section). |
 | `JMP_PSO_STRICT_OBJ_TOL=0.1` | env var | Loosened from 0.01 default for bootstrap mode. The 0.01 gate was sized for the uniform-weight surface (NYC basin floor ~1.3e-3 + safety margin per [docs/wage_solver_stability.md](wage_solver_stability.md)); bootstrap reweighting shifts that floor by ~1 order of magnitude per draw. Cancelled job 49194150 had 38 strict-tol failures (worst Cook 0.023, worst NYC 0.032), and bench rep 1 (job 49320283) hit NYC polish_seed=0.0497 — only 0.7% under a 0.05 gate. 0.1 absorbs that tail with ~2x headroom over the bench. **Caveat:** NYC's "wrong basin" floor (~0.025) sits below 0.1, so the strict guard alone will not catch a rep that lands there — pair with a post-hoc filter in 08 that drops reps whose NYC ssq exceeds (e.g.) 0.1 or whose `wage_convergence` is non-zero. |
 | `JMP_OBJ_TOL=1e-4` | env var | Loosened from 1e-6 default. The polish step's `reltol` was making Nelder-Mead burn 160+ evals stuck at the same value chasing precision the reweighted moment surface doesn't have. 1e-4 lets polish exit when relevant progress stops; cuts wall time materially. |
