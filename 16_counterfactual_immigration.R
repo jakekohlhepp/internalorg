@@ -8,6 +8,10 @@
 ## converges cleanly across Cook/NYC/LA at 5% but fails to clear Cook+NYC
 ## (residuals 0.12-0.75) at 10%. At 5%, all 6 (county x sol_type) markets
 ## clear via standard nleqslv with no homotopy/PSO fallback needed.
+## 5% is also closer in absolute magnitude to the old manuscript's shock
+## (10% of a single worker type's labor, rather than 10% of total county
+## labor concentrated in one worker type, as the previous 10% implementation
+## did), so this re-anchors the economic interpretation as well.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
