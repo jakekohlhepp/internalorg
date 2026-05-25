@@ -15,20 +15,22 @@
 #' same in every unit block.
 #'
 #' Unit blocks emitted (one column block per task, side-by-side):
-#'   1. Willingness-to-pay (USD). (theta[w,t] / |rho_c|) recentered. |rho_c|
-#'                                is the county disutility from price. Reads
-#'                                as $ per (hour of labor per customer) per
-#'                                unit of B[w,t] above the worst worker.
-#'                                Multiply by avg_labor (hours/customer) and
-#'                                by the fraction of B[w,t] you move to
-#'                                convert into per-customer consumer WTP.
-#'   2. % market share / 1% task  theta[w,t] * (1 - sbar_c) * Lbar_c *
-#'      reassignment.             alphabar_{c,t}, recentered. Reads as the
-#'                                percentage-point change in market share at
-#'                                the mean firm of moving 1% of task t mass
-#'                                from the worst worker to worker w. Pooled
-#'                                over all county-quarters in the estimation
-#'                                sample.
+#'   1. Willingness-to-pay (USD). (theta[w,t] - theta_worst,t) / |rho_c| *
+#'                                Lbar_c * 0.01, where |rho_c| is the county
+#'                                disutility from price and Lbar_c is the
+#'                                unweighted mean of avg_labor (hours per
+#'                                customer) over firm-quarters in county c.
+#'                                Reads as consumer WTP per customer (USD)
+#'                                at a mean-labor firm in county c from
+#'                                reassigning 1% of task t mass from the
+#'                                worst worker to worker w.
+#'   2. % market share (pooled).  theta[w,t] * (1 - sbar_c) * Lbar_c *
+#'                                alphabar_{c,t}, recentered. Reads as the
+#'                                percent change (Delta s / s, not Delta s)
+#'                                in market share at the mean firm of moving
+#'                                1% of task t mass from the worst worker to
+#'                                worker w. Pooled over firm-quarters in
+#'                                county c.
 #'
 #' The data variable avg_labor is constructed in cluster.R as
 #'   avg_labor := tot_duration / cust_count / 60
@@ -131,6 +133,10 @@ mean_firm_scales <- function(filt) {
   )
 }
 
+## Per-county column-scaling factors for the Pct. Share block:
+## theta[w,t] * (1 - sbar_c) * Lbar_c * alphabar_{c,t}. Linear in theta, so
+## the recentered value is the gain in market share at the mean firm from a
+## fractional reassignment of task mass.
 share_scale_matrix <- function(theta_mat, scale) {
   if (is.null(scale)) return(NULL)
   col_factor <- scale$L * scale$one_minus_s * scale$alpha
@@ -154,8 +160,13 @@ unit_blocks_for <- function(cnty) {
   ## index minimizes each block.
   worst_worker <- apply(theta, 2, which.min)
 
+  ## WTP cell: (theta - worst)/|rho_c| * Lbar_c * 0.01. Linear in theta so
+  ## recentering then scaling matches scaling then recentering.
+  wtp_scale   <- if (is.null(pooled_scale)) NA_real_ else pooled_scale$L * 0.01
+  dollars_mat <- (theta / abs(rho[[cnty]])) * wtp_scale
+
   list(
-    dollars      = recenter_to_worst_worker(theta / abs(rho[[cnty]])),
+    dollars      = recenter_to_worst_worker(dollars_mat),
     share_pooled = recenter_to_worst_worker(share_scale_matrix(theta, pooled_scale)),
     pooled_scale = pooled_scale,
     worst_worker = worst_worker
@@ -236,15 +247,23 @@ build_stacked_notes <- function() {
     "county-specific baseline."
   )
   units_explain <- paste0(
-    "\\textit{Willingness-to-pay (USD)} divides by $|\\rho_c|$ (county ",
-    "disutility from price); the result is dollars per (hour of labor per ",
-    "customer) per unit of $B[w,t]$. Multiply by \\texttt{avg\\_labor} ",
-    "(\\texttt{tot\\_duration / cust\\_count / 60}, hours per customer) and by ",
-    "the fraction of $B[w,t]$ moved to convert into per-customer consumer WTP. ",
-    "\\textit{Pct.\\ Share (pooled)} scales by ",
-    "$(1-\\bar s_c)\\,\\bar L_c\\,\\bar\\alpha_{c,t}$; row difference $\\approx$ ",
-    "percentage-point change in market share at the mean firm from moving 1\\% ",
-    "of task $t$ mass from the worst worker to worker $w$."
+    "\\textit{Willingness-to-pay (USD)}: cell $= (\\theta[w,t] - ",
+    "\\theta_{\\min,t})\\,/\\,|\\rho_c| \\cdot \\bar L_c \\cdot 0.01$, where ",
+    "$\\theta[w,t]$ is the estimated skill parameter, $\\theta_{\\min,t}$ is ",
+    "the worst worker's value in column $t$, $|\\rho_c|$ is the negative-",
+    "utility coefficient on price, and $\\bar L_c$ is the unweighted mean of ",
+    "hours of labor per customer over firm-quarters in county $c$. Reads as ",
+    "the consumer WTP per customer (USD) at a mean-labor firm in county $c$ ",
+    "from reassigning 1\\% of task $t$ from the worst worker to worker $w$. ",
+    "\\textit{Pct.\\ Share (pooled)}: the same recentered $\\theta$ gain ",
+    "multiplied by $\\bar L_c\\,(1-\\bar s_c)\\,\\bar\\alpha_{c,t}$, where each ",
+    "$\\bar{\\cdot}$ is the unweighted mean over firm-quarters in county $c$ ",
+    "($\\bar L_c$ in hours/customer, $\\bar s_c$ the within-subdivision market ",
+    "share, $\\bar\\alpha_{c,t}$ the share of task $t$ in the firm's ",
+    "appointment mix). A cell value $\\approx$ the percent change in the ",
+    "mean firm's market share from reassigning 1\\% of task $t$ from the ",
+    "worst worker to worker $w$ (i.e., $\\Delta s_j / s_j \\cdot 100$, not ",
+    "$\\Delta s_j \\cdot 100$)."
   )
 
   paste(c(intro, units_explain), collapse = " ")
