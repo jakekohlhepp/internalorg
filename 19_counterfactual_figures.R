@@ -5,8 +5,8 @@
 source("config.R")
 source("utils/counterfactuals_core.R")
 
-figure_innertol <- CONFIG$counterfactual_innertol
-figure_outertol <- CONFIG$counterfactual_outertol
+innertol <- CONFIG$counterfactual_innertol
+outertol <- CONFIG$counterfactual_outertol
 
 counterfactual_context <- load_counterfactual_context(
   extra_packages = c("ggplot2", "ggforce")
@@ -24,79 +24,35 @@ cf_log <- function(msg, level = "INFO") {
   }
 }
 
-spec_log <- function(x) ifelse(x == 0 | is.nan(x), 0, log(x))
+spec_log <- counterfactual_spec_log
 
-task_mix_cols <- paste0("task_mix_", seq_len(CONFIG$n_task_types))
-b_output_cols <- as.vector(vapply(
-  seq_len(CONFIG$n_task_types),
-  function(task_id) paste0("B_", task_id, "_", seq_len(CONFIG$n_worker_types)),
-  character(CONFIG$n_worker_types)
-))
-structure_output_cols <- c("c_endog", "q_endog", "s_index", b_output_cols)
+task_mix_cols <- get_task_mix_cols(CONFIG)
+e_field_names <- counterfactual_e_field_names(CONFIG)
+b_field_names <- counterfactual_b_field_names(CONFIG)
+structure_output_cols <- c("c_endog", "q_endog", "s_index", e_field_names, b_field_names)
 market_input_cols <- c(
   "location_id", "county", "quarter_year", "gamma_invert", "avg_labor",
   task_mix_cols, "qual_exo", "cost_exo", "weight", "cust_price", "CSPOP"
 )
 
-build_market_slice <- function(wage_guess, cnty, qy) {
-  counter_res <- copy(working_data[
-    county == cnty & quarter_year == qy,
-    ..market_input_cols
-  ])
-
+build_market_matrices <- function(wage_guess, cnty) {
   new_theta <- matrix(
     market_parms[grep(paste0(cnty, ":avg_labor:B"), names(market_parms))],
     ncol = CONFIG$n_task_types,
     nrow = CONFIG$n_worker_types,
     byrow = FALSE
   )
-  w_mat <- matrix(
-    wage_guess,
-    ncol = CONFIG$n_task_types,
-    nrow = CONFIG$n_worker_types,
-    byrow = FALSE
-  )
+  w_mat <- matrix(wage_guess, ncol = CONFIG$n_task_types, nrow = CONFIG$n_worker_types, byrow = FALSE)
   new_tild_theta <- w_mat + (rho[cnty])^(-1) * new_theta
-  new_tild_theta <- sweep(
-    new_tild_theta,
-    2,
-    apply(new_tild_theta, 2, min),
-    FUN = "-"
-  )
-
-  list(
-    counter_res = counter_res,
-    new_theta = new_theta,
-    new_tild_theta = new_tild_theta
-  )
+  new_tild_theta <- sweep(new_tild_theta, 2, apply(new_tild_theta, 2, min), FUN = "-")
+  list(new_theta = new_theta, new_tild_theta = new_tild_theta)
 }
 
-structure_summary <- function(B, E, wage_guess, new_theta, gamma, task_totals) {
-  B[abs(B) < CONFIG$B_zero_threshold] <- 0
-  Brel <- t(t(B / E) / task_totals)
-  entropy_term <- sum(B * spec_log(Brel))
-  cendog <- sum(E * wage_guess) + ifelse(is.finite(gamma), gamma * entropy_term, 0)
-  qendog <- sum(B * new_theta)
-
-  out <- c(
-    list(c_endog = cendog, q_endog = qendog, s_index = entropy_term),
-    as.list(as.vector(B))
-  )
-  names(out) <- structure_output_cols
-  out
-}
-
-add_price_outcomes <- function(counter_res, cnty, qy) {
+apply_pricing <- function(counter_res, cnty, qy) {
   counter_res[, Q := q_endog * avg_labor + qual_exo]
   counter_res[, C := pmax(c_endog * avg_labor + cost_exo, 0)]
   counter_res[, newprice := counterfactual_best_response_prices(
-    cust_price,
-    Q,
-    C,
-    weight,
-    rho[cnty],
-    figure_outertol,
-    paste(cnty, qy)
+    cust_price, Q, C, weight, rho[cnty], outertol, paste(cnty, qy)
   )]
   counter_res[, new_share := exp(Q + rho[cnty] * newprice)]
   counter_res[, new_share := new_share / (sum(weight * new_share) + 1)]
@@ -104,70 +60,68 @@ add_price_outcomes <- function(counter_res, cnty, qy) {
 }
 
 get_everything_reorg <- function(wage_guess, cnty, qy) {
-  market <- build_market_slice(wage_guess, cnty, qy)
+  counter_res <- copy(working_data[
+    county == cnty & quarter_year == qy,
+    ..market_input_cols
+  ])
+  mats <- build_market_matrices(wage_guess, cnty)
 
-  solve_org <- Vectorize(function(a1, a2, a3, a4, a5, gamma) {
-    alpha <- c(a1, a2, a3, a4, a5)
-    assignment <- counterfactual_assignment(
-      market$new_tild_theta,
-      alpha,
-      gamma,
-      figure_innertol
-    )
+  counter_res[, (structure_output_cols) := counterfactual_org_outputs(
+      cost_matrix  = mats$new_tild_theta,
+      alpha        = as.numeric(.SD),
+      gamma        = gamma_invert,
+      wage_guess   = wage_guess,
+      new_theta    = mats$new_theta,
+      innertol     = innertol,
+      with_s_index = TRUE,
+      with_b       = TRUE,
+      config       = CONFIG
+    ),
+    by = c("location_id"),
+    .SDcols = task_mix_cols
+  ]
 
-    structure_summary(
-      assignment$B,
-      assignment$E,
-      wage_guess,
-      market$new_theta,
-      gamma,
-      alpha
-    )
-  }, USE.NAMES = FALSE)
-
-  market$counter_res[, (structure_output_cols) := solve_org(
-    task_mix_1,
-    task_mix_2,
-    task_mix_3,
-    task_mix_4,
-    task_mix_5,
-    gamma_invert
-  ), by = c("location_id")]
-
-  add_price_outcomes(market$counter_res, cnty, qy)
+  apply_pricing(counter_res, cnty, qy)
 }
 
 cf_log("Reconstructing baseline firm organization")
 orig_struct <- build_counterfactual_structure_snapshot(get_everything_reorg, initial_wages)
 
 get_everything_realloc <- function(wage_guess, cnty, qy) {
-  market <- build_market_slice(wage_guess, cnty, qy)
+  counter_res <- copy(working_data[
+    county == cnty & quarter_year == qy,
+    ..market_input_cols
+  ])
+  mats <- build_market_matrices(wage_guess, cnty)
+  saved_b_cols <- grep("^B_", colnames(orig_struct[[cnty]]), value = TRUE)
 
-  solve_org <- Vectorize(function(loc, gamma) {
-    B <- matrix(
-      as.numeric(orig_struct[[cnty]][location_id == loc, .SD, .SDcols = b_output_cols]),
+  solve_one <- function(loc, alpha, gamma) {
+    saved_B <- matrix(
+      as.numeric(orig_struct[[cnty]][location_id == loc, .SD, .SDcols = saved_b_cols]),
       byrow = FALSE,
       nrow = CONFIG$n_worker_types,
       ncol = CONFIG$n_task_types
     )
-    E <- rowSums(B)
-
-    structure_summary(
-      B,
-      E,
-      wage_guess,
-      market$new_theta,
-      gamma,
-      colSums(B)
+    counterfactual_org_outputs_from_b(
+      B            = saved_B,
+      alpha        = alpha,
+      gamma        = gamma,
+      wage_guess   = wage_guess,
+      new_theta    = mats$new_theta,
+      with_s_index = TRUE,
+      with_b       = TRUE,
+      config       = CONFIG
     )
-  }, USE.NAMES = FALSE)
+  }
 
-  market$counter_res[, (structure_output_cols) := solve_org(
-    location_id,
-    gamma_invert
-  ), by = c("location_id")]
+  counter_res[, (structure_output_cols) := solve_one(
+      location_id, as.numeric(.SD), gamma_invert
+    ),
+    by = c("location_id"),
+    .SDcols = task_mix_cols
+  ]
 
-  add_price_outcomes(market$counter_res, cnty, qy)
+  apply_pricing(counter_res, cnty, qy)
 }
 
 
