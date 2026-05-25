@@ -15,12 +15,13 @@
 #' same in every unit block.
 #'
 #' Unit blocks emitted (one column block per task, side-by-side):
-#'   1. Dollars (consumer WTP).   (theta[w,t] / |rho_c|) recentered. Reads as
-#'                                $ per (hour of labor per customer) per unit
-#'                                of B[w,t] above the worst worker. Multiply
-#'                                by avg_labor (hours/customer) and by the
-#'                                fraction of B[w,t] you move to convert into
-#'                                dollars per customer of consumer WTP.
+#'   1. Willingness-to-pay (USD). (theta[w,t] / |rho_c|) recentered. |rho_c|
+#'                                is the county disutility from price. Reads
+#'                                as $ per (hour of labor per customer) per
+#'                                unit of B[w,t] above the worst worker.
+#'                                Multiply by avg_labor (hours/customer) and
+#'                                by the fraction of B[w,t] you move to
+#'                                convert into per-customer consumer WTP.
 #'   2. % market share / 1% task  theta[w,t] * (1 - sbar_c) * Lbar_c *
 #'      reassignment.             alphabar_{c,t}, recentered. Reads as the
 #'                                percentage-point change in market share at
@@ -75,10 +76,14 @@ estimation_path     <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.r
 assert_required_files(c(keytask_path, parameters_path, estimation_path))
 
 key_task <- data.table(readRDS(keytask_path))
-## Match 08's task-label shortening so this script's tables read the same as
-## the wages-skills table the manuscript already uses.
-key_task[clust == 5, rep_text_cluster := "Nail/Misc."]
-key_task[clust == 3, rep_text_cluster := "Blowdry/Style/Etc."]
+## Use shorter task labels than 08's wages-skills table so the stacked-county
+## table fits page width. The unit blocks (WTP + Pct.\ Share) repeat the five
+## task columns side-by-side, doubling header width compared to 08.
+key_task[clust == 1, rep_text_cluster := "Haircut"]
+key_task[clust == 2, rep_text_cluster := "Color"]
+key_task[clust == 3, rep_text_cluster := "Style"]
+key_task[clust == 4, rep_text_cluster := "Admin"]
+key_task[clust == 5, rep_text_cluster := "Nail"]
 task_labels <- vapply(seq_len(n_task_types), function(t) {
   lbl <- key_task[task == t, rep_text_cluster]
   if (length(lbl) == 0L) paste0("Task", t) else lbl[[1]]
@@ -183,11 +188,11 @@ for (cnty in counties) {
 
 
 ## ---- one stacked LaTeX table across all counties ---------------------------
-format_block <- function(mat, digits = 3L) {
+format_block <- function(mat, digits = 2L) {
   data.table(formatC(round(mat, digits), digits = digits, format = "f"))
 }
 
-header_block_names <- c("Dollars (USD)", "Pct.\\ Share (pooled)")
+header_block_names <- c("Willingness-to-pay (USD)", "Pct.\\ Share (pooled)")
 
 build_body_for_county <- function(cnty) {
   blocks <- units_by_county[[cnty]]
@@ -218,8 +223,11 @@ for (cnty in counties) {
   row_cursor <- end_row + 1L
 }
 
-## Notes block: general unit definitions + per-county scaling constants and
-## worst-worker map (since the worst-worker baseline is county-specific).
+## Notes block: general unit definitions only. Per-county scaling constants
+## (|rho_c|, Lbar, sbar, alphabar) and the worst-worker map are still emitted
+## to the console summary and the CSV for reference; they're omitted here to
+## keep the printed caption short. Worst workers are identifiable from the
+## table itself as the zero entry in each task column within each county.
 build_stacked_notes <- function() {
   intro <- paste0(
     "Each cell is the parameter for worker $w$ at task $t$ minus the parameter ",
@@ -228,37 +236,18 @@ build_stacked_notes <- function() {
     "county-specific baseline."
   )
   units_explain <- paste0(
-    "\\textit{Dollars (USD)} divides by $|\\rho_c|$ (county marginal utility ",
-    "of income); the result is dollars per (hour of labor per customer) per ",
-    "unit of $B[w,t]$. Multiply by \\texttt{avg\\_labor} ",
+    "\\textit{Willingness-to-pay (USD)} divides by $|\\rho_c|$ (county ",
+    "disutility from price); the result is dollars per (hour of labor per ",
+    "customer) per unit of $B[w,t]$. Multiply by \\texttt{avg\\_labor} ",
     "(\\texttt{tot\\_duration / cust\\_count / 60}, hours per customer) and by ",
     "the fraction of $B[w,t]$ moved to convert into per-customer consumer WTP. ",
     "\\textit{Pct.\\ Share (pooled)} scales by ",
-    "$(1-\\bar s_c)\\,\\bar L_c\\,\\bar\\alpha_{c,t}$ over all county-quarters in ",
-    "the estimation sample; row difference $\\approx$ percentage-point change ",
-    "in market share at the mean firm from moving 1\\% of task $t$ mass from ",
-    "the worst worker to worker $w$."
+    "$(1-\\bar s_c)\\,\\bar L_c\\,\\bar\\alpha_{c,t}$; row difference $\\approx$ ",
+    "percentage-point change in market share at the mean firm from moving 1\\% ",
+    "of task $t$ mass from the worst worker to worker $w$."
   )
-  per_county <- vapply(counties, function(cnty) {
-    blocks <- units_by_county[[cnty]]
-    s      <- blocks$pooled_scale
-    worst_str <- paste(
-      vapply(seq_len(n_task_types), function(t) {
-        sprintf("%s = W%d", task_labels[t], blocks$worst_worker[t])
-      }, character(1)),
-      collapse = "; "
-    )
-    sprintf(
-      paste0("\\textit{%s}: $|\\rho_c| = %.4f$, $n = %d$, $\\bar L = %.3f$ ",
-             "hrs/cust, $1-\\bar s = %.4f$, $\\bar\\alpha = (%s)$; worst ",
-             "worker per task: %s."),
-      county_label(cnty), abs(rho[[cnty]]), s$n_firms, s$L, s$one_minus_s,
-      paste(sprintf("%.3f", s$alpha), collapse = ", "),
-      worst_str
-    )
-  }, character(1))
 
-  paste(c(intro, units_explain, per_county), collapse = " ")
+  paste(c(intro, units_explain), collapse = " ")
 }
 
 ## Manually wrap kable output in a threeparttable + tablenotes block.
