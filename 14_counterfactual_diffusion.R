@@ -18,6 +18,13 @@ initial_guess   <- counterfactual_context$initial_guess
 rho             <- counterfactual_context$rho
 tild_theta      <- counterfactual_context$tild_theta
 
+## Scenario-specific warm-start wages (per county × sol_type) from a prior
+## run. NULL when no warm-start file is present; caller falls back to baseline.
+warm_table <- read_counterfactual_warm_start_table("14_warm_start_wages_diffusion.rds")
+if (!is.null(warm_table)) {
+  message("[14] loaded diffusion warm-start table: ", nrow(warm_table), " rows.")
+}
+
 n_worker_types <- CONFIG$n_worker_types
 n_task_types   <- CONFIG$n_task_types
 task_mix_cols  <- get_task_mix_cols(CONFIG)
@@ -178,13 +185,24 @@ solve_wage_abs <- function(x) sum(abs(solve_wages(x)))
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
     print(paste("*******", cnty, qy, "- shared", "diffusion", "realloc solve"))
-    start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy,
+    baseline_start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy,
                                              paste0("w", seq_len(n_worker_types)),
                                              with = FALSE], use.names = FALSE))
+    warm_realloc <- counterfactual_warm_start_by_sol_type(warm_table, cnty, qy,
+                                                          "realloc", n_worker_types)
+    if (!is.null(warm_realloc)) {
+      message("[14] diffusion realloc ", cnty, " ", qy, ": using warm-start wages.")
+      start <- warm_realloc
+      additional <- list(baseline_start)
+    } else {
+      start <- baseline_start
+      additional <- list()
+    }
     quad_wages <- counterfactual_solve_wage_market(
       solve_reloc, start,
       label = paste("diffusion", "realloc", cnty, qy),
-      target_tol = CONFIG$counterfactual_wage_tol
+      target_tol = CONFIG$counterfactual_wage_tol,
+      additional_starts = additional
     )
     counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "realloc")
   }
@@ -201,10 +219,20 @@ for (cnty in CONFIG$counties) {
       initial_wages[county == cnty & quarter_year == qy,
                     paste0("w", seq_len(n_worker_types)), with = FALSE],
       use.names = FALSE))
+    warm_reorg <- counterfactual_warm_start_by_sol_type(warm_table, cnty, qy,
+                                                        "reorg", n_worker_types)
+    if (!is.null(warm_reorg)) {
+      message("[14] diffusion reorg ", cnty, " ", qy, ": using warm-start wages.")
+      primary <- warm_reorg
+      additional <- list(realloc_start, baseline_start)
+    } else {
+      primary <- realloc_start
+      additional <- list(baseline_start)
+    }
     quad_wages <- counterfactual_solve_wage_market(
-      solve_wages, realloc_start,
+      solve_wages, primary,
       label = paste("diffusion", "reorg", cnty, qy),
-      additional_starts = list(baseline_start),
+      additional_starts = additional,
       target_tol = CONFIG$counterfactual_wage_tol
     )
     counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "reorg")

@@ -16,6 +16,12 @@ market_parms    <- counterfactual_context$market_parms
 total_labor     <- counterfactual_context$total_labor
 total_labor_orig<- counterfactual_context$total_labor_orig
 initial_guess   <- counterfactual_context$initial_guess
+
+## Scenario-specific warm-start wages (per county × sol_type) from a prior run.
+warm_table <- read_counterfactual_warm_start_table("15_warm_start_wages_salestax.rds")
+if (!is.null(warm_table)) {
+  message("[15] loaded sales_tax warm-start table: ", nrow(warm_table), " rows.")
+}
 rho             <- counterfactual_context$rho
 tild_theta      <- counterfactual_context$tild_theta
 
@@ -178,13 +184,24 @@ solve_wage_abs <- function(x) sum(abs(solve_wages(x)))
 for (cnty in CONFIG$counties) {
   for (qy in get_counterfactual_focus_quarter()) {
     print(paste("*******", cnty, qy, "- shared", "sales_tax", "realloc solve"))
-    start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy,
+    baseline_start <- as.numeric(unlist(initial_wages[county == cnty & quarter_year == qy,
                                              paste0("w", seq_len(n_worker_types)),
                                              with = FALSE], use.names = FALSE))
+    warm_realloc <- counterfactual_warm_start_by_sol_type(warm_table, cnty, qy,
+                                                          "realloc", n_worker_types)
+    if (!is.null(warm_realloc)) {
+      message("[15] sales_tax realloc ", cnty, " ", qy, ": using warm-start wages.")
+      start <- warm_realloc
+      additional <- list(baseline_start)
+    } else {
+      start <- baseline_start
+      additional <- list()
+    }
     quad_wages <- counterfactual_solve_wage_market(
       solve_reloc, start,
       label = paste("sales_tax", "realloc", cnty, qy),
-      target_tol = CONFIG$counterfactual_wage_tol
+      target_tol = CONFIG$counterfactual_wage_tol,
+      additional_starts = additional
     )
     counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "realloc")
   }
@@ -210,10 +227,20 @@ for (cnty in CONFIG$counties) {
       baseline_start,
       target_labor = target_labor
     )
+    warm_reorg <- counterfactual_warm_start_by_sol_type(warm_table, cnty, qy,
+                                                        "reorg", n_worker_types)
+    if (!is.null(warm_reorg)) {
+      message("[15] sales_tax reorg ", cnty, " ", qy, ": using warm-start wages.")
+      primary <- warm_reorg
+      additional <- c(list(realloc_start, baseline_start), protected_starts)
+    } else {
+      primary <- realloc_start
+      additional <- c(list(baseline_start), protected_starts)
+    }
     quad_wages <- counterfactual_solve_wage_market(
-      solve_wages, realloc_start,
+      solve_wages, primary,
       label = paste("sales_tax", "reorg", cnty, qy),
-      additional_starts = c(list(baseline_start), protected_starts),
+      additional_starts = additional,
       target_tol = CONFIG$counterfactual_wage_tol
     )
     counterfactual_store_wage_solution(res_wages, quad_wages, cnty, qy, "reorg")

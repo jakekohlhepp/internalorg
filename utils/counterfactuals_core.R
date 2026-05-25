@@ -404,6 +404,33 @@ counterfactual_warm_start_for <- function(warm_table, cnty, qy,
   ))
 }
 
+## Read a scenario-specific warm-start table (one per counterfactual script).
+## File format: data.table keyed by (county, quarter_year, sol_type) with
+## wage columns w1..w{n_worker_types}. Returns NULL if the file doesn't exist
+## yet (cold start). Built by diagnostics/build_counterfactual_warm_starts.R
+## from a prior run's *_wages_*.rds output.
+read_counterfactual_warm_start_table <- function(filename, config = CONFIG) {
+  path <- counterfactual_data_path(filename, config)
+  if (!file.exists(path)) return(NULL)
+  data.table::as.data.table(readRDS(path))
+}
+
+## Sol_type-aware variant of counterfactual_warm_start_for(): filters the
+## warm table by sol_type ("realloc" or "reorg") before doing the
+## (county, quarter_year) lookup. Falls back to the no-sol_type behavior if
+## the warm_table has no sol_type column (legacy / per-baseline use).
+counterfactual_warm_start_by_sol_type <- function(warm_table, cnty, qy, sol_type,
+                                                   n_worker_types = CONFIG$n_worker_types) {
+  if (is.null(warm_table) || nrow(warm_table) == 0L) return(NULL)
+  if ("sol_type" %in% names(warm_table)) {
+    matching <- warm_table[warm_table$sol_type == sol_type]
+  } else {
+    matching <- warm_table
+  }
+  if (nrow(matching) == 0L) return(NULL)
+  counterfactual_warm_start_for(matching, cnty, qy, n_worker_types)
+}
+
 new_counterfactual_wages_grid <- function(quarter_years, include_solution_type = TRUE,
                                           config = CONFIG) {
   if (include_solution_type) {
