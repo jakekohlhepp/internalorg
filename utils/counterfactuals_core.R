@@ -1128,6 +1128,37 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
     }
   }
 
+  ## Last-ditch: hand off to counterfactual_full_5d_retry, which runs the
+  ## extended 9-phase ladder (Newton/dbldog, Broyden/qline, minpack.lm,
+  ## L-BFGS-B SSR, NM SSR, LHS-dfsane, PSO, coord_descent) that 13_'s
+  ## counterfactual_solve_wage_market_bbsolve also escalates to. This is the
+  ## same machinery; the routing mirrors 13_'s flow (BBsolve -> full_5d_retry).
+  ## It is invoked here only when the in-function phases (Broyden+dbldog,
+  ## homotopy, BBsolve, pracma::broyden) have all failed to clear target_tol.
+  ## The full_5d_retry seeds its own best from start_par and only updates on
+  ## improvement, so this can only help, never harm.
+  if (!is.finite(best_result$residual) || best_result$residual > target_tol) {
+    fb_label <- if (is.null(label)) "solve_wage_market full_5d" else paste(label, "full_5d")
+    fb_result <- tryCatch(
+      counterfactual_full_5d_retry(
+        fn          = fn,
+        start_par   = pmax(best_result$par, config$numeric_floor),
+        label       = fb_label,
+        target_tol  = target_tol,
+        config      = config
+      ),
+      error = function(e) {
+        warning("counterfactual_full_5d_retry failed",
+                if (!is.null(label)) paste0(" for ", label), ": ",
+                conditionMessage(e), call. = FALSE)
+        NULL
+      }
+    )
+    if (!is.null(fb_result) && counterfactual_better_result(fb_result, best_result)) {
+      best_result <- fb_result
+    }
+  }
+
   best_result$converged <- is.finite(best_result$residual) &&
     best_result$residual <= target_tol
   best_result$target_tol <- target_tol
@@ -1630,10 +1661,11 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   ## already near zero and only w1 / w5 needed adjustment).
   if (!cleared()) {
     cd_n_sweeps <- as.integer(solver_value(config,
-      "counterfactual_coord_descent_sweeps", 8L))
+      "counterfactual_coord_descent_sweeps", 14L))
     cd_widths   <- solver_value(config,
       "counterfactual_coord_descent_widths",
-      c(2.0, 1.0, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015))
+      c(2.0, 1.0, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015,
+        0.008, 0.004, 0.002, 0.001, 0.0005, 0.00025))
     if (length(cd_widths) < cd_n_sweeps) {
       cd_widths <- rep_len(cd_widths, cd_n_sweeps)
     }
