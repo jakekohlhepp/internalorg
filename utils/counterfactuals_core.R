@@ -1137,7 +1137,14 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
   ## homotopy, BBsolve, pracma::broyden) have all failed to clear target_tol.
   ## The full_5d_retry seeds its own best from start_par and only updates on
   ## improvement, so this can only help, never harm.
-  if (!is.finite(best_result$residual) || best_result$residual > target_tol) {
+  ##
+  ## Gate on use_homotopy=TRUE so the escalation only fires at the top-level
+  ## call. The recursive invocation inside the homotopy block runs with
+  ## use_homotopy=FALSE and on a BLENDED objective (lambda*fn + (1-lambda)*log-
+  ## distance-from-anchor); running full_5d on that would just waste cycles
+  ## solving for roots of a fictitious function.
+  if (use_homotopy &&
+      (!is.finite(best_result$residual) || best_result$residual > target_tol)) {
     fb_label <- if (is.null(label)) "solve_wage_market full_5d" else paste(label, "full_5d")
     fb_result <- tryCatch(
       counterfactual_full_5d_retry(
