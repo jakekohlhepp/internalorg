@@ -159,6 +159,13 @@ flowchart TD
 | 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` (wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`) |
 | 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` (productivity-substitution patterns at the cleared equilibrium wages) |
 
+Wage-stage post-solve escalation for `06_estimation.R` lives in
+`utils/wage_fallbacks.R` (Layers 1-5: per-county polish, slice-Hessian probe,
+multistart, re-PSO from improved joint vector, opt-in joint multistart). On
+solo runs L1-L3 are enabled by default; in bootstrap reps the layers are
+gated by `wage_fallback_skip_in_bootstrap` (see `config.R` and
+`docs/bootstrap_slurm.md`).
+
 ### Counterfactual runner: `run_counterfactuals.R`
 
 Orchestrates the `13_*.R` through `19_*.R` scenario scripts on top of
@@ -186,6 +193,8 @@ full-sample branch rather than the estimation-only branch.
 |--------|------------|-------------|
 | `02_stylized_facts.R` | `mkdata/data/00_tasks_cosmo.rds`, `mkdata/data/01_staff_task_full.rds` | `results/data/02_stylized_facts_data.rds` plus tables and figures |
 | `03_spatial_corr.R` | `results/data/02_stylized_facts_data.rds` | `results/out/figures/03_spatial_cor_*.png`, `03_coverage.png` |
+| `22_skill_parameter_units.R` | `results/data/06_parameters.rds`, `results/data/12_data_for_counterfactuals.rds` | `results/out/tables/22_*.tex` (skill matrix re-expressed in WTP-per-customer and percentage-point market-share units) |
+| `compile_warm_start_wages.R` | most-recent `results/data/counterfactuals/14_*-17_*_wages_*.rds` | `results/data/counterfactuals/13_warm_start_wages_<scenario>.rds` (per-scenario warm starts consumed by 14-17) |
 
 ## Archived Non-Pipeline Scripts
 

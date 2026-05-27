@@ -113,6 +113,30 @@ following:
 The wrapper then searches for the `theta` that drives the mean moments to zero.
 By default it uses the county-by-county mode configured in `config.R`; the
 joint `BBsolve(...)` path remains available through `JMP_WAGE_OPTIMIZER_MODE`.
+The production mode is `JMP_WAGE_OPTIMIZER_MODE=pso` -- a PSO global search
+followed by a Nelder-Mead double polish (cold polish + `polish_seed` polish);
+see [wage_solver_stability.md](wage_solver_stability.md) for the empirical
+justification.
+
+### 4a. Post-solve fallback ladder
+
+After the primary wage solve returns, `06_estimation.R` invokes the layered
+escalation in [utils/wage_fallbacks.R](../utils/wage_fallbacks.R). The
+ladder targets the basin-miss failure modes documented in
+[wage_identification.md](wage_identification.md) and
+[wage_basin_retrospective.md](wage_basin_retrospective.md):
+
+| Layer | Purpose | Default on solo run | Default in bootstrap rep |
+|---|---|---|---|
+| L1 | Per-county post-PSO polish at tight reltol | on | on (as of 2026-05-26) |
+| L2 | Per-county slice-Hessian probe + verdict | on | on |
+| L3 | Per-county multistart for flagged counties | on | on |
+| L4 | Re-PSO from the joint vector improved by L1-L3 | on | on |
+| L5 | Joint multistart (opt-in via `JMP_WAGE_FB_L5_K`) | off | off |
+
+In bootstrap mode the ladder is gated by `wage_fallback_skip_in_bootstrap`
+(see `docs/bootstrap_slurm.md` for the rationale and the 2026-05-26 default
+flip).
 
 ## The Numerical Core
 

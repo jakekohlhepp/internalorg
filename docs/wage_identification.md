@@ -146,3 +146,26 @@ basin found by the perturbation polish at step +10, (b) re-run 06 with
 reports a saddle, repeat. Convergence to a strict local minimum is the
 stopping criterion. This loop has not been automated; it would naturally
 fit as a configurable `min_optim` / `pso` outer-iteration mode.
+
+## Postscript (2026-05-26): the loop is now automated
+
+The manual `seeit_bb` patch / re-run-06 / re-run-06b loop described above
+has been implemented as a layered post-solve escalation inside
+[utils/wage_fallbacks.R](../utils/wage_fallbacks.R), invoked from
+`06_estimation.R` after the primary wage solve:
+
+- **L1** -- per-county post-PSO polish at tight reltol (cheap reset).
+- **L2** -- slice-Hessian probe equivalent to the diagnostic in this doc;
+  classifies each county as strict-min / ridge / saddle.
+- **L3** -- per-county multistart (perturb + polish) for any county that
+  L2 flagged as ridge or saddle. This is the structural equivalent of the
+  step-along-eigenvector retry that found the lower NYC basin.
+- **L4** -- re-PSO from the joint vector improved by L1-L3 (the "wide
+  search after local escape" step).
+- **L5** -- joint multistart, opt-in via `JMP_WAGE_FB_L5_K`.
+
+Defaults: L1-L3 enabled on solo `06_estimation.R` runs; the full ladder
+runs in bootstrap reps as of `ff6f6a0` (2026-05-26) when
+`wage_fallback_skip_in_bootstrap` is overridden to FALSE. See `config.R`
+and [docs/bootstrap_slurm.md](bootstrap_slurm.md) for the bootstrap
+gating.
