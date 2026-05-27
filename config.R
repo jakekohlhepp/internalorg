@@ -358,6 +358,19 @@ CONFIG <- list(
   counterfactual_smoke_mode = tolower(Sys.getenv("JMP_COUNTERFACTUAL_SMOKE_MODE", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
 
+  # full_5d_retry knobs (read via solver_value(); defaults preserve prior
+  # in-code values so unset env vars keep existing behaviour). Override per
+  # run when widening the fallback ladder for hard markets.
+  counterfactual_fallback_multistarts = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_MULTISTARTS", unset = "5")),
+  counterfactual_fallback_perturb_log_sd = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PERTURB_LOG_SD", unset = "0.5")),
+  counterfactual_lhs_dfsane_n_starts = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_LHS_DFSANE_N_STARTS", unset = "8")),
+  counterfactual_lhs_dfsane_halfwidth = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_LHS_DFSANE_HALFWIDTH", unset = "2.5")),
+  counterfactual_lhs_dfsane_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_LHS_DFSANE_MAXIT", unset = "600")),
+  counterfactual_fallback_pso_halfwidth = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PSO_HALFWIDTH", unset = "3")),
+  counterfactual_fallback_pso_particles = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PSO_PARTICLES", unset = "40")),
+  counterfactual_fallback_pso_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PSO_ITER", unset = "100")),
+  counterfactual_coord_descent_sweeps = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_SWEEPS", unset = "14")),
+
   # ---------------------------------------------------------------------------
   # BBsolve warm-restart checkpoint (debugging only)
   # ---------------------------------------------------------------------------
