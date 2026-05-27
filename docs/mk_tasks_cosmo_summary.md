@@ -6,11 +6,10 @@
 
 ## What the Script Does
 
-### 1. Data Loading and Initial Filtering (Lines 1-16)
-- Loads raw transaction data from `compiled_trxns.rds`
+### 1. Data Loading and Initial Filtering
+- Loads raw transaction data via `CONFIG$raw_data_base` from `compiled_trxns.rds`
 - Filters to keep only hair-related businesses (Hair Salon, Barber Shop, Blowouts & Styling)
 - Creates temporal indices (month_num, week_num) for time-series analysis
-- Excludes one outlier salon with anomalous revenue spikes
 
 ### 2. Service Classification Merge (Lines 17-41)
 - Loads a pre-built classification file (`classified_descriptions.rds`) that maps service descriptions to task categories (taskcat1-6)
@@ -55,24 +54,24 @@
                           v
               mkdata/data/00_tasks_cosmo.rds  (OUTPUT)
                           |
-         (copied/moved to mkdata/data/00_tasks_cosmo.rds)
-                          |
                           v
-                   run_all.R
+                       run_all.R
                           |
           +---------------+---------------+
           |               |               |
           v               v               v
-    01_build_data.R    |     02_estimation.R
-          |               |               |
-          v               v               v
-    (clustering)    (preamble.R)    (GMM estimation)
+    01_build_data.R   04_estimation_   06_estimation.R
+          |           sample.R              |
+          v               v                 v
+    (clustering)   (PPI, instruments)  (GMM estimation
+                                       via preamble.R helpers)
 ```
 
 ### Dependency Chain:
 1. **00_mk_tasks_cosmo.R** (this file) - Creates `mkdata/data/00_tasks_cosmo.rds`
 2. **01_build_data.R** - Reads `mkdata/data/00_tasks_cosmo.rds`, builds working dataset with clustering
-3. **02_estimation.R** - Runs GMM estimation using the working dataset
+3. **04_estimation_sample.R** - Enriches the estimation-base branch with PPI, minimum wages, and instruments
+4. **06_estimation.R** - Runs GMM estimation using `mkdata/data/04_estimation_sample.rds`
 
 ### Key Outputs Used Downstream:
 | Column | Used In | Purpose |
@@ -112,19 +111,12 @@
 ```
 **Resolution**: Now uses `CONFIG$raw_data_base` which reads from the `.Renviron` file via `Sys.getenv("raw_data_base")`.
 
-### 2. **Magic Numbers / Hardcoded Row Indices (HIGH)**
-**Lines 34-38:**
-```r
-tasks[service_id=="ec581975-...",(col) :=classified[rep(6,...)...]
-tasks[service_id=="3a15cd78-...",(col) :=classified[rep(20363,...)...]
-tasks[service_id=="001cb7db-...",(col) :=classified[rep(9900,...)...]
-```
-- **Issue**: Uses hardcoded row numbers (6, 20363, 9900) that assume a specific order in `classified`
-- **Impact**: If `classified_descriptions.rds` changes order, wrong classifications will be applied
-- **Recommendation**: Look up by a stable key rather than row number:
-  ```r
-  tasks[service_id=="...", (col) := classified[raw_id == target_id, .SD, .SDcols=col]]
-  ```
+### 2. **Magic Numbers / Hardcoded Row Indices (HIGH)** -- FIXED
+**Resolution**: Replaced with stable-key lookup. Current code uses
+`classified[raw_id == rule$classified_raw_id, ...]` (line 179) and similar
+`classified[raw_id == 2147, ...]` / `classified[raw_id == 9900, ...]` lookups
+(lines 99-100), so reordering `classified_descriptions.rds` no longer changes
+the result.
 
 ### 3. **Inconsistent Output Path (MEDIUM)** -- FIXED (Mar 2026)
 **Resolution**: Script now saves directly to `mkdata/data/00_tasks_cosmo.rds` (line 310). The `analysis_cosmo` CSV export is commented out (lines 316-318).
@@ -138,14 +130,10 @@ stopifnot(nrow(tasks[ is.na(service_performed)])==1)
 - **Impact**: Script will crash if raw data has different number of unmatched services
 - **Recommendation**: Log warning instead of hard stop, or make the assertion more flexible
 
-### 5. **Outlier Removal Without Logging (LOW)**
-**Line 16:**
-```r
-tasks<-tasks[location_id!="dae8355a-cd8f-4ae1-8d26-a839b578f9f9",]
-```
-- **Issue**: Silently excludes one salon; not documented what "ridiculous spike" means
-- **Impact**: Hard to audit or replicate exclusion decision
-- **Recommendation**: Add comment with criteria used (e.g., "revenue > 10x median") and log the exclusion
+### 5. **Outlier Removal Without Logging (LOW)** -- REMOVED
+**Resolution**: The single-salon exclusion is gone from the current script.
+The remaining exclusions (legacy-import detection, zero-revenue firm-quarters)
+are rule-based and documented.
 
 ### 6. **Potential Division by Zero (LOW)**
 **Lines 50-55:**

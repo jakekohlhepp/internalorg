@@ -2,8 +2,23 @@
 
 This document audits the counterfactual wage solver against what we learned
 fixing the 06_estimation wage stage (see [wage_solver_stability.md](wage_solver_stability.md),
-[wage_identification.md](wage_identification.md)). It is a recommendation
-document only — no code changes have been made.
+[wage_identification.md](wage_identification.md)).
+
+## Status of recommendations (2026-05-26)
+
+| # | Recommendation | Status |
+|---|---|---|
+| 1 | Per-result Jacobian/Hessian diagnostic | **open** |
+| 2 | Surface `residual` alongside `converged` in summary tables | **open** |
+| 3 | Wide-search global PSO fallback | **implemented** -- `counterfactual_full_5d_retry` in [utils/counterfactuals_core.R](../utils/counterfactuals_core.R) runs `pso_solve` as part of the L4 escalation when the primary chain leaves the residual above tol. Gated on `use_homotopy=TRUE` (`5545670`); triggered automatically by `solve_wage_market` on non-convergence (`4ffa5aa`). |
+| 4 | Regenerate `13_initial_wages.rds` after re-run 06 | **mechanical, done as needed** -- the counterfactual baseline is rebuilt each time `13_counterfactual_prep.R` runs against the current `06_parameters.rds`. |
+| 5 | Replicate dual-polish PSO inside counterfactual solver | **declined** -- existing multistart + homotopy + BBsolve already cover the same escape paths. |
+| 6 | Hard-stop per-county on non-convergence | **declined** -- counterfactuals continue to log + soft-revert. |
+
+The remaining open items (1) and (2) are still worth doing: a per-result
+Jacobian-condition diagnostic and surfaced `residual` give the same kind of
+identification audit that `06c_wage_identification.R` provides for
+estimation.
 
 ## What the counterfactual solver currently does
 
@@ -93,7 +108,7 @@ will never trigger it.
 
 **4. Re-run the counterfactual baseline (`13_counterfactual_prep.R`) after
 the in-flight 06 finishes.** `initial_wages` (saved as
-`05_00_initial_wages.rds`) was last produced from a different `06_parameters.rds`.
+`13_initial_wages.rds`) was last produced from a different `06_parameters.rds`.
 The patched seeit_bb / new estimation will give different `initial_guess`
 values; the counterfactual baseline should be regenerated so all four
 counterfactual scripts (14–17) start from the new equilibrium. This is a
@@ -124,7 +139,7 @@ If the user wants implementation, the natural sequence is:
    in 18_counterfactual_summary.R).
 3. Implement recommendation **(2)** — surface `residual` in summary tables
    alongside `converged`.
-4. Re-run **(4)** — regenerate `05_00_initial_wages.rds` and the four
+4. Re-run **(4)** — regenerate `13_initial_wages.rds` and the four
    counterfactual scripts.
 5. Optionally implement **(3)** if the diagnostic from (1) flags any
    county-quarters as weakly identified post-rerun.

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-05-18
+Last updated: 2026-05-26
 
 ## Current State
 
@@ -69,6 +69,37 @@ scenarios were retired during this consolidation (see
 `45b23aa Remove obsolete counterfactual scripts`).
 
 ## Recent Pipeline Changes (since 2026-04-23)
+
+### 2026-05-25/26 updates
+
+- **Wage-fallback ladder** (`utils/wage_fallbacks.R`) -- new 5-layer post-solve
+  escalation invoked after the primary wage solve in `06_estimation.R`:
+  L1 per-county polish, L2 slice-Hessian probe, L3 per-county multistart,
+  L4 re-PSO from improved joint vector, L5 (opt-in) joint multistart.
+  See `docs/wage_identification.md` postscript and
+  `docs/02_estimation_walkthrough.md` section 4a.
+- **L1-L4 enabled in bootstrap by default** (`ff6f6a0`, 2026-05-26).
+  Bootstrap reps now run the same ladder as solo `06_estimation.R`;
+  override via `JMP_WAGE_FALLBACK_SKIP_IN_BOOTSTRAP=TRUE`.
+- **Counterfactual `full_5d_retry`** -- `counterfactual_full_5d_retry`
+  (PSO + polish) now triggers automatically on non-convergence of
+  `solve_wage_market` (`4ffa5aa`), gated on `use_homotopy=TRUE` (`5545670`).
+- **Counterfactual solver knobs** -- nine env-var-tunable knobs added to
+  `config.R` for the L4 fallback (multistart count, perturbation SD, LHS/dfsane
+  parameters, PSO halfwidth/particles/iter, coord-descent sweeps).
+- **Bootstrap SLURM spec** -- walltime bumped to 3 days (`%200` concurrency,
+  `--mem=4g`), see `docs/bootstrap_slurm.md`. Job `52526344` is the current
+  1100-rep array.
+- **`22_skill_parameter_units.R`** added (standalone) -- re-presents the
+  estimated skill matrix in willingness-to-pay (USD/customer at 1% reassign)
+  and percentage-point market-share units. Not in `run_all.R`; run manually
+  after estimation.
+- **`compile_warm_start_wages.R`** -- compiles per-scenario warm-start wages
+  from the most recent `14_*-17_*_wages_*.rds` outputs into
+  `counterfactuals/13_warm_start_wages_<scenario>.rds`, consumed by 14-17.
+- **Logging fix** (`ac08310`, 2026-05-27) -- `CONFIG$log_dir` resolved to an
+  absolute path so subscripts that `setwd()` no longer create stray `logs/`
+  subdirectories.
 
 ### Estimation
 - Demand IV switched from the Hausman instrument to the `dye_instrument`
@@ -151,6 +182,9 @@ scenarios were retired during this consolidation (see
 14. `21_substitution_prod.R` (productivity-substitution patterns at the
     cleared equilibrium wages)
 
+`22_skill_parameter_units.R` is run **standalone** after the main pipeline;
+it is not in `run_all.R`.
+
 ### Counterfactual runner
 
 `run_counterfactuals.R` manages:
@@ -212,6 +246,10 @@ The following scripts remain standalone on purpose:
   diagnostics, see `b392cef`)
 - `run_counterfactual_check.R` (single-call smoke through the counterfactual
   loop)
+- `22_skill_parameter_units.R` (skill matrix in interpretable units; produces
+  `results/out/tables/22_*.tex`)
+- `compile_warm_start_wages.R` (assembles per-scenario warm starts from the
+  most recent 14-17 wage outputs into `counterfactuals/13_warm_start_wages_*.rds`)
 
 They stay outside `run_all.R` because they operate on the descriptive,
 full-sample branch or produce exploratory diagnostic output.
@@ -223,13 +261,17 @@ Use these as the current source of truth:
 - `README.md`
 - `docs/README.md`
 - `docs/prep_data_pipeline.md`
-- `docs/data_dependencies.md`
-- `docs/pipeline_schematic.html`
+- `docs/data_dependencies.md` (includes the current mermaid diagram)
 - `docs/mk_tasks_cosmo_summary.md`
 - `docs/legacy_import_data_issue.md`
 - `docs/02_estimation_walkthrough.md`
 - `docs/worker_type_clustering.md`
 - `docs/bootstrap_slurm.md`
+- `docs/wage_identification.md`, `docs/wage_solver_stability.md`,
+  `docs/wage_basin_retrospective.md` (wage-stage retrospectives, still
+  cited by live code)
+- `docs/counterfactual_solver_assessment.md` (status table tracks open
+  vs. implemented recommendations)
 
 ## Bootstrap History
 
@@ -246,4 +288,10 @@ remains as the shared tolerance settings.
 - add the post-hoc bootstrap filter in `08_display_estimates.R` flagged
   in `docs/bootstrap_slurm.md` (drop reps whose NYC ssq is in the wrong
   basin or whose `status` / `wage_convergence` is non-zero)
+- monitor the 1100-rep bootstrap array (`52526344`) for wage-nonconvergence
+  rate; preliminary SEs from the first 10 reps show ~30% wage-nonconverged
+  status (see `diagnostics/smoke_bootstrap_se_summary.R`)
+- implement the open counterfactual recommendations in
+  `docs/counterfactual_solver_assessment.md` (Jacobian-condition diagnostic
+  and `residual` surfaced alongside `converged` in summary tables)
 - keep the active docs aligned with the runner outputs and script numbering
