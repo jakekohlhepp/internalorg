@@ -21,14 +21,57 @@ county_display_name <- function(cnty) {
 ## (mean s-index and labor productivity per county x sol_type) and (ii) a
 ## per-worker-type productivity summary (one column per worker type after
 ## dcast). Used identically for the baseline and each counterfactual.
-summarize_prod_panel <- function(prod_dt, version_label) {
+##
+## native_fraction_by_county: optional data.table with columns (county,
+##   worker_type, native_fraction). When supplied, labor_prod is computed
+##   on a NATIVE-LABOR-ONLY basis: each firm's labor weight is scaled by
+##   native_share_firm = Σ_k native_fraction[county,k] × E_k_firm. s_avg
+##   continues to use the full (immigrant-inclusive) multiplier so it
+##   remains a structural firm-mix statistic.
+summarize_prod_panel <- function(prod_dt, version_label,
+                                  native_fraction_by_county = NULL) {
+  ## Compute per-firm native_share (immigration: weighted by E_k & per-county
+  ## native fraction; others: 1).
+  ## The cf scripts wrap get_prod() output with an outer data.table(county=...,
+  ## quarter_year=..., sol_type=..., get_prod_output), which produces duplicate
+  ## column names. melt() quietly handles this via id.vars; merge() does not.
+  ## Drop the duplicates before any merge.
+  prod_local <- copy(prod_dt)
+  prod_local <- prod_local[, !duplicated(names(prod_local)), with = FALSE]
+  if (!is.null(native_fraction_by_county)) {
+    nf_wide <- dcast(native_fraction_by_county, county ~ worker_type,
+                     value.var = "native_fraction")
+    setnames(nf_wide,
+             old = as.character(seq_len(n_worker_types)),
+             new = paste0("nf_", seq_len(n_worker_types)))
+    prod_local <- merge(prod_local, nf_wide, by = "county", all.x = TRUE)
+    for (k in seq_len(n_worker_types)) {
+      nf_col <- paste0("nf_", k)
+      prod_local[is.na(get(nf_col)), (nf_col) := 1]
+    }
+    prod_local[, native_share := Reduce(`+`, lapply(seq_len(n_worker_types),
+      function(k) get(paste0("E_", k)) * get(paste0("nf_", k))))]
+  } else {
+    prod_local[, native_share := 1]
+  }
+
+  ## County-aggregate revenue-per-labor under proportional allocation.
+  ## numerator   = Σ_firms newprice  × CSPOP × new_share × weight × native_share
+  ## denominator = Σ_firms avg_labor × CSPOP × new_share × weight × native_share
+  ## When native_share = 1 (non-immigration), this is plain Σ revenue / Σ labor.
+  rev_per_labor_summary <- prod_local[, .(
+    rev_per_labor = sum(newprice  * CSPOP * new_share * weight * native_share) /
+                    sum(avg_labor * CSPOP * new_share * weight * native_share)
+  ), by = c("county", "sol_type")]
+
   panel <- melt(
-    prod_dt,
+    prod_local,
     id.vars = c("location_id", "avg_labor", "new_share", "CSPOP", "county",
-                "s_index", "sol_type", "weight", e_field_names),
+                "s_index", "sol_type", "weight", "native_share", e_field_names),
     measure.vars = patterns("^B_[0-9]")
   )
   panel[, multiplier := avg_labor * CSPOP * new_share * weight]
+  panel[, native_multiplier := multiplier * native_share]
   panel[, worker_type := str_replace(variable, "^B_[0-9]_", "")]
   panel[, type_E := NA_real_]
   for (idx in seq_len(n_worker_types)) {
@@ -36,11 +79,14 @@ summarize_prod_panel <- function(prod_dt, version_label) {
   }
 
   firm_summary <- panel[, .(tot_prod = sum(value)),
-                        by = c("s_index", "multiplier", "location_id", "county", "sol_type")]
+                        by = c("s_index", "multiplier", "native_multiplier",
+                               "location_id", "county", "sol_type")]
   firm_summary <- firm_summary[, .(
     s_avg      = weighted.mean(s_index, multiplier),
-    labor_prod = sum(tot_prod * multiplier) / sum(multiplier)
+    labor_prod = sum(tot_prod * native_multiplier) / sum(native_multiplier)
   ), by = c("county", "sol_type")]
+  firm_summary <- merge(firm_summary, rev_per_labor_summary,
+                        by = c("county", "sol_type"))
   firm_summary[, version := version_label]
 
   type_summary <- panel[, .(
@@ -66,6 +112,35 @@ panel_specs <- list(
 )
 cf_names <- c("salestax", "diffusion", "immigration", "merger")
 
+## Per-(county, worker_type) native fraction for the immigration scenario.
+## Mirrors the add_immigrants_to_target() shock in 16_counterfactual_immigration.R:
+##   delta_c = 0.05 × Σ_k baseline_total_labor_c[k]
+##   native_fraction_c[k*] = baseline[k*] / (baseline[k*] + delta_c); 1 elsewhere
+## Target type mapping: LA→1, NYC→2, Cook→4.
+build_immigration_native_fraction <- function() {
+  tl <- as.data.table(readRDS(counterfactual_data_path("13_total_labor.rds")))
+  tot_cols <- counterfactual_tot_labor_field_names(CONFIG)
+  fq <- get_counterfactual_focus_quarter()
+  stopifnot(length(fq) == 1L)
+  tl <- tl[quarter_year == fq, ]
+  county_target <- list("6037" = 1L, "36061" = 2L, "17031" = 4L)
+  rows <- list()
+  for (cnty in names(county_target)) {
+    row <- tl[county == cnty, ]
+    stopifnot(nrow(row) == 1L)
+    base <- as.numeric(row[1, .SD, .SDcols = tot_cols])
+    k_star <- county_target[[cnty]]
+    delta_c <- 0.05 * sum(base)
+    nf <- rep(1, length(base))
+    nf[k_star] <- base[k_star] / (base[k_star] + delta_c)
+    rows[[cnty]] <- data.table(county = cnty,
+                                worker_type = as.character(seq_along(nf)),
+                                native_fraction = nf)
+  }
+  rbindlist(rows)
+}
+immigration_native_fraction <- build_immigration_native_fraction()
+
 panels <- lapply(panel_specs, function(spec) {
   prod_legacy <- if (is.null(spec$prod_legacy)) spec$prod_rds else spec$prod_legacy
   wages <- read_counterfactual_rds(
@@ -76,8 +151,11 @@ panels <- lapply(panel_specs, function(spec) {
     spec$prod_rds, legacy_filenames = prod_legacy,
     description = paste(spec$version, "counterfactual productivity panel")
   )
+  nf <- if (identical(spec$version, "Immigration")) immigration_native_fraction
+        else NULL
   c(list(version = spec$version, wages = wages),
-    summarize_prod_panel(prod_panel, spec$version))
+    summarize_prod_panel(prod_panel, spec$version,
+                         native_fraction_by_county = nf))
 })
 
 wage_vect_initial <- panels$initial$wages
@@ -88,31 +166,37 @@ firm_initial      <- copy(panels$initial$firm)
 firm_initial[, version := NULL]
 
 
-## ===== firm-level summary table (Reallocation/Reorganization x s-index/Prod.) =====
+## ===== firm-level summary table (Reallocation/Reorganization x s-index/Prod./Rev. per Labor) =====
 tot_table <- rbindlist(lapply(panels[cf_names], `[[`, "firm"))
-colnames(firm_initial) <- c("county", "sol_type", "initial_s", "initial_prod")
+colnames(firm_initial) <- c("county", "sol_type", "initial_s",
+                            "initial_prod", "initial_rev_per_labor")
 
 tot_table <- merge(tot_table, firm_initial[, -"sol_type"], by = "county")
-tot_table[, pct_sindex := (s_avg - initial_s) / initial_s]
-tot_table[, pct_prod   := (labor_prod - initial_prod) / initial_prod]
+tot_table[, pct_sindex        := (s_avg - initial_s) / initial_s]
+tot_table[, pct_prod          := (labor_prod - initial_prod) / initial_prod]
+tot_table[, pct_rev_per_labor := (rev_per_labor - initial_rev_per_labor) /
+                                  initial_rev_per_labor]
 
 tot_table <- dcast(tot_table, version + county ~ sol_type,
-                   value.var = c("pct_sindex", "pct_prod"))
-setcolorder(tot_table, c("version", "county", "pct_sindex_realloc", "pct_prod_realloc"))
+                   value.var = c("pct_sindex", "pct_prod", "pct_rev_per_labor"))
+setcolorder(tot_table,
+            c("version", "county",
+              "pct_sindex_realloc", "pct_prod_realloc", "pct_rev_per_labor_realloc",
+              "pct_sindex_reorg",   "pct_prod_reorg",   "pct_rev_per_labor_reorg"))
 cols <- colnames(tot_table)[-c(1, 2)]
 tot_table[, (cols) := lapply(.SD, function(x) as.character(format(round(x, 3), nsmall = 3))),
           .SDcols = cols]
 
 tot_table[, county_name := county_display_name(county)]
 setcolorder(tot_table, "county_name")
-colnames(tot_table)[-c(1, 2, 3)] <- c("S-Index Change", "Prod. Change",
-                                      "S-Index Change", "Prod. Change")
+colnames(tot_table)[-c(1, 2, 3)] <- c("S-Index Change", "Prod. Change", "Rev/Labor Change",
+                                      "S-Index Change", "Prod. Change", "Rev/Labor Change")
 setnames(tot_table, "county_name", "County")
 setnames(tot_table, "version", "Counterfactual")
 
 output <- kable(tot_table[, -"county"], "latex", align = "c", booktabs = TRUE,
                 linesep = c(""), escape = F, caption = NA, label = NA)
-output <- add_header_above(output, c(" ", " ", "Reallocation" = 2, "Reorganization" = 2))
+output <- add_header_above(output, c(" ", " ", "Reallocation" = 3, "Reorganization" = 3))
 write_counterfactual_text(
   output,
   "18_tot_counterfactuals.tex",
