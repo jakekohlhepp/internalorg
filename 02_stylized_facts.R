@@ -404,8 +404,14 @@ cat(sprintf("s_index P90/P10 ratio: %.3f\n",
             as.numeric(quantile(firm_quarter$s_index, 0.9)/quantile(firm_quarter$s_index, 0.1))))
 cat(sprintf("s_index P75/P25 ratio (manuscript reports ~12.85): %.3f\n",
             as.numeric(quantile(firm_quarter$s_index, 0.75)/quantile(firm_quarter$s_index, 0.25))))
+cat(sprintf("s_index raw SD: %.4f\n", sd(firm_quarter$s_index)))
 cat(sprintf("s_index residual SD share after county+quarter FE w/ task mix: %.4f\n",
             sd(resid(feols(s_index~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)))
+## Manuscript spec: residualize s_index on establishment size + county + quarter FE.
+cat(sprintf("s_index residual SD after emps+county+quarter FE (manuscript spec): %.4f\n",
+            sd(resid(feols(s_index~1|emps+county+quarter_year, firm_quarter)))))
+cat(sprintf("s_index residual SD share after emps+county+quarter FE (manuscript spec): %.4f\n",
+            sd(resid(feols(s_index~1|emps+county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)))
 
 cat("\n===== FACT 1B: REVENUE PER MINUTE DISPERSION (firm-quarter; Syverson comparison) =====\n")
 cat(sprintf("rev_labor P75/P25 ratio: %.3f\n",
