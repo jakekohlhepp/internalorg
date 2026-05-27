@@ -3,10 +3,10 @@
 #' =============================================================================
 #' Produces the stylized-facts evidence reported in the paper: dispersion in
 #' specialization and productivity, productivity-specialization correlations,
-#' management practices, service description quality, customer return rates,
-#' and the ACS income cross-check. This script runs on the FULL national
-#' sample, not the three-county estimation sample -- stylized facts are
-#' intended to describe the industry broadly.
+#' management practices, service description quality, and customer return
+#' rates. This script runs on the FULL national sample, not the three-county
+#' estimation sample -- stylized facts are intended to describe the industry
+#' broadly.
 #'
 #' Pipeline:
 #'   1. Load cleaned transactions from 00_tasks_cosmo.rds.
@@ -22,7 +22,6 @@
 #'   - mkdata/data/00_tasks_cosmo.rds        (cleaned transactions)
 #'   - mkdata/data/01_staff_task_full.rds    (pre-filter firm-quarter panel)
 #'   - CONFIG$raw_data_base/<sub-paths>      (chair renters, tip pulls, products)
-#'   - ACS (tidycensus) for the zip-level income regression
 #'
 #' Outputs:
 #'   - results/data/02_stylized_facts_data.rds  (firm-quarter panel used by 03)
@@ -55,7 +54,6 @@ library('pander')
 library('stargazer')
 library('showtext')
 library('mediation')
-library('tidycensus')
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -337,7 +335,8 @@ firm_data[,uses_prebook:=is.finite(first_prebook)]
 ## display number of single establishments vs multi.
 firm_quarter<-merge(firm_quarter, unique(working[,c("business_id", "location_id")]), by="location_id", all.x=TRUE)
 firm_quarter[, locs_bizid:=uniqueN(location_id), by="business_id"]
-print(uniqueN(firm_quarter[locs_bizid==1,"business_id"])/uniqueN(firm_quarter[,"business_id"]))
+cat(sprintf("\nShare of business_ids that are single-establishment: %.4f\n",
+            as.numeric(uniqueN(firm_quarter[locs_bizid==1,"business_id"])/uniqueN(firm_quarter[,"business_id"]))))
 
 #' -----------------------------------------------------------------------------
 #' PRODUCT DATA AND DISCOUNT SOPHISTICATION
@@ -394,45 +393,49 @@ stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/02_summary_
 s_index_breaks<-seq(from=min(firm_quarter$s_index), to=max(firm_quarter$s_index), by=0.05)
 # use equal spacing now.
 
-## syverson style facts: firm-quarter 
+## syverson style facts: firm-quarter
 res_fe<-feols(s_index~1|quarter_year+location_id, data=firm_quarter)
-quantile(firm_quarter$s_index, c(0.1, 0.9))
-quantile(firm_quarter$s_index, c(0.2, 0.8))
 
-quantile(firm_quarter$s_index, c(0.05, 0.95))
-quantile(firm_quarter$s_index, c(0.9))/quantile(firm_quarter$s_index, c(0.1))
-quantile(firm_quarter$s_index, c(0.75))/quantile(firm_quarter$s_index, c(0.25))
-# 12.85 times more specialized.
-sd(resid(feols(s_index~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)
+cat("\n===== FACT 1A: S-INDEX DISPERSION (firm-quarter) =====\n")
+cat("s_index P10, P90:\n"); print(quantile(firm_quarter$s_index, c(0.1, 0.9)))
+cat("s_index P20, P80:\n"); print(quantile(firm_quarter$s_index, c(0.2, 0.8)))
+cat("s_index P5, P95:\n"); print(quantile(firm_quarter$s_index, c(0.05, 0.95)))
+cat(sprintf("s_index P90/P10 ratio: %.3f\n",
+            as.numeric(quantile(firm_quarter$s_index, 0.9)/quantile(firm_quarter$s_index, 0.1))))
+cat(sprintf("s_index P75/P25 ratio (manuscript reports ~12.85): %.3f\n",
+            as.numeric(quantile(firm_quarter$s_index, 0.75)/quantile(firm_quarter$s_index, 0.25))))
+cat(sprintf("s_index residual SD share after county+quarter FE w/ task mix: %.4f\n",
+            sd(resid(feols(s_index~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)))
 
+cat("\n===== FACT 1B: REVENUE PER MINUTE DISPERSION (firm-quarter; Syverson comparison) =====\n")
+cat(sprintf("rev_labor P75/P25 ratio: %.3f\n",
+            as.numeric(quantile(firm_quarter$rev_labor, 0.75)/quantile(firm_quarter$rev_labor, 0.25))))
+cat(sprintf("rev_labor P90/P10 ratio: %.3f\n",
+            as.numeric(quantile(firm_quarter$rev_labor, 0.9)/quantile(firm_quarter$rev_labor, 0.1))))
+cat(sprintf("rev_labor P95/P5 ratio:  %.3f\n",
+            as.numeric(quantile(firm_quarter$rev_labor, 0.95)/quantile(firm_quarter$rev_labor, 0.05))))
+cat(sprintf("rev_labor residual SD share after county+quarter+emps FE w/ task mix: %.4f\n",
+            sd(resid(feols(rev_labor~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year+emps, firm_quarter)))/sd(firm_quarter$rev_labor)))
 
-
-# strikingly similar to syverson.
-quantile(firm_quarter$rev_labor, c(0.75))/quantile(firm_quarter$rev_labor, c(0.25))
-quantile(firm_quarter$rev_labor, c(0.9))/quantile(firm_quarter$rev_labor, c(0.1))
-quantile(firm_quarter$rev_labor, c(0.95))/quantile(firm_quarter$rev_labor, c(0.05))
-
-sd(resid(feols(rev_labor~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year+emps, firm_quarter)))/sd(firm_quarter$rev_labor)
-
+cat("\n===== FACT 1C: FIRM-LEVEL S-INDEX DISPERSION (avg over quarters) =====\n")
 temp<-firm_quarter[, .(avg_sindex=mean(s_index)), by=location_id]
+cat("avg_sindex P10, P90:\n"); print(quantile(temp$avg_sindex, c(0.1, 0.9)))
+cat("avg_sindex P20, P80:\n"); print(quantile(temp$avg_sindex, c(0.2, 0.8)))
+cat("avg_sindex P5, P95:\n"); print(quantile(temp$avg_sindex, c(0.05, 0.95)))
+cat(sprintf("avg_sindex P90/P10 ratio: %.3f\n",
+            as.numeric(quantile(temp$avg_sindex, 0.9)/quantile(temp$avg_sindex, 0.1))))
+cat(sprintf("avg_sindex P75/P25 ratio (manuscript reports ~10x at firm level): %.3f\n",
+            as.numeric(quantile(temp$avg_sindex, 0.75)/quantile(temp$avg_sindex, 0.25))))
 
-quantile(temp$avg_sindex, c(0.1, 0.9))
-quantile(temp$avg_sindex, c(0.2, 0.8))
-
-quantile(temp$avg_sindex, c(0.05, 0.95))
-quantile(temp$avg_sindex, c(0.9))/quantile(temp$avg_sindex, c(0.1))
-quantile(temp$avg_sindex, c(0.75))/quantile(temp$avg_sindex, c(0.25))
-
-
-
+cat("\n===== FACT 1D: FIRM-LEVEL REV-PER-MINUTE DISPERSION (avg over quarters) =====\n")
 temp<-firm_quarter[, .(avg_rev_labor=mean(rev_labor)), by=location_id]
-
-quantile(temp$avg_rev_labor, c(0.1, 0.9))
-quantile(temp$avg_rev_labor, c(0.2, 0.8))
-
-quantile(temp$avg_rev_labor, c(0.05, 0.95))
-quantile(temp$avg_rev_labor, c(0.9))/quantile(temp$avg_rev_labor, c(0.1))
-quantile(temp$avg_rev_labor, c(0.75))/quantile(temp$avg_rev_labor, c(0.25))
+cat("avg_rev_labor P10, P90:\n"); print(quantile(temp$avg_rev_labor, c(0.1, 0.9)))
+cat("avg_rev_labor P20, P80:\n"); print(quantile(temp$avg_rev_labor, c(0.2, 0.8)))
+cat("avg_rev_labor P5, P95:\n"); print(quantile(temp$avg_rev_labor, c(0.05, 0.95)))
+cat(sprintf("avg_rev_labor P90/P10 ratio: %.3f\n",
+            as.numeric(quantile(temp$avg_rev_labor, 0.9)/quantile(temp$avg_rev_labor, 0.1))))
+cat(sprintf("avg_rev_labor P75/P25 ratio: %.3f\n",
+            as.numeric(quantile(temp$avg_rev_labor, 0.75)/quantile(temp$avg_rev_labor, 0.25))))
 
 temp<-firm_quarter[, .(sindex_p25=quantile(s_index, 0.25),
                        sindex_p75=quantile(s_index, 0.75),
@@ -451,8 +454,14 @@ stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max
 stargazer(firm_stats,summary.stat=c("N","mean","min","p25", "median", "p75","max"), header=FALSE,digits=2, out='results/out/tables/02_dispersion.tex',single.row = TRUE)
 
 # the most productive quartile of firms are more than twice as specialized
-summary(firm_quarter[rev_labor<=quantile(firm_quarter$rev_labor, 0.25)]$s_index)
-summary(firm_quarter[rev_labor>=quantile(firm_quarter$rev_labor, 0.75)]$s_index)
+cat("\n===== FACT 2: S-INDEX BY REVENUE-PER-MINUTE QUARTILE (manuscript: top quartile >2x as specialized) =====\n")
+cat("s_index distribution among bottom rev_labor quartile (Q1):\n")
+print(summary(firm_quarter[rev_labor<=quantile(firm_quarter$rev_labor, 0.25)]$s_index))
+cat("s_index distribution among top rev_labor quartile (Q4):\n")
+print(summary(firm_quarter[rev_labor>=quantile(firm_quarter$rev_labor, 0.75)]$s_index))
+cat(sprintf("Ratio of top/bottom mean s_index: %.3f\n",
+            mean(firm_quarter[rev_labor>=quantile(firm_quarter$rev_labor, 0.75)]$s_index) /
+            mean(firm_quarter[rev_labor<=quantile(firm_quarter$rev_labor, 0.25)]$s_index)))
 
 ##histogram
 ggplot(firm_quarter, aes(x=s_index)) +
@@ -520,10 +529,19 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   ggsave("results/out/figures/02_sindex_prod_byemps.png", width=4, height=4, units="in")
   
   
-  # the most specialized quartile of firms on averagegenerate $1.08 more revenue per minute
+  # the most specialized quartile of firms on average generate $1.08 more revenue per minute
   # than least specialized quartile. this is 68% more productive.
-  summary(firm_quarter[s_index<=quantile(firm_quarter$s_index, 0.25)]$rev_labor)
-  summary(firm_quarter[s_index>=quantile(firm_quarter$s_index, 0.75)]$rev_labor)
+  cat("\n===== FACT 2B: REVENUE-PER-MINUTE BY S-INDEX QUARTILE (manuscript: top quartile ~$1.08 higher, ~68% more productive) =====\n")
+  cat("rev_labor distribution among bottom s_index quartile (Q1):\n")
+  print(summary(firm_quarter[s_index<=quantile(firm_quarter$s_index, 0.25)]$rev_labor))
+  cat("rev_labor distribution among top s_index quartile (Q4):\n")
+  print(summary(firm_quarter[s_index>=quantile(firm_quarter$s_index, 0.75)]$rev_labor))
+  cat(sprintf("Top - bottom mean rev_labor (dollars per minute): %.3f\n",
+              mean(firm_quarter[s_index>=quantile(firm_quarter$s_index, 0.75)]$rev_labor) -
+              mean(firm_quarter[s_index<=quantile(firm_quarter$s_index, 0.25)]$rev_labor)))
+  cat(sprintf("Top/bottom mean rev_labor ratio (percent more productive): %.1f%%\n",
+              100*(mean(firm_quarter[s_index>=quantile(firm_quarter$s_index, 0.75)]$rev_labor) /
+                   mean(firm_quarter[s_index<=quantile(firm_quarter$s_index, 0.25)]$rev_labor) - 1)))
   
   
 #' -----------------------------------------------------------------------------
@@ -549,23 +567,28 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
 #' -----------------------------------------------------------------------------
 #' UNCORRELATED VARIANCE SHARE
 #' -----------------------------------------------------------------------------
-    
-    ## r2 for the two
-    print(r2(feols(s_index~1|emps, data=firm_quarter))['r2'])
-    
+
+    cat("\n===== FACT 3: UNCORRELATED VARIANCE SHARE OF S-INDEX vs REV-PER-MINUTE =====\n")
+    cat(sprintf("R^2 of s_index ~ emps FE (share of s_index explained by firm size): %.4f\n",
+                as.numeric(r2(feols(s_index~1|emps, data=firm_quarter))['r2'])))
+
     uvs<-(r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2']-r2(feols(std_rev_labor~1|emps, data=firm_quarter))['r2'])
-    print(uvs/r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2'])
-  
+    cat(sprintf("UVS share (s_index contribution / total R^2 with s_index+emps FE): %.4f\n",
+                as.numeric(uvs/r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2'])))
+
     ## partial r2
-    print(uvs/(1-r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2']))
-    
+    cat(sprintf("Partial R^2 of s_index (uvs / (1 - R^2 of s_index+emps FE)): %.4f\n",
+                as.numeric(uvs/(1-r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2']))))
+
     ## uvs for size.
     uvs_size<-(r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2']-r2(feols(std_rev_labor~s_index, data=firm_quarter))['r2'])
-    print(uvs_size/r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2'])
-    
+    cat(sprintf("Firm-size UVS share (emps contribution beyond s_index alone): %.4f\n",
+                as.numeric(uvs_size/r2(feols(std_rev_labor~std_sindex|emps, data=firm_quarter))['r2'])))
+
     ## most aggressive uvs
     uvs_aggr<-(r2(feols(std_rev_labor~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2']-r2(feols(std_rev_labor~task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2'])
-    print(uvs_aggr/r2(feols(std_rev_labor~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2'])
+    cat(sprintf("Aggressive UVS share (s_index beyond task_mix + county + emps FE): %.4f\n",
+                as.numeric(uvs_aggr/r2(feols(std_rev_labor~std_sindex+task_mix_2+task_mix_3+task_mix_4+task_mix_5 | county+emps, data=firm_quarter))['r2'])))
     
 #' -----------------------------------------------------------------------------
 #' FACT 4: MANAGEMENT PRACTICES AND TEAMWORK
@@ -658,39 +681,11 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                      boot=TRUE, sims=500)
   summary(results)
   
-  summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$s_index)
-  
-  summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$staffreq_rate)
-  
-
-#' -----------------------------------------------------------------------------
-#' TESTABLE IMPLICATION: INCOME AND SPECIALIZATION
-#' -----------------------------------------------------------------------------
-#' Fetches ACS zip-level median household income (B19013_001) for 2011-2021
-#' via tidycensus and cross-tabulates with s_index. Results are printed to
-#' console only; no output file is produced.
-  firm_quarter[, year:=floor(quarter_year)]
-  all_years<-data.table()
-  for (y in 2011:2021){
-    zcta_income = get_acs(
-      geography = "zcta",
-      variables = "B19013_001",
-      year      = y)
-    zcta_income<-data.table(zcta_income)
-    setnames(zcta_income, "GEOID", "location_zip")
-    ## Keep as integer to match numeric location_zip in firm_quarter.
-    ## (GEOID from tidycensus is zero-padded character; as.integer drops
-    ## the leading zero, matching how location_zip is stored numerically.)
-    zcta_income[, location_zip := as.integer(location_zip)]
-    zcta_income[, year:=y]
-    all_years<-rbind(zcta_income,all_years)
-
-  }
-
-  firm_quarter<-merge(firm_quarter, all_years, by=c("location_zip", "year"), all.x=TRUE)
-  firm_quarter[, s_estimate:=estimate/sd(estimate, na.rm=TRUE)]
-  print(feols(std_sindex~s_estimate, data=firm_quarter))
-  print(feols(std_sindex~s_estimate|year, data=firm_quarter))
+  cat("\n===== POST-STAFFREQ-ADOPTION SAMPLE SUMMARIES =====\n")
+  cat("s_index distribution among firm-quarters at/after first_staffreq:\n")
+  print(summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$s_index))
+  cat("staffreq_rate distribution among firm-quarters at/after first_staffreq:\n")
+  print(summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$staffreq_rate))
 
 message("02: complete")
 
