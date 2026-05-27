@@ -10,8 +10,9 @@ CONFIG <- list(
   # ---------------------------------------------------------------------------
   # Logging and execution control
   # ---------------------------------------------------------------------------
-  # Directory for log files
-  log_dir = "logs",
+  # Directory for log files (absolute path so subscripts that setwd() still
+  # write into the same logs/ folder)
+  log_dir = normalizePath("logs", mustWork = FALSE),
 
   # Set TRUE to force re-run all scripts regardless of timestamps
   force_rerun = FALSE,
