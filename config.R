@@ -290,7 +290,13 @@ CONFIG <- list(
   wage_fallback_joint_multistart_jitter = as.numeric(Sys.getenv("JMP_WAGE_FB_L5_JITTER", unset = "0.1")),
 
   ## Global gates.
-  wage_fallback_skip_in_bootstrap = tolower(Sys.getenv("JMP_WAGE_FB_SKIP_BOOTSTRAP", unset = "true")) %in%
+  ## Default changed 2026-05-26 from "true" to "false" so bootstrap reps run
+  ## the same L1-L4 fallback ladder 06 uses by default. Production array
+  ## 52396589 had 151/263 reps (57%) flagged wage_nonconverged with the gate
+  ## on; the strict tolerance gate also doesn't catch the NYC "wrong-basin"
+  ## failure mode the ladder is designed to escape. Set
+  ## JMP_WAGE_FB_SKIP_BOOTSTRAP=true to restore the old fast-path behavior.
+  wage_fallback_skip_in_bootstrap = tolower(Sys.getenv("JMP_WAGE_FB_SKIP_BOOTSTRAP", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_fallback_verbose = tolower(Sys.getenv("JMP_WAGE_FB_VERBOSE", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
