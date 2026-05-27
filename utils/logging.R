@@ -28,7 +28,7 @@ get_log_dir <- function() {
   if (exists("CONFIG") && !is.null(CONFIG$log_dir)) {
     return(CONFIG$log_dir)
   }
-  return("logs")
+  return(normalizePath("logs", mustWork = FALSE))
 }
 
 #' Get the path to a script's log file
