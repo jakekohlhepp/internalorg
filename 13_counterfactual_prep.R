@@ -384,10 +384,11 @@ solve_wages <- function(wage_guess){
     )
   }
 
-  counter_res[, c("c_endog", "q_endog", e_field_names) :=
-                solve_org(as.numeric(.SD), gamma_invert),
-              by = c("location_id"),
-              .SDcols = task_mix_cols]
+  counter_res <- counterfactual_apply_per_firm(
+    counter_res, solve_org,
+    output_fields = c("c_endog", "q_endog", e_field_names),
+    alpha_cols = task_mix_cols, config = CONFIG
+  )
   counter_res[, Q := q_endog * avg_labor + qual_exo]
   counter_res[, C := c_endog * avg_labor + cost_exo]
   # do not allow negative costs.
@@ -443,10 +444,11 @@ eval_total_labor <- function(wage_guess){
     )
   }
 
-  counter_res[, c("c_endog", "q_endog", e_field_names) :=
-                solve_org(as.numeric(.SD), gamma_invert),
-              by = c("location_id"),
-              .SDcols = task_mix_cols]
+  counter_res <- counterfactual_apply_per_firm(
+    counter_res, solve_org,
+    output_fields = c("c_endog", "q_endog", e_field_names),
+    alpha_cols = task_mix_cols, config = CONFIG
+  )
   counter_res[, Q := q_endog * avg_labor + qual_exo]
   counter_res[, C := c_endog * avg_labor + cost_exo]
   counter_res[C < 0, C := 0]
@@ -651,17 +653,18 @@ compute_initial_prod_panel <- function(cnty, qy, wage_vec) {
   new_tild_theta <- sweep(new_tild_theta, 2, apply(new_tild_theta, 2, min))
 
   output_fields <- c("c_endog", "q_endog", "s_index", e_field_names, b_field_names)
-  counter_res[, (output_fields) := counterfactual_org_outputs(
-    cost_matrix = new_tild_theta,
-    alpha = as.numeric(.SD),
-    gamma = gamma_invert,
-    wage_guess = wage_vec,
-    new_theta = new_theta,
-    innertol = innertol,
-    with_s_index = TRUE,
-    with_swept_b = TRUE,
-    config = CONFIG
-  ), by = c("location_id"), .SDcols = task_mix_cols]
+  prod_solve_org <- function(alpha, gamma) {
+    counterfactual_org_outputs(
+      cost_matrix = new_tild_theta, alpha = alpha, gamma = gamma,
+      wage_guess = wage_vec, new_theta = new_theta, innertol = innertol,
+      with_s_index = TRUE, with_swept_b = TRUE, config = CONFIG
+    )
+  }
+  counter_res <- counterfactual_apply_per_firm(
+    counter_res, prod_solve_org,
+    output_fields = output_fields,
+    alpha_cols = task_mix_cols, config = CONFIG
+  )
 
   counter_res[, Q := q_endog * avg_labor + qual_exo]
   counter_res[, C := c_endog * avg_labor + cost_exo]

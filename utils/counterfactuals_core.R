@@ -509,11 +509,35 @@ counterfactual_assignment <- function(cost_matrix, alpha, gamma,
       p * C
     }
 
-    E <- SQUAREM::squarem(
-      E,
-      fixptfn = fxpt,
-      control = list(maxiter = config$counterfactual_fixedpoint_max_iter, tol = innertol)
-    )$par
+    ## Adaptive cap: try a cheap cap first (most firms converge in <1000
+    ## fpevals); only the near-corner small-gamma firms need the full cap.
+    ## If the cheap solve converges (SQUAREM convergence flag TRUE), accept
+    ## it; otherwise warm-restart at the full cap. Same fixed point either
+    ## way, but fast firms avoid the expensive cap setup cost. Gated by
+    ## env JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER_CHEAP (default 1000).
+    full_cap <- as.integer(config$counterfactual_fixedpoint_max_iter)
+    cheap_cap <- as.integer(solver_value(
+      config, "counterfactual_fixedpoint_max_iter_cheap", 1000L))
+    if (cheap_cap > 0L && cheap_cap < full_cap) {
+      r_cheap <- SQUAREM::squarem(
+        E, fixptfn = fxpt,
+        control = list(maxiter = cheap_cap, tol = innertol)
+      )
+      if (isTRUE(r_cheap$convergence)) {
+        E <- r_cheap$par
+      } else {
+        r_full <- SQUAREM::squarem(
+          r_cheap$par, fixptfn = fxpt,
+          control = list(maxiter = full_cap, tol = innertol)
+        )
+        E <- r_full$par
+      }
+    } else {
+      E <- SQUAREM::squarem(
+        E, fixptfn = fxpt,
+        control = list(maxiter = full_cap, tol = innertol)
+      )$par
+    }
 
     B <- t(t(A) * alpha / colSums(A * E)) * E
   } else if (identical(gamma, 0) || (!is.na(gamma) && gamma == 0)) {
@@ -633,6 +657,39 @@ counterfactual_org_outputs_from_b <- function(B, alpha, gamma, wage_guess,
   }
 
   out
+}
+
+## Helper: apply a per-firm solve (counterfactual_org_outputs-shaped) to every
+## row of `counter_res`, parallelising across cores when possible. Used by
+## 13_'s solve_wages / eval_total_labor / compute_initial_prod_panel so the
+## per-firm SQUAREM solves don't serialise across firms during the
+## counterfactual_full_5d_retry ladder. Falls back to a per-row lapply when
+## SLURM_CPUS_PER_TASK<=1 or on non-Linux hosts. solve_fn receives
+## (alpha_vec, gamma_scalar) and must return a named list with all
+## `output_fields` (scalar each).
+counterfactual_apply_per_firm <- function(counter_res, solve_fn,
+                                          output_fields, alpha_cols,
+                                          gamma_col = "gamma_invert",
+                                          config = CONFIG) {
+  n <- nrow(counter_res)
+  if (n == 0L) return(counter_res)
+  alpha_mat <- as.matrix(counter_res[, ..alpha_cols])
+  gammas <- counter_res[[gamma_col]]
+  n_cores <- suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1")))
+  if (is.na(n_cores) || n_cores < 1L) n_cores <- 1L
+  use_par <- n_cores >= 2L && n >= 2L &&
+    isTRUE(get_os() %in% c("linux", "macosx"))
+  results <- if (use_par) {
+    parallel::mclapply(seq_len(n), function(i) {
+      solve_fn(alpha_mat[i, ], gammas[i])
+    }, mc.cores = n_cores, mc.preschedule = FALSE)
+  } else {
+    lapply(seq_len(n), function(i) solve_fn(alpha_mat[i, ], gammas[i]))
+  }
+  for (fld in output_fields) {
+    counter_res[, (fld) := vapply(results, function(r) as.numeric(r[[fld]]), numeric(1))]
+  }
+  counter_res
 }
 
 counterfactual_effective_gamma <- function(gamma, config = CONFIG) {
@@ -1485,6 +1542,80 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
     }
   }
 
+  ## 0. Coordinate-descent via 1D uniroot (moved to FIRST phase 2026-05-30).
+  ## For each wage k in turn, solves the k-th log-labor residual to zero (or
+  ## minimizes |r_k| when no sign-change bracket exists) while holding the
+  ## other 4 fixed, then rotates. Several sweeps with progressively
+  ## shrinking brackets so the first sweeps capture large reallocations and
+  ## later sweeps fine-tune. Empirically the only phase that meaningfully
+  ## moves LA's near-corner residual (others bottom at ~0.15 worker 5);
+  ## running it first lets the ladder either clear immediately or hand
+  ## subsequent phases a much-better warm start (saving many hours of
+  ## futile method-grinding).
+  if (!cleared()) {
+    cd_n_sweeps <- as.integer(solver_value(config,
+      "counterfactual_coord_descent_sweeps", 14L))
+    cd_widths   <- solver_value(config,
+      "counterfactual_coord_descent_widths",
+      c(2.0, 1.0, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015,
+        0.008, 0.004, 0.002, 0.001, 0.0005, 0.00025))
+    if (length(cd_widths) < cd_n_sweeps) {
+      cd_widths <- rep_len(cd_widths, cd_n_sweeps)
+    }
+    base::message(sprintf(
+      "  [%s] === coord_descent phase (n_sweeps=%d, shrinking brackets) ===",
+      if (is.null(label)) "fallback" else label, cd_n_sweeps
+    ))
+    cur <- log(pmax(best_result$par, config$numeric_floor))
+    for (sweep_idx in seq_len(cd_n_sweeps)) {
+      if (cleared()) break
+      hw_k <- cd_widths[sweep_idx]
+      moved <- FALSE
+      for (i in seq_along(cur)) {
+        if (cleared()) break
+        ri <- function(z) {
+          x <- cur; x[i] <- z; fn_log_root(x)[i]
+        }
+        lo <- cur[i] - hw_k; hi <- cur[i] + hw_k
+        f_lo <- tryCatch(ri(lo), error = function(e) NA_real_)
+        f_hi <- tryCatch(ri(hi), error = function(e) NA_real_)
+        if (!is.finite(f_lo) || !is.finite(f_hi)) next
+        if (sign(f_lo) == sign(f_hi)) {
+          opt_i <- tryCatch(
+            stats::optimize(function(z) abs(ri(z)),
+                            lower = lo, upper = hi, tol = 1e-10),
+            error = function(e) NULL
+          )
+          if (!is.null(opt_i)) {
+            new_cur <- cur; new_cur[i] <- opt_i$minimum
+            take(sprintf("coord_descent_sweep%d_i%d_optim_hw%g",
+                         sweep_idx, i, hw_k),
+                 new_cur, "coord_descent_optim", NA_integer_)
+            if (abs(ri(opt_i$minimum)) < abs(ri(cur[i]))) {
+              cur[i] <- opt_i$minimum
+              moved <- TRUE
+            }
+          }
+          next
+        }
+        sol <- tryCatch(
+          stats::uniroot(ri, lower = lo, upper = hi,
+                         tol = 1e-12, maxiter = 300),
+          error = function(e) NULL
+        )
+        if (is.null(sol)) next
+        new_cur <- cur; new_cur[i] <- sol$root
+        take(sprintf("coord_descent_sweep%d_i%d_uniroot_hw%g",
+                     sweep_idx, i, hw_k),
+             new_cur, "coord_descent_uniroot", NA_integer_)
+        cur[i] <- sol$root
+        moved <- TRUE
+      }
+      if (!moved) break
+    }
+  }
+  if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
   ## 1. nleqslv Broyden + dbldog (multistart)
   run_nleqslv("Broyden", "dbldog", "nleqslv_Broyden_dbldog")
   if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
@@ -1658,76 +1789,7 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
                           paste("pso_solve ssq=", signif(res$value, 6)),
                           NA_integer_)
 
-  ## 8. Coordinate-descent via 1D uniroot (last-ditch refinement). For each
-  ## wage k in turn, solves the k-th log-labor residual to zero (or minimizes
-  ## |r_k| when no sign-change bracket exists) while holding the other 4 fixed,
-  ## then rotates. Several sweeps with progressively shrinking brackets so the
-  ## first sweeps capture large reallocations and later sweeps fine-tune.
-  ## Particularly effective when the residual floor is dominated by a single
-  ## coordinate at a time (e.g. LA 6037 2021.2, where 4 of 5 components were
-  ## already near zero and only w1 / w5 needed adjustment).
-  if (!cleared()) {
-    cd_n_sweeps <- as.integer(solver_value(config,
-      "counterfactual_coord_descent_sweeps", 14L))
-    cd_widths   <- solver_value(config,
-      "counterfactual_coord_descent_widths",
-      c(2.0, 1.0, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015,
-        0.008, 0.004, 0.002, 0.001, 0.0005, 0.00025))
-    if (length(cd_widths) < cd_n_sweeps) {
-      cd_widths <- rep_len(cd_widths, cd_n_sweeps)
-    }
-    base::message(sprintf(
-      "  [%s] === coord_descent phase (n_sweeps=%d, shrinking brackets) ===",
-      if (is.null(label)) "fallback" else label, cd_n_sweeps
-    ))
-    cur <- log(pmax(best_result$par, config$numeric_floor))
-    for (sweep_idx in seq_len(cd_n_sweeps)) {
-      if (cleared()) break
-      hw_k <- cd_widths[sweep_idx]
-      moved <- FALSE
-      for (i in seq_along(cur)) {
-        if (cleared()) break
-        ri <- function(z) {
-          x <- cur; x[i] <- z; fn_log_root(x)[i]
-        }
-        lo <- cur[i] - hw_k; hi <- cur[i] + hw_k
-        f_lo <- tryCatch(ri(lo), error = function(e) NA_real_)
-        f_hi <- tryCatch(ri(hi), error = function(e) NA_real_)
-        if (!is.finite(f_lo) || !is.finite(f_hi)) next
-        if (sign(f_lo) == sign(f_hi)) {
-          opt_i <- tryCatch(
-            stats::optimize(function(z) abs(ri(z)),
-                            lower = lo, upper = hi, tol = 1e-10),
-            error = function(e) NULL
-          )
-          if (!is.null(opt_i)) {
-            new_cur <- cur; new_cur[i] <- opt_i$minimum
-            take(sprintf("coord_descent_sweep%d_i%d_optim_hw%g",
-                         sweep_idx, i, hw_k),
-                 new_cur, "coord_descent_optim", NA_integer_)
-            if (abs(ri(opt_i$minimum)) < abs(ri(cur[i]))) {
-              cur[i] <- opt_i$minimum
-              moved <- TRUE
-            }
-          }
-          next
-        }
-        sol <- tryCatch(
-          stats::uniroot(ri, lower = lo, upper = hi,
-                         tol = 1e-12, maxiter = 300),
-          error = function(e) NULL
-        )
-        if (is.null(sol)) next
-        new_cur <- cur; new_cur[i] <- sol$root
-        take(sprintf("coord_descent_sweep%d_i%d_uniroot_hw%g",
-                     sweep_idx, i, hw_k),
-             new_cur, "coord_descent_uniroot", NA_integer_)
-        cur[i] <- sol$root
-        moved <- TRUE
-      }
-      if (!moved) break
-    }
-  }
+  ## 8. (coord_descent moved to phase 0 -- see top of ladder.)
 
   best_result$converged <- is.finite(best_result$residual) &&
     best_result$residual <= target_tol

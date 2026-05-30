@@ -366,6 +366,12 @@ CONFIG <- list(
   # at fixedpoint_max_iter either way and gains no accuracy from a higher cap).
   # Default 1e5 preserves prior behavior; raise via env for hardened runs.
   counterfactual_fixedpoint_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER", unset = "100000")),
+  # Adaptive-cap cheap budget for counterfactual_assignment's SQUAREM. Each
+  # firm first runs SQUAREM with this cap; if it converges (most firms do in
+  # <1000 fpevals), accept. Else warm-restart at the full cap. Avoids paying
+  # the full cap cost on the well-conditioned firms. Set to 0 (or >= full
+  # cap) to disable the adaptive path.
+  counterfactual_fixedpoint_max_iter_cheap = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER_CHEAP", unset = "1000")),
   # Outer best-response price contraction tolerance passed to
   # counterfactual_best_response_prices and the inline figure helpers.
   # Default preserves the previously hardcoded script-local value.
