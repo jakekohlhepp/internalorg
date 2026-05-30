@@ -1339,14 +1339,17 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
   county_converged <- vapply(
     county_results,
     function(r) {
-      base_ok <- isTRUE(r$accepted) &&
-        is.finite(r$convergence) && r$convergence == 0L
       if (use_reltol_gate) {
-        ## NM convergence==0 IS the relative-tolerance signal; drop the
-        ## absolute obj_tol requirement.
-        base_ok
+        ## Reltol gate (bootstrap): NM convergence==0 (reltol) OR ==10
+        ## (degenerate simplex) both mean "optimizer stopped at a local
+        ## min and can't improve." Drop the absolute obj_tol requirement.
+        isTRUE(r$accepted) &&
+          is.finite(r$convergence) && r$convergence %in% c(0L, 10L)
       } else {
-        base_ok &&
+        ## obj_tol gate (estimation default): keep strict reltol convergence
+        ## AND the absolute objective threshold. Unchanged behavior.
+        isTRUE(r$accepted) &&
+          is.finite(r$convergence) && r$convergence == 0L &&
           is.finite(r$final_objective) &&
           is.finite(r$strict_tol) &&
           r$final_objective <= r$strict_tol
@@ -1732,10 +1735,15 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     function(r) {
       if (!isTRUE(r$accepted)) return(FALSE)
       if (use_reltol_gate) {
-        ## Converged when the winning region's NM polish hit its own relative
-        ## tolerance (optim convergence==0), regardless of absolute objective.
-        (is.finite(r$polish_pso_convergence)  && r$polish_pso_convergence  == 0L) ||
-          (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence == 0L)
+        ## Converged when the winning region's NM polish stopped making
+        ## progress: optim convergence==0 (reltol satisfied) OR ==10
+        ## (degenerate simplex on a flat local min -- the common exit on the
+        ## bootstrap reweighted wage surface; bootstrap log diagnostic across
+        ## 308 reps showed NM exiting at iter 100-900 with 100s of SHRINKs,
+        ## i.e. simplex collapsed before reltol was numerically satisfied).
+        ## Both codes mean "the optimizer found a local min and can't improve."
+        (is.finite(r$polish_pso_convergence)  && r$polish_pso_convergence  %in% c(0L, 10L)) ||
+          (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence %in% c(0L, 10L))
       } else {
         is.finite(r$final_objective) &&
           is.finite(r$strict_tol) &&
