@@ -512,7 +512,7 @@ counterfactual_assignment <- function(cost_matrix, alpha, gamma,
     E <- SQUAREM::squarem(
       E,
       fixptfn = fxpt,
-      control = list(maxiter = config$fixedpoint_max_iter, tol = innertol)
+      control = list(maxiter = config$counterfactual_fixedpoint_max_iter, tol = innertol)
     )$par
 
     B <- t(t(A) * alpha / colSums(A * E)) * E

@@ -1335,14 +1335,22 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
     final_score <- start_full_score
   }
 
+  use_reltol_gate <- identical(solver_value(config, "wage_convergence_gate", "obj_tol"), "reltol")
   county_converged <- vapply(
     county_results,
     function(r) {
-      isTRUE(r$accepted) &&
-        is.finite(r$convergence) && r$convergence == 0L &&
-        is.finite(r$final_objective) &&
-        is.finite(r$strict_tol) &&
-        r$final_objective <= r$strict_tol
+      base_ok <- isTRUE(r$accepted) &&
+        is.finite(r$convergence) && r$convergence == 0L
+      if (use_reltol_gate) {
+        ## NM convergence==0 IS the relative-tolerance signal; drop the
+        ## absolute obj_tol requirement.
+        base_ok
+      } else {
+        base_ok &&
+          is.finite(r$final_objective) &&
+          is.finite(r$strict_tol) &&
+          r$final_objective <= r$strict_tol
+      }
     },
     logical(1)
   )
@@ -1718,13 +1726,21 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     final_score <- start_full_score
   }
 
+  use_reltol_gate <- identical(solver_value(config, "wage_convergence_gate", "obj_tol"), "reltol")
   county_converged <- vapply(
     county_results,
     function(r) {
-      isTRUE(r$accepted) &&
+      if (!isTRUE(r$accepted)) return(FALSE)
+      if (use_reltol_gate) {
+        ## Converged when the winning region's NM polish hit its own relative
+        ## tolerance (optim convergence==0), regardless of absolute objective.
+        (is.finite(r$polish_pso_convergence)  && r$polish_pso_convergence  == 0L) ||
+          (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence == 0L)
+      } else {
         is.finite(r$final_objective) &&
-        is.finite(r$strict_tol) &&
-        r$final_objective <= r$strict_tol
+          is.finite(r$strict_tol) &&
+          r$final_objective <= r$strict_tol
+      }
     },
     logical(1)
   )

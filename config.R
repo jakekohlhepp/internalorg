@@ -123,9 +123,11 @@ CONFIG <- list(
   # ---------------------------------------------------------------------------
   # Fixed-point iteration parameters (SQUAREM)
   # ---------------------------------------------------------------------------
-  # Maximum iterations for inner fixed-point
-
-  fixedpoint_max_iter = 100000,
+  # Maximum iterations for inner fixed-point. Env-overridable so counterfactual
+  # runs can raise the cap for near-corner firms (small gamma + large wage-level
+  # cost spreads) where SQUAREM needs ~1.5e5 fpevals to converge; estimation
+  # leaves the env unset and keeps the 1e5 default.
+  fixedpoint_max_iter = as.integer(Sys.getenv("JMP_FIXEDPOINT_MAX_ITER", unset = "100000")),
 
   # ---------------------------------------------------------------------------
   # Tolerance and control parameters
@@ -143,6 +145,17 @@ CONFIG <- list(
   # NYC floor of ~1.3e-3 plus a safety margin; counties with better-behaved
   # moments still pass trivially because their seed start is already < 1e-7.
   obj_tol = 0.01,
+
+  # Wage-stage convergence gate. "obj_tol" (default): a county counts as
+  # converged only if its GMM objective reaches obj_tol (absolute). "reltol":
+  # a county counts as converged when its polish optimizer hit its own relative
+  # tolerance (convergence==0), regardless of the absolute objective level.
+  # The reltol gate is intended for BOOTSTRAP reps (set JMP_WAGE_CONVERGENCE_GATE=
+  # reltol), where filtering on the absolute obj_tol induces selection bias:
+  # resamples whose (e.g. LA) GMM floor sits above obj_tol are genuine local
+  # minima but get dropped as "non-converged". Estimation leaves this unset and
+  # keeps the absolute gate. Only changes the convergence FLAG, never the search.
+  wage_convergence_gate = tolower(Sys.getenv("JMP_WAGE_CONVERGENCE_GATE", unset = "obj_tol")),
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
   # full wage solver (per `wage_optimizer_mode`, default nleqslv) by default;
@@ -346,6 +359,13 @@ CONFIG <- list(
   # to CONFIG; tighten via JMP_COUNTERFACTUAL_INNERTOL once estimates are
   # validated against this baseline.
   counterfactual_innertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_INNERTOL", unset = "1e-8")),
+  # SQUAREM iteration cap for the counterfactual *assignment* fixed point only
+  # (counterfactual_assignment). Decoupled from fixedpoint_max_iter so the
+  # counterfactual reorg solve can run a high cap for near-corner firms WITHOUT
+  # slowing the plain, unaccelerated get_demands setup loop in 13_ (which caps
+  # at fixedpoint_max_iter either way and gains no accuracy from a higher cap).
+  # Default 1e5 preserves prior behavior; raise via env for hardened runs.
+  counterfactual_fixedpoint_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER", unset = "100000")),
   # Outer best-response price contraction tolerance passed to
   # counterfactual_best_response_prices and the inline figure helpers.
   # Default preserves the previously hardcoded script-local value.
