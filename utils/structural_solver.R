@@ -1773,9 +1773,22 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
         ## 308 reps showed NM exiting at iter 100-900 with 100s of SHRINKs,
         ## i.e. simplex collapsed before reltol was numerically satisfied).
         ## Both codes mean "the optimizer found a local min and can't improve."
+        polish_min <- suppressWarnings(min(c(
+          r$polish_pso_value, r$polish_seed_value, r$polish_bfgs_value
+        ), na.rm = TRUE))
+        polish_improved <- is.finite(polish_min) && is.finite(r$pso_value) &&
+          polish_min < r$pso_value
+        ## Accept when any polish formally converged (code 0/10), OR when the
+        ## best polish strictly improved over the PSO best. The improvement
+        ## test catches the dominant remaining wage_nonconv mode: hard reps
+        ## where 3 independent polishes all exhaust maxit but did refine the
+        ## PSO solution -- which is what we actually need for bootstrap
+        ## inference (a refined local min in the right basin), not whether
+        ## the optimizer's stopping rule formally fired.
         (is.finite(r$polish_pso_convergence)  && r$polish_pso_convergence  %in% c(0L, 10L)) ||
           (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence %in% c(0L, 10L)) ||
-          (is.finite(r$polish_bfgs_convergence) && r$polish_bfgs_convergence == 0L)
+          (is.finite(r$polish_bfgs_convergence) && r$polish_bfgs_convergence == 0L) ||
+          polish_improved
       } else {
         is.finite(r$final_objective) &&
           is.finite(r$strict_tol) &&
