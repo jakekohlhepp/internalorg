@@ -209,6 +209,19 @@ combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
 
 run_bootstrap_iteration <- function(iter, config = CONFIG) {
   .boot_iter_traceback <<- NULL
+  ## Skip if an "ok" .rds already exists. Lets us cancel + resubmit the
+  ## full array without redoing reps that already passed the convergence
+  ## gate, while still rerunning any wage_nonconverged / error stubs (the
+  ## user must delete bad stubs to trigger a rerun).
+  out_path <- file.path(reps_dir, paste0("boot_res_", iter, ".rds"))
+  if (file.exists(out_path)) {
+    existing <- tryCatch(readRDS(out_path), error = function(e) NULL)
+    if (!is.null(existing) && identical(as.character(existing$status[[1L]]), "ok")) {
+      message("--- Skipping bootstrap iteration ", iter,
+              " (existing rep has status=ok at ", out_path, ") ---")
+      return(existing)
+    }
+  }
   message("\n--- Starting bootstrap iteration ", iter, " at ", Sys.time(), " ---")
   weights <- bootstrap_row_weights(iter, working_data, boot_weight_all)
   iter_config <- config
