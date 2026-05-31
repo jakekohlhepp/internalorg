@@ -1616,10 +1616,39 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       }
     )
 
+    ## Third polish: L-BFGS-B from the best NM polish. Gradient-based and
+    ## strictly bounded to the PSO search box, so it can finish when NM
+    ## degenerates without overshooting into non-finite regions.
+    bfgs_start <- if (is.finite(polish_pso$value) &&
+                     (!is.finite(polish_seed$value) ||
+                      polish_pso$value <= polish_seed$value)) {
+      polish_pso$par
+    } else {
+      polish_seed$par
+    }
+    bfgs_start <- pmax(pmin(as.numeric(bfgs_start), upper), lower)
+    polish_bfgs <- tryCatch(
+      stats::optim(
+        par = bfgs_start, fn = objective_county_ssq,
+        method = "L-BFGS-B",
+        lower = lower, upper = upper,
+        control = list(parscale = rep(parscale_w, d),
+                       maxit = polish_maxit,
+                       factr = 1e7,
+                       trace = pso_trace)
+      ),
+      error = function(e) {
+        warning("BFGS polish failed for county ", cnty, ": ",
+                conditionMessage(e), call. = FALSE)
+        list(par = bfgs_start, value = NA_real_, convergence = -1L)
+      }
+    )
+
     candidates <- list(
       pso         = list(par = pso_res$par,     value = pso_res$value),
       polish_pso  = list(par = polish_pso$par,  value = polish_pso$value),
-      polish_seed = list(par = polish_seed$par, value = polish_seed$value)
+      polish_seed = list(par = polish_seed$par, value = polish_seed$value),
+      polish_bfgs = list(par = polish_bfgs$par, value = polish_bfgs$value)
     )
     cand_values <- vapply(candidates, function(x) x$value, numeric(1))
     best_label <- names(cand_values)[which.min(cand_values)]
@@ -1634,8 +1663,10 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       pso_value = pso_res$value,
       polish_pso_value = polish_pso$value,
       polish_seed_value = polish_seed$value,
+      polish_bfgs_value = polish_bfgs$value,
       polish_pso_convergence = polish_pso$convergence,
       polish_seed_convergence = polish_seed$convergence,
+      polish_bfgs_convergence = polish_bfgs$convergence,
       source = best_label,
       pso_n_iter = n_iter, pso_n_particles = n_particles,
       halfwidth = halfwidth, parscale = parscale_w,
@@ -1644,19 +1675,19 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       start_score = start_score
     )
     message(sprintf(
-      "PSO county %s done: pso=%.6g  polish_pso=%.6g  polish_seed=%.6g  best=%.6g (%s)",
+      "PSO county %s done: pso=%.6g  polish_pso=%.6g  polish_seed=%.6g  polish_bfgs=%.6g  best=%.6g (%s)",
       cnty, pso_res$value, polish_pso$value, polish_seed$value,
-      result_value, best_label
+      polish_bfgs$value, result_value, best_label
     ))
 
     if (result_value > strict_tol) {
       warning(sprintf(
         paste0("PSO+polish did not reach obj_tol for county %s ",
-               "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, ",
+               "(pso=%.6g, polish_pso=%.6g, polish_seed=%.6g, polish_bfgs=%.6g, ",
                "halfwidth=%g, parscale=%g): best objective %.6g exceeds ",
                "obj_tol=%.6g. Continuing (absolute-tol gate is soft); ",
                "rep will be stored with wage_convergence != 0."),
-        cnty, pso_res$value, polish_pso$value, polish_seed$value,
+        cnty, pso_res$value, polish_pso$value, polish_seed$value, polish_bfgs$value,
         halfwidth, parscale_w, result_value, strict_tol
       ), call. = FALSE)
     }
@@ -1743,7 +1774,8 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
         ## i.e. simplex collapsed before reltol was numerically satisfied).
         ## Both codes mean "the optimizer found a local min and can't improve."
         (is.finite(r$polish_pso_convergence)  && r$polish_pso_convergence  %in% c(0L, 10L)) ||
-          (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence %in% c(0L, 10L))
+          (is.finite(r$polish_seed_convergence) && r$polish_seed_convergence %in% c(0L, 10L)) ||
+          (is.finite(r$polish_bfgs_convergence) && r$polish_bfgs_convergence == 0L)
       } else {
         is.finite(r$final_objective) &&
           is.finite(r$strict_tol) &&
