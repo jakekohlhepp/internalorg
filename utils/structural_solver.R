@@ -1777,7 +1777,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
           r$polish_pso_value, r$polish_seed_value, r$polish_bfgs_value
         ), na.rm = TRUE))
         polish_improved <- is.finite(polish_min) && is.finite(r$pso_value) &&
-          polish_min < r$pso_value
+          polish_min <= r$pso_value
         ## Accept when any polish formally converged (code 0/10), OR when the
         ## best polish strictly improved over the PSO best. The improvement
         ## test catches the dominant remaining wage_nonconv mode: hard reps
