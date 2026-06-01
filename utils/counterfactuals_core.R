@@ -1008,6 +1008,77 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
                                              use_homotopy = TRUE,
                                              config = CONFIG) {
   fn <- counterfactual_safe_wage_fn(fn, config)
+
+  ## Coordinate-descent-first routing (config$counterfactual_coord_descent_first,
+  ## default on; gated on use_homotopy so only the top-level call routes, not the
+  ## recursive homotopy invocations). The legacy multistart below seeds nleqslv
+  ## from `start` PLUS the reallocation/baseline/perturbed starts. For the LA
+  ## reorganization cell those auxiliary seeds evaluate to enormous residuals
+  ## (realloc ~17, baseline ~0.31); when an interior seed's org-solve returns
+  ## non-finite the good warm `start` (residual ~0.029) gets demoted and the
+  ## solve converges from the ~0.31 baseline seed. Seeding full_5d_retry
+  ## (coord_descent = phase 0) directly from `start` -- never the bad auxiliary
+  ## seeds -- mirrors diagnostics/smoke_la_reorg_coord_descent.R, which clears LA
+  ## reorg to ~0.029 where the multistart path stalls. Cells whose warm seed
+  ## already clears short-circuit, so easy reallocation / Cook+NYC reorg cells
+  ## are unaffected. Diagnosis: diagnostics/probe_reorg_realloc_contamination.R.
+  if (use_homotopy && isTRUE(config$counterfactual_coord_descent_first)) {
+    cd_seed <- pmax(as.numeric(start), config$numeric_floor)
+    ## Step 1: clean nleqslv polish from the warm seed ALONE (no bad auxiliary
+    ## seeds). Easy cells (all reallocation, Cook+NYC reorganization) clear to
+    ## machine precision here exactly as the legacy multistart did -- same
+    ## Broyden/dbldog control -- so their results and speed are unchanged.
+    cd_best <- counterfactual_candidate_result(
+      fn, cd_seed, "coord_first_seed",
+      if (is.null(label)) "coord_first seed" else paste(label, "coord_first seed"))
+    nl <- tryCatch(
+      nleqslv::nleqslv(
+        log(cd_seed), function(lw) fn(exp(lw)),
+        method = "Broyden", global = "dbldog",
+        control = list(xtol = 1e-10, ftol = 1e-8,
+                       maxit = config$counterfactual_nleqslv_maxit,
+                       allowSingular = TRUE, cndtol = 1e-12, trace = 0)),
+      error = function(e) NULL)
+    if (!is.null(nl)) {
+      nlc <- counterfactual_candidate_result(
+        fn, pmax(exp(nl$x), config$numeric_floor), "coord_first_nleqslv",
+        as.character(nl$message), as.integer(nl$termcd))
+      if (counterfactual_better_result(nlc, cd_best)) cd_best <- nlc
+    }
+    if (is.finite(cd_best$residual) && cd_best$residual <= target_tol) {
+      cd_best$converged <- TRUE
+      cd_best$target_tol <- target_tol
+      return(cd_best)
+    }
+    ## Step 2: nleqslv could not clear the market exactly (e.g. LA
+    ## reorganization, which has a genuine residual floor, not a root). Hand to
+    ## full_5d_retry (coord_descent = phase 0) seeded from the BEST wage found in
+    ## step 1 -- i.e. cd_best$par, the lowest-residual point nleqslv reached, not
+    ## the raw warm seed and never the bad reallocation/baseline seeds. This
+    ## gives nleqslv a full chance at an exact clear first, then lets
+    ## coord_descent push the best point down to the floor, mirroring
+    ## diagnostics/smoke_la_reorg_coord_descent.R (~0.029 vs the legacy
+    ## multistart's ~0.31 baseline-seed stall).
+    cd_result <- tryCatch(
+      counterfactual_full_5d_retry(
+        fn = fn, start_par = pmax(cd_best$par, config$numeric_floor),
+        target_tol = target_tol, config = config,
+        label = if (is.null(label)) "coord_first" else paste(label, "coord_first")),
+      error = function(e) {
+        warning("counterfactual coord_descent_first failed",
+                if (!is.null(label)) paste0(" for ", label), ": ",
+                conditionMessage(e), call. = FALSE)
+        NULL
+      })
+    if (!is.null(cd_result)) {
+      if (counterfactual_better_result(cd_best, cd_result)) cd_result <- cd_best
+      cd_result$converged <- is.finite(cd_result$residual) && cd_result$residual <= target_tol
+      cd_result$target_tol <- target_tol
+      return(cd_result)
+    }
+    ## full_5d_retry itself errored: fall through to the legacy multistart path.
+  }
+
   starts <- counterfactual_multistarts(start, additional_starts, config)
   best_result <- NULL
   solve_log_wages <- function(log_wages) {

@@ -397,6 +397,22 @@ CONFIG <- list(
   counterfactual_fallback_pso_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PSO_ITER", unset = "100")),
   counterfactual_coord_descent_sweeps = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_SWEEPS", unset = "14")),
 
+  # Coordinate-descent-first routing for counterfactual_solve_wage_market.
+  # Default on (2026-06-01). The legacy multistart front-end seeds nleqslv from
+  # the warm `start` PLUS reallocation/baseline/perturbed starts; for the LA
+  # (6037) reorganization cell those auxiliary seeds evaluate to huge residuals
+  # (realloc ~17, baseline ~0.31) and, when an interior seed's org-solve returns
+  # non-finite, the good warm seed (resid ~0.029) is demoted and the solve ends
+  # at the ~0.31 baseline seed. With this on, the solver seeds
+  # counterfactual_full_5d_retry (coord_descent = phase 0) directly from the
+  # warm `start`, matching diagnostics/smoke_la_reorg_coord_descent.R which
+  # reliably clears LA reorg to ~0.029. Cells whose warm seed already clears
+  # short-circuit immediately, so easy cells are unaffected. Diagnosis:
+  # diagnostics/probe_reorg_realloc_contamination.R. Set
+  # JMP_COUNTERFACTUAL_COORD_DESCENT_FIRST=false to restore the legacy path.
+  counterfactual_coord_descent_first = tolower(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_FIRST", unset = "true")) %in%
+    c("true", "t", "1", "yes", "y"),
+
   # ---------------------------------------------------------------------------
   # BBsolve warm-restart checkpoint (debugging only)
   # ---------------------------------------------------------------------------
