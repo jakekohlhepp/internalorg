@@ -1310,21 +1310,21 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
     }
   }
 
-  ## Last-ditch: hand off to counterfactual_full_5d_retry, which runs the
-  ## extended 9-phase ladder (Newton/dbldog, Broyden/qline, minpack.lm,
-  ## L-BFGS-B SSR, NM SSR, LHS-dfsane, PSO, coord_descent) that 13_'s
-  ## counterfactual_solve_wage_market_bbsolve also escalates to. This is the
-  ## same machinery; the routing mirrors 13_'s flow (BBsolve -> full_5d_retry).
-  ## It is invoked here only when the in-function phases (Broyden+dbldog,
-  ## homotopy, BBsolve, pracma::broyden) have all failed to clear target_tol.
-  ## The full_5d_retry seeds its own best from start_par and only updates on
-  ## improvement, so this can only help, never harm.
-  ##
-  ## Gate on use_homotopy=TRUE so the escalation only fires at the top-level
-  ## call. The recursive invocation inside the homotopy block runs with
-  ## use_homotopy=FALSE and on a BLENDED objective (lambda*fn + (1-lambda)*log-
-  ## distance-from-anchor); running full_5d on that would just waste cycles
-  ## solving for roots of a fictitious function.
+  ## "Start the coord descent": escalate to counterfactual_full_5d_retry
+  ## (coord_descent = phase 0, then Newton/dbldog, Broyden/qline, minpack.lm,
+  ## L-BFGS-B SSR, NM SSR, LHS-dfsane, PSO) whenever the root-finders above
+  ## (multistart nleqslv, homotopy, BBsolve, pracma::broyden) left max|r| > tol.
+  ## The trigger is MAX, NOT the labor-weighted gate: coord_descent is the only
+  ## phase that clears a thin type like LA worker-5, and the weighted gate would
+  ## never fire here (the warm seed already passes it), so gating coord_descent
+  ## on it would skip the very step that clears worker-5. The labor-weighted
+  ## gate is applied where it belongs -- INSIDE full_5d_retry as an early accept
+  ## right after coord_descent (so a cell coord_descent leaves aggregate-cleared
+  ## but with worker-5 still off is accepted without grinding phases 1-7), and
+  ## as the final $converged flag below. full_5d_retry seeds its best from
+  ## start_par and only updates on improvement, so escalation can only help.
+  ## Gate on use_homotopy=TRUE so only the top-level call escalates (the
+  ## recursive homotopy invocation runs on a blended objective).
   if (use_homotopy &&
       (!is.finite(best_result$residual) || best_result$residual > target_tol)) {
     fb_label <- if (is.null(label)) "solve_wage_market full_5d" else paste(label, "full_5d")
@@ -1611,8 +1611,12 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
     }
   }
 
+  ## Stopping rule for the phases below is MAX (every market clears) so
+  ## coord_descent keeps driving a thin type like LA worker-5 down. The
+  ## labor-weighted acceptance is applied separately as an early-accept right
+  ## after the coord_descent phase (see below) and as the final $converged flag.
   cleared <- function() {
-    counterfactual_is_cleared(best_result, target_tol, config)
+    is.finite(best_result$residual) && best_result$residual <= target_tol
   }
 
   ## Build the multistart starting set: the seed plus log-Gaussian
@@ -1738,6 +1742,17 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
     }
   }
   if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
+
+  ## Labor-weighted early-accept (only matters under the "labor_weighted"
+  ## metric; a no-op under "max" since max already failed the check above).
+  ## coord_descent has run; if it left the cell aggregate-cleared but not
+  ## max-cleared -- e.g. LA worker-5 floors at ~0.10 but the big markets clear --
+  ## accept here rather than grinding root-finder phases 1-7 chasing a root that
+  ## does not exist. Cells that are neither max- nor weighted-cleared (a genuine
+  ## big-market imbalance like diffusion) fall through and keep trying.
+  if (counterfactual_is_cleared(best_result, target_tol, config)) {
+    best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result)
+  }
 
   ## 1. nleqslv Broyden + dbldog (multistart)
   run_nleqslv("Broyden", "dbldog", "nleqslv_Broyden_dbldog")
