@@ -806,6 +806,14 @@ counterfactual_best_response_prices <- function(p0, Q, C, wgt, rho,
   new_p
 }
 
+## Module-level store for the current cell's per-worker-type labor weights
+## (target-labor shares). Set by counterfactual_labor_gap() on every residual
+## evaluation and read by counterfactual_residual_norm_lw() / the acceptance
+## gate. Reference-semantics env so it updates in place without <<-. Safe because
+## the wage-market solve for one (county, quarter) cell is sequential (only the
+## inner org-solve parallelizes per firm, in the parent process).
+.cf_convergence_state <- new.env(parent = emptyenv())
+
 counterfactual_labor_gap <- function(new_total_labor, total_labor, cnty, qy,
                                      scale = "log", config = CONFIG) {
   target_labor <- total_labor[
@@ -817,6 +825,13 @@ counterfactual_labor_gap <- function(new_total_labor, total_labor, cnty, qy,
 
   new_labor <- as.numeric(as.matrix(new_total_labor))
   target_labor <- as.numeric(as.matrix(target_labor))
+
+  ## Record the labor-share weights for this cell so the labor-weighted
+  ## acceptance gate can reweight the residual by where labor actually is.
+  .cf_convergence_state$labor_weights <- {
+    pos <- pmax(abs(target_labor), config$numeric_floor)
+    pos / sum(pos)
+  }
 
   if (identical(scale, "log")) {
     labor_clearing <- log(pmax(new_labor, config$numeric_floor)) -
@@ -850,14 +865,32 @@ counterfactual_residual_norm <- function(residual) {
   max(abs(residual))
 }
 
+## Labor-share-weighted mean |residual| using the weights recorded by the most
+## recent counterfactual_labor_gap() call (same cell as `residual`). Falls back
+## to max|abs| when weights are unavailable or mis-sized so it can never be
+## looser than the plain norm in that degenerate case.
+counterfactual_residual_norm_lw <- function(residual) {
+  residual <- as.numeric(residual)
+  if (!all(is.finite(residual))) {
+    return(Inf)
+  }
+  w <- .cf_convergence_state$labor_weights
+  if (is.null(w) || length(w) != length(residual)) {
+    return(max(abs(residual)))
+  }
+  sum(w * abs(residual))
+}
+
 counterfactual_evaluate_wage_solution <- function(fn, par) {
   if (is.null(par) || !all(is.finite(par)) || any(par <= 0)) {
     residual <- rep(Inf, CONFIG$n_worker_types)
-    return(list(norm = Inf, residual = residual))
+    return(list(norm = Inf, norm_lw = Inf, residual = residual))
   }
 
   residual <- tryCatch(as.numeric(fn(par)), error = function(e) rep(Inf, CONFIG$n_worker_types))
-  list(norm = counterfactual_residual_norm(residual), residual = residual)
+  list(norm = counterfactual_residual_norm(residual),
+       norm_lw = counterfactual_residual_norm_lw(residual),
+       residual = residual)
 }
 
 counterfactual_safe_wage_fn <- function(fn, config = CONFIG) {
@@ -895,6 +928,7 @@ counterfactual_candidate_result <- function(fn, par, method, message = NULL,
   list(
     par = as.numeric(par),
     residual = eval$norm,
+    residual_lw = eval$norm_lw,
     residual_components = eval$residual,
     method = method,
     termcd = termcd,
@@ -907,6 +941,26 @@ counterfactual_better_result <- function(candidate, incumbent) {
     return(TRUE)
   }
   is.finite(candidate$residual) && candidate$residual < incumbent$residual
+}
+
+## Acceptance gate. A result counts as cleared if max|r| <= target_tol (every
+## market clears) OR, when config$counterfactual_convergence_metric ==
+## "labor_weighted", if the labor-share-weighted mean |r| <= target_tol. The
+## solver still RANKS candidates by max|r| (counterfactual_better_result), so
+## this only changes when a solve is allowed to STOP -- not which wages it seeks.
+counterfactual_is_cleared <- function(result, target_tol, config = CONFIG) {
+  if (is.null(result) || !is.finite(result$residual)) {
+    return(FALSE)
+  }
+  if (result$residual <= target_tol) {
+    return(TRUE)
+  }
+  if (identical(tolower(config$counterfactual_convergence_metric), "labor_weighted") &&
+      !is.null(result$residual_lw) && is.finite(result$residual_lw) &&
+      result$residual_lw <= target_tol) {
+    return(TRUE)
+  }
+  FALSE
 }
 
 counterfactual_stable_seed <- function(label = NULL, salt = 0L) {
@@ -1045,7 +1099,7 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
         as.character(nl$message), as.integer(nl$termcd))
       if (counterfactual_better_result(nlc, cd_best)) cd_best <- nlc
     }
-    if (is.finite(cd_best$residual) && cd_best$residual <= target_tol) {
+    if (counterfactual_is_cleared(cd_best, target_tol, config)) {
       cd_best$converged <- TRUE
       cd_best$target_tol <- target_tol
       return(cd_best)
@@ -1072,7 +1126,7 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
       })
     if (!is.null(cd_result)) {
       if (counterfactual_better_result(cd_best, cd_result)) cd_result <- cd_best
-      cd_result$converged <- is.finite(cd_result$residual) && cd_result$residual <= target_tol
+      cd_result$converged <- counterfactual_is_cleared(cd_result, target_tol, config)
       cd_result$target_tol <- target_tol
       return(cd_result)
     }
@@ -1294,8 +1348,7 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
     }
   }
 
-  best_result$converged <- is.finite(best_result$residual) &&
-    best_result$residual <= target_tol
+  best_result$converged <- counterfactual_is_cleared(best_result, target_tol, config)
   best_result$target_tol <- target_tol
   best_result
 }
@@ -1513,8 +1566,7 @@ counterfactual_solve_wage_market_bbsolve <- function(fn, start, label = NULL,
     }
   }
 
-  best_result$converged <- is.finite(best_result$residual) &&
-    best_result$residual <= target_tol
+  best_result$converged <- counterfactual_is_cleared(best_result, target_tol, config)
   best_result$target_tol <- target_tol
   best_result
 }
@@ -1560,7 +1612,7 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   }
 
   cleared <- function() {
-    is.finite(best_result$residual) && best_result$residual <= target_tol
+    counterfactual_is_cleared(best_result, target_tol, config)
   }
 
   ## Build the multistart starting set: the seed plus log-Gaussian
@@ -1862,8 +1914,7 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
 
   ## 8. (coord_descent moved to phase 0 -- see top of ladder.)
 
-  best_result$converged <- is.finite(best_result$residual) &&
-    best_result$residual <= target_tol
+  best_result$converged <- counterfactual_is_cleared(best_result, target_tol, config)
   best_result$target_tol <- target_tol
   best_result
 }
