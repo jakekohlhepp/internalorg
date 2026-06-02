@@ -413,6 +413,21 @@ CONFIG <- list(
   counterfactual_coord_descent_first = tolower(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_FIRST", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
 
+  # Labor-clearing convergence metric for the counterfactual wage solver.
+  # "max" (default): a cell counts as cleared only if max_k |log(new_k/target_k)|
+  # <= counterfactual_wage_tol -- every worker type's market must clear. This is
+  # tripped by structurally thin/inelastic types (LA worker-5 is 0.5% of labor
+  # with wage-inelastic demand; a ~4.8k-labor-unit miss reads as a 9.7% relative
+  # residual). "labor_weighted": a cell counts as cleared when the labor-share-
+  # weighted mean fractional miss, Σ_k (L_k/ΣL)·|log(new_k/target_k)|, <= tol --
+  # i.e. the market clears in aggregate where labor actually is. The solver still
+  # MINIMIZES max|r| (it never sacrifices a type); only the acceptance gate is
+  # reweighted. Measured 2026-06-01: immigration/merger pass the weighted gate
+  # (0.0085/0.0039) but max|r| flags them on thin markets (LA worker-5 ~4.8k
+  # labor units = 9.7% on a 0.5%-share type), while diffusion fails both (a
+  # genuine ~2% imbalance on the 2.5M-worker markets). See la-immigration memory.
+  counterfactual_convergence_metric = tolower(Sys.getenv("JMP_COUNTERFACTUAL_CONVERGENCE_METRIC", unset = "max")),
+
   # ---------------------------------------------------------------------------
   # BBsolve warm-restart checkpoint (debugging only)
   # ---------------------------------------------------------------------------
@@ -442,6 +457,21 @@ CONFIG <- list(
   bootstrap_combine_only = tolower(Sys.getenv("JMP_BOOTSTRAP_COMBINE_ONLY", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
   slurm_array_task_id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", unset = NA_character_)),
+
+  # Whether 08_display_estimates.R filters the bootstrap distribution to
+  # status=="ok" reps before computing standard errors. Default FALSE
+  # (2026-06-01): report SEs over ALL non-error reps and just FLAG the
+  # soft-reverted / non-converged ones, rather than dropping them.
+  # Rationale: per docs/bootstrap_slurm.md and the wage_convergence_gate note
+  # above, filtering on status=="ok" induces selection bias -- the reltol gate
+  # flags genuine local minima as "non-converged", and (e.g. for NYC) the
+  # wage_nonconverged reps are real re-estimates that carry full parameter
+  # tables, none revert to the 06 warm start, and they sit MORE in the low
+  # basin, so dropping them actually INFLATES the reported SE. status=="error"
+  # reps (no parameter columns) are always excluded. Set
+  # JMP_BOOTSTRAP_SE_FILTER_TO_OK=true to restore the strict ok-only filter.
+  bootstrap_se_filter_to_ok = tolower(Sys.getenv("JMP_BOOTSTRAP_SE_FILTER_TO_OK", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
 
   # Whether to use parallel processing
   pl_on = TRUE,
