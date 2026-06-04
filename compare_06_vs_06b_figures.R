@@ -1,9 +1,14 @@
 ## Figure companion to compare_06_vs_06b.R. Renders the unconstrained (06) vs
-## workers-as-rows-monotone (06b) skill matrices B[task, worker] as paired
-## heatmaps and writes them to the standard figure directory
-## (results/out/figures) via save_counterfactual_plot(). Part of the 06b
-## monotone-diagnostic track; runs standalone (outside run_all.R), like its
-## siblings compare_06_vs_06b.R / display_06b_skills.R.
+## workers-as-rows-monotone (06b) skill matrices B as paired heatmaps and writes
+## them to the standard figure directory (results/out/figures) via
+## save_counterfactual_plot(). Part of the 06b monotone-diagnostic track; runs
+## standalone (outside run_all.R), like compare_06_vs_06b.R / display_06b_skills.R.
+##
+## Layout convention: WORKERS AS ROWS, TASKS AS COLUMNS, with counties stacked
+## vertically so the figures fit a portrait page. Worker rows are in QP rank
+## order (1 = least productive at top -> 5 = most productive at bottom); the
+## workers-as-rows monotonicity shows up as each task column shading
+## monotonically top -> bottom in the constrained panels.
 ##
 ## Inputs:
 ##   - results/data/06_parameters.rds            (unconstrained point estimates)
@@ -55,7 +60,7 @@ extract_B <- function(cnty, col) {
 froben <- function(M) sqrt(sum(M^2, na.rm = TRUE))
 slog   <- function(x) sign(x) * log1p(abs(x))   # signed log: symmetric, 0 -> 0
 
-## ---- wide table: one row per (county, task, rank) with unc, con, diff ----
+## ---- wide table: one row per (county, task, worker rank) with unc, con, diff ----
 wide <- rbindlist(lapply(county_order, function(cnty) {
   pi_c  <- as.integer(perms[[cnty]])
   M_unc <- extract_B(cnty, "unc")[, pi_c, drop = FALSE]
@@ -69,17 +74,23 @@ wide <- rbindlist(lapply(county_order, function(cnty) {
              fro_diff = froben(M_con - M_unc))
 }))
 wide[, diff := con - unc]
-wide[, rank_lab := factor(rank, levels = seq_len(n_w),
-      labels = paste0(seq_len(n_w), ifelse(seq_len(n_w) == 1, "\n(worst)",
-                                    ifelse(seq_len(n_w) == n_w, "\n(best)", ""))))]
-wide[, task_lab := factor(task, levels = rev(seq_len(n_t)), labels = paste0("task ", rev(seq_len(n_t))))]
+
+## WORKERS AS ROWS (y): rank 1 (worst) at top -> rank n_w (best) at bottom.
+## ggplot draws the first factor level at the bottom, so reverse the levels.
+wide[, rank_lab := factor(rank, levels = rev(seq_len(n_w)), labels = as.character(rev(seq_len(n_w))))]
+## TASKS AS COLUMNS (x): task 1 .. n_t left -> right.
+wide[, task_lab := factor(task, levels = seq_len(n_t), labels = paste0("task ", seq_len(n_t)))]
 
 raw_breaks <- c(-190, -50, -10, 0, 10, 50, 190)   # signed-log legend ticks (real B units)
-heat_theme <- theme_bw(base_size = 11) +
-  theme(panel.grid = element_blank(), strip.text = element_text(face = "bold", size = 9.5),
-        strip.placement = "outside", plot.subtitle = element_text(size = 8.2, colour = "grey35"),
-        axis.text = element_text(size = 8), legend.position = "right",
-        legend.key.height = unit(1.15, "cm"))
+y_title    <- "worker rank  (1 = least .. 5 = most productive)"
+heat_theme <- theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(),
+        strip.text.x = element_text(face = "bold", size = 9.5),
+        strip.text.y.left = element_text(face = "bold", size = 8.5, angle = 0),
+        strip.placement = "outside",
+        plot.subtitle = element_text(size = 7.8, colour = "grey35"),
+        axis.text = element_text(size = 7.5), axis.title = element_text(size = 9),
+        legend.position = "right", legend.key.height = unit(1.0, "cm"))
 write_fig <- function(plot, stem, w, h) {
   save_counterfactual_plot(paste0(stem, ".png"), plot = plot,
                            width = w, height = h, units = "in", dpi = 150)
@@ -89,67 +100,68 @@ write_fig <- function(plot, stem, w, h) {
 }
 
 ## ===== FIGURE 1: per-county scale (robust-capped), values printed =====
+## counties stacked as rows, versions as the two columns -> portrait.
 long <- melt(wide, id.vars = setdiff(names(wide), c("unc", "con", "diff")),
              measure.vars = c("unc", "con"), variable.name = "version", value.name = "value")
 long[, version_f := factor(version, levels = c("unc", "con"),
-                           labels = c("Unconstrained", "Constrained"))]
+                           labels = c("Unconstrained (06)", "Monotone (06b)"))]
 long[, cap := as.numeric(quantile(abs(value), 0.90, na.rm = TRUE)), by = county]
 long[, fill_scaled := pmax(pmin(value, cap), -cap) / cap]
 long[, txt := ifelse(abs(value) >= 100, sprintf("%.0f", value), sprintf("%.1f", value))]
-## column-strip labels, ordered by county_order (one label per county)
 long[, lab_b := sprintf("%s\n||B||: %.0f -> %.0f", county_label[county], fro_unc, fro_con)]
-lev_b <- unique(long[match(county_order, county)]$lab_b)
-long[, col_lab := factor(lab_b, levels = lev_b)]
+long[, col_lab := factor(lab_b, levels = unique(long[match(county_order, county)]$lab_b))]
 
-p_pc <- ggplot(long, aes(rank_lab, task_lab, fill = fill_scaled)) +
+p_pc <- ggplot(long, aes(task_lab, rank_lab, fill = fill_scaled)) +
   geom_tile(colour = "grey92", linewidth = 0.4) +
-  geom_text(aes(label = txt, colour = abs(fill_scaled) > 0.6), size = 2.7, show.legend = FALSE) +
-  facet_grid(version_f ~ col_lab, switch = "y") +
+  geom_text(aes(label = txt, colour = abs(fill_scaled) > 0.6), size = 2.5, show.legend = FALSE) +
+  facet_grid(col_lab ~ version_f, switch = "y") +
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                        limits = c(-1, 1), breaks = c(-1, 0, 1),
-                       labels = c("-1 (county max)", "0", "+1 (county max)"),
+                       labels = c("-1 (cty max)", "0", "+1 (cty max)"),
                        name = "B, scaled\nwithin county") +
   scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-  labs(title = "Skill matrix B[task, worker]: unconstrained (06) vs workers-as-rows monotone (06b)",
-       subtitle = "Columns ordered by QP worker rank (worst -> best). Constrained rows ramp left-to-right = monotone ladder. Cell = true B; colour capped at each county's 90th pctile |B|.",
-       x = "worker rank (within county)", y = NULL) + heat_theme
-write_fig(p_pc, "06b_skillmatrix_percounty", 12, 6.2)
+  labs(title = "Skill matrix B: unconstrained (06) vs workers-as-rows monotone (06b)",
+       subtitle = paste0("Workers as rows (QP rank, worst top -> best bottom), tasks as columns. In the monotone panels each\n",
+                         "task column shades monotonically top -> bottom. Cell = true B; colour capped at county 90th pctile |B|."),
+       x = "task", y = y_title) + heat_theme
+write_fig(p_pc, "06b_skillmatrix_percounty", 7.5, 9.2)
 
 ## ===== FIGURE 2: shared signed-log scale (cross-county comparable) =====
 long[, sval := slog(value)]
 lim1 <- slog(max(abs(long$value), na.rm = TRUE))
-p_sl <- ggplot(long, aes(rank_lab, task_lab, fill = sval)) +
+p_sl <- ggplot(long, aes(task_lab, rank_lab, fill = sval)) +
   geom_tile(colour = "grey92", linewidth = 0.4) +
-  geom_text(aes(label = txt, colour = abs(sval) > 0.6 * lim1), size = 2.7, show.legend = FALSE) +
-  facet_grid(version_f ~ col_lab, switch = "y") +
+  geom_text(aes(label = txt, colour = abs(sval) > 0.6 * lim1), size = 2.5, show.legend = FALSE) +
+  facet_grid(col_lab ~ version_f, switch = "y") +
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                        limits = c(-lim1, lim1), breaks = slog(raw_breaks), labels = raw_breaks,
                        name = "B\n(signed-log,\nshared scale)") +
   scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-  labs(title = "Skill matrix B: unconstrained (06) vs monotone (06b) -- shared signed-log scale",
-       subtitle = "One colour scale across all six panels: magnitudes comparable across counties. NYC's unconstrained spike (task 4 = -190) dominates, as it should.",
-       x = "worker rank (within county)", y = NULL) + heat_theme
-write_fig(p_sl, "06b_skillmatrix_sharedlog", 12, 6.2)
+  labs(title = "Skill matrix B: shared signed-log scale (magnitudes comparable across counties)",
+       subtitle = paste0("Workers as rows, tasks as columns. One colour scale across all panels: NYC's unconstrained spike\n",
+                         "(task 4, best-rank worker = -190) dominates, as it should."),
+       x = "task", y = y_title) + heat_theme
+write_fig(p_sl, "06b_skillmatrix_sharedlog", 7.5, 9.2)
 
-## ===== FIGURE 3: constrained - unconstrained per county =====
+## ===== FIGURE 3: constrained - unconstrained, counties stacked =====
 d <- copy(wide)
 d[, sdiff := slog(diff)]
 d[, txt := ifelse(abs(diff) >= 100, sprintf("%+.0f", diff), sprintf("%+.1f", diff))]
 d[, lab_d := sprintf("%s\n||diff||: %.0f  (rel %.2f)", county_label[county], fro_diff, fro_diff / fro_unc)]
-lev_d <- unique(d[match(county_order, county)]$lab_d)
-d[, col_lab := factor(lab_d, levels = lev_d)]
+d[, col_lab := factor(lab_d, levels = unique(d[match(county_order, county)]$lab_d))]
 lim2 <- slog(max(abs(d$diff), na.rm = TRUE))
-p_df <- ggplot(d, aes(rank_lab, task_lab, fill = sdiff)) +
+p_df <- ggplot(d, aes(task_lab, rank_lab, fill = sdiff)) +
   geom_tile(colour = "grey92", linewidth = 0.4) +
-  geom_text(aes(label = txt, colour = abs(sdiff) > 0.6 * lim2), size = 2.9, show.legend = FALSE) +
-  facet_wrap(~col_lab, nrow = 1) +
+  geom_text(aes(label = txt, colour = abs(sdiff) > 0.6 * lim2), size = 2.6, show.legend = FALSE) +
+  facet_wrap(~col_lab, ncol = 1) +
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                        limits = c(-lim2, lim2), breaks = slog(raw_breaks), labels = raw_breaks,
                        name = "con - unc\n(signed-log)") +
   scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-  labs(title = "Where monotonicity moves the skill matrix: constrained - unconstrained",
-       subtitle = "Red = constraint raised B for that (task, worker rank); blue = lowered it. NYC task 4 (+197) is the noisy spike being flattened; LA barely moves (rel 0.27).",
-       x = "worker rank (within county)", y = NULL) + heat_theme
-write_fig(p_df, "06b_skillmatrix_diff", 12, 3.9)
+  labs(title = "Where monotonicity moves B: constrained - unconstrained",
+       subtitle = paste0("Workers as rows, tasks as columns. Red = constraint raised B; blue = lowered it.\n",
+                         "NYC task-4 best-worker spike (+197) is flattened; LA barely moves (rel 0.27)."),
+       x = "task", y = y_title) + heat_theme
+write_fig(p_df, "06b_skillmatrix_diff", 5.6, 9.2)
 
 message("compare_06_vs_06b_figures: done.")
