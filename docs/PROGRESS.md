@@ -23,7 +23,8 @@ counterfactual pipeline (now numbered `13_*` through `19_*`) is wired into
 4. `06c_wage_identification.R` is a lightweight wage-stage Hessian +
    perturbation diagnostic that runs after `06_estimation.R` (also has a
    parallel-track companion, `06b_estimation_monotone.R`, plus
-   `compare_06_vs_06b.R` / `display_06b_skills.R` outside the runner).
+   `compare_06_vs_06b.R` / `compare_06_vs_06b_figures.R` /
+   `display_06b_skills.R` outside the runner).
 5. `07_bootstrap.R` produces the Bayesian bootstrap. It now warm-starts from
    `results/data/06_parameters.rds`, supports SLURM array deployment via
    `run_bootstrap_array.sl`, and combines per-rep files into
@@ -240,8 +241,12 @@ The following scripts remain standalone on purpose:
 
 - `02_stylized_facts.R`
 - `03_spatial_corr.R`
-- `06b_estimation_monotone.R`, `compare_06_vs_06b.R`, `display_06b_skills.R`
-  (workers-as-rows monotone diagnostic track; see `6176a9b`)
+- `06b_estimation_monotone.R`, `compare_06_vs_06b.R`,
+  `compare_06_vs_06b_figures.R`, `display_06b_skills.R`
+  (workers-as-rows monotone diagnostic track; see `6176a9b`).
+  `compare_06_vs_06b_figures.R` renders the constrained-vs-unconstrained
+  skill-matrix B as paired heatmaps to
+  `results/out/figures/06b_skillmatrix_{percounty,sharedlog,diff}.{png,pdf}`
 - `peek_skill_matrix.R`, `skill_matrix_dominance.R` (skill-matrix
   diagnostics, see `b392cef`)
 - `run_counterfactual_check.R` (single-call smoke through the counterfactual
