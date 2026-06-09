@@ -2016,6 +2016,16 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
 #'     parameter scaling). Recommended when the moment system has flat or
 #'     saturated regions where a root-finder gets stuck. See
 #'     ``docs/la_wage_moment_floor.md`` for the empirical case.
+#'   - "min_optim_warm" (identical to "min_optim" -- per-county Nelder-Mead +
+#'     parameter scaling + degenerate-simplex restarts -- but WITHOUT the
+#'     per-county random multistart. Each county does a single solve
+#'     warm-started from `start`. Intended for the bootstrap: every rep
+#'     already warm-starts from the 06 point estimate (the good basin), so a
+#'     single local solve tracks that basin under the rep's reweighting
+#'     instead of cold-searching for it as "pso" does -- avoiding the global
+#'     search that stalls/time-outs bootstrap reps. It will NOT escape to a
+#'     different basin, which is the intended behaviour for a warm-started
+#'     bootstrap (and the reason it is distinct from "min_optim").)
 #'   - "pso" (per-county vanilla particle swarm + NM polish on ||g||^2).
 #'     Use when the moment surface has multiple basins that local solvers
 #'     dead-end in. NYC's wage block at the manuscript-style basin is the
@@ -2047,6 +2057,20 @@ estimate_wage_parameters_dispatch <- function(start, x, beta, beta_2_subset,
     ))
   }
 
+  ## "min_optim" minus step-3 (per-county random multistart): a single
+  ## warm-started Nelder-Mead solve per county, keeping the parameter scaling
+  ## (incl. the NYC parscale override) and the degenerate-simplex restart.
+  ## Emptying `min_optim_n_multistarts_by_county` makes every county use
+  ## `n_multistarts = 1L` (the seed start only); parscale and restart settings
+  ## are untouched. See the dispatcher doc comment for the rationale.
+  if (identical(mode, "min_optim_warm")) {
+    cfg <- config
+    cfg$min_optim_n_multistarts_by_county <- list()
+    return(estimate_wage_parameters_min_optim(
+      start, x, beta, beta_2_subset, cfg, clust, solver_state, moment_weights
+    ))
+  }
+
   if (identical(mode, "pso")) {
     return(estimate_wage_parameters_pso(
       start, x, beta, beta_2_subset, config, clust, solver_state, moment_weights
@@ -2066,7 +2090,7 @@ estimate_wage_parameters_dispatch <- function(start, x, beta, beta_2_subset,
   }
 
   stop("Unknown wage_optimizer_mode: ", mode,
-       ". Use 'nleqslv', 'min_optim', 'pso', 'county', or 'joint'.")
+       ". Use 'nleqslv', 'min_optim', 'min_optim_warm', 'pso', 'county', or 'joint'.")
 }
 
 #' Public wage-stage entry point. Layered fallback architecture:
