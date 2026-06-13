@@ -134,9 +134,12 @@ ladder targets the basin-miss failure modes documented in
 | L4 | Re-PSO from the joint vector improved by L1-L3 | on | on |
 | L5 | Joint multistart (opt-in via `JMP_WAGE_FB_L5_K`) | off | off |
 
-In bootstrap mode the ladder is gated by `wage_fallback_skip_in_bootstrap`
-(see `docs/bootstrap_slurm.md` for the rationale and the 2026-05-26 default
-flip).
+The "bootstrap rep" column above is historical: the Petrin-Train bootstrap
+(gated by `wage_fallback_skip_in_bootstrap`; see `legacy/bootstrap_slurm.md`) is
+retired. Standard errors now come from the analytical Murphy-Topel sandwich in
+`07_vcov.R` (see [murphy_topel_proposal.md](murphy_topel_proposal.md)), which
+re-solves the wage/price moments with the full ladder defaults for its
+finite-difference Jacobians.
 
 ## The Numerical Core
 

@@ -18,8 +18,8 @@ The main data split is explicit:
   descriptive branch
 - `06c_wage_identification.R` runs after estimation as a lightweight
   wage-stage Hessian + perturbation diagnostic
-- `07_bootstrap.R` through `12_validate.R` produce post-estimation artifacts
-  (bootstrap draws, display tables, inverted gammas, substitution patterns,
+- `07_vcov.R` through `12_validate.R` produce post-estimation artifacts
+  (standard-error vcovs, display tables, inverted gammas, substitution patterns,
   validation outputs, and the counterfactual input `12_data_for_counterfactuals.rds`)
 - `run_counterfactuals.R` orchestrates the `13_*.R` through `19_*.R` scenario
   scripts on top of `results/data/06_parameters.rds` and
@@ -77,13 +77,15 @@ flowchart TD
     a02 --> a02out[results/data/02_stylized_facts_data.rds]
     a02out --> a03[03_spatial_corr.R]
 
-    esample_out --> boot[07_bootstrap.R]
-    params --> boot
-    boot --> bootout[results/data/07_bootstrap.rds]
+    esample_out --> vcov[07_vcov.R]
+    params --> vcov
+    vcov --> fsout[results/data/07_first_stage_vcov.rds]
+    vcov --> mtout[results/data/07_murphy_topel_vcov.rds]
 
     params --> disp[08_display_estimates.R]
     esample_out --> disp
-    bootout --> disp
+    fsout --> disp
+    mtout --> disp
     disp --> disptabs[results/out/tables/08_*.tex]
 
     params --> gam[09_invert_gammas.R]
@@ -151,7 +153,7 @@ flowchart TD
 | 4 | `05_iv_spec_comparison.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex` |
 | 5 | `06_estimation.R` + `preamble.R` | `results/data/06_parameters.rds` |
 | 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` |
-| 6 | `07_bootstrap.R` | `results/data/07_bootstrap.rds`, `results/data/07_boot_weights.rds`, `results/data/bootstrap_reps/boot_res_<i>.rds` |
+| 6 | `07_vcov.R` | `results/data/07_first_stage_vcov.rds` (analytical clustered 2SLS demand vcov), `results/data/07_murphy_topel_vcov.rds` (Murphy-Topel structural sandwich). Replaces the retired `legacy/07_bootstrap.R`. |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
 | 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
@@ -161,10 +163,10 @@ flowchart TD
 
 Wage-stage post-solve escalation for `06_estimation.R` lives in
 `utils/wage_fallbacks.R` (Layers 1-5: per-county polish, slice-Hessian probe,
-multistart, re-PSO from improved joint vector, opt-in joint multistart). On
-solo runs L1-L3 are enabled by default; in bootstrap reps the layers are
-gated by `wage_fallback_skip_in_bootstrap` (see `config.R` and
-`docs/bootstrap_slurm.md`).
+multistart, re-PSO from improved joint vector, opt-in joint multistart). L1-L3
+are enabled by default. (The `wage_fallback_skip_in_bootstrap` gate applied only
+to the retired bootstrap reps; see `legacy/bootstrap_slurm.md`. Standard errors
+are now the analytical Murphy-Topel sandwich from `07_vcov.R`.)
 
 ### Counterfactual runner: `run_counterfactuals.R`
 

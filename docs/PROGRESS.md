@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-05-26
+Last updated: 2026-06-13
 
 ## Current State
 
@@ -25,10 +25,12 @@ counterfactual pipeline (now numbered `13_*` through `19_*`) is wired into
    parallel-track companion, `06b_estimation_monotone.R`, plus
    `compare_06_vs_06b.R` / `compare_06_vs_06b_figures.R` /
    `display_06b_skills.R` outside the runner).
-5. `07_bootstrap.R` produces the Bayesian bootstrap. It now warm-starts from
-   `results/data/06_parameters.rds`, supports SLURM array deployment via
-   `run_bootstrap_array.sl`, and combines per-rep files into
-   `results/data/07_bootstrap.rds` on a combine-only pass.
+5. `07_vcov.R` produces the standard errors: the analytical clustered 2SLS
+   demand vcov (`07_first_stage_vcov.rds`) and the Murphy-Topel two-step
+   structural sandwich (`07_murphy_topel_vcov.rds`); see
+   `docs/murphy_topel_proposal.md`. This replaced the Petrin-Train bootstrap
+   (`07_bootstrap.R`), now retired to `legacy/` (2026-06-13). Murphy-Topel is
+   the default structural SE source in `08_display_estimates.R`.
 6. `08_display_estimates.R` → `12_validate.R` produce the post-estimation
    tables, figures, inverted gammas, and the counterfactual hand-off
    `results/data/12_data_for_counterfactuals.rds`.
@@ -173,7 +175,7 @@ scenarios were retired during this consolidation (see
 5. `05_iv_spec_comparison.R`
 6. `06_estimation.R`
 7. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
-8. `07_bootstrap.R`
+8. `07_vcov.R` (first-stage 2SLS + Murphy-Topel structural SEs)
 9. `08_display_estimates.R`
 10. `09_invert_gammas.R`
 11. `12_validate.R`
@@ -213,8 +215,7 @@ The automated workflow writes:
 - `results/data/06_parameters.rds`
 - `results/data/06c_wage_identification.rds`
 - `results/out/tables/06c_wage_eigenvalues.tex`, `06c_wage_perturbation.tex`
-- `results/data/07_boot_weights.rds`, `07_bootstrap.rds`,
-  `bootstrap_reps/boot_res_<i>.rds`
+- `results/data/07_first_stage_vcov.rds`, `07_murphy_topel_vcov.rds`
 - `results/out/tables/08_org_price.tex`, `08_time_effects.tex`,
   `08_model_fit.tex`
 - `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png`
@@ -283,19 +284,17 @@ Use these as the current source of truth:
 The standalone `03_00_bootstrap.R` Bayesian-bootstrap script was deleted on
 2026-04-24 in commit `1e79630` ("Integrate post-estimation and
 counterfactual scripts; swap 05/06 order"). It was replaced by
-`07_bootstrap.R`, which is wired into `run_all.R` as step 6, warm-starts
-from `results/data/06_parameters.rds`, and supports SLURM array deployment
-via `run_bootstrap_array.sl` (see `docs/bootstrap_slurm.md`). `boot_settings.R`
-remains as the shared tolerance settings.
+`07_bootstrap.R` (Petrin-Train bootstrap), which was in turn retired to
+`legacy/` on 2026-06-13 and replaced as step 6 by `07_vcov.R`, the analytical
+clustered 2SLS + Murphy-Topel standard-error producer (see
+`docs/murphy_topel_proposal.md`).
 
 ## Next Planned Work
 
-- add the post-hoc bootstrap filter in `08_display_estimates.R` flagged
-  in `docs/bootstrap_slurm.md` (drop reps whose NYC ssq is in the wrong
-  basin or whose `status` / `wage_convergence` is non-zero)
-- monitor the 1100-rep bootstrap array (`52526344`) for wage-nonconvergence
-  rate; preliminary SEs from the first 10 reps show ~30% wage-nonconverged
-  status (see `diagnostics/smoke_bootstrap_se_summary.R`)
+- (DONE / SUPERSEDED 2026-06-13) the bootstrap-SE work — post-hoc rep filtering
+  and the 1100-rep array monitoring — is obsolete: the Petrin-Train bootstrap
+  was retired in favor of the analytical Murphy-Topel sandwich (`07_vcov.R`),
+  which has no reps to filter or monitor.
 - implement the open counterfactual recommendations in
   `docs/counterfactual_solver_assessment.md` (Jacobian-condition diagnostic
   and `residual` surfaced alongside `converged` in summary tables)
