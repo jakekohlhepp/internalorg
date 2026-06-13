@@ -1,9 +1,22 @@
 #' =============================================================================
-#' STEP 07: Bayesian Bootstrap (Standard Errors)
+#' STEP 07: Standard Errors via First-Stage Parameter Draws (Petrin-Train)
 #' =============================================================================
-#' Reweights the estimation sample with Dirichlet (exponential, normalized)
-#' location-level weights and re-runs the same shared estimation pipeline used by
-#' 06_estimation.R.
+#' Two-step inference following Petrin & Train, "Omitted Product Attributes in
+#' Discrete Choice Models" (NBER WP 9452, 2003; published as "A Control
+#' Function Approach to Endogeneity in Consumer Choice Models", JMR 2010).
+#' See docs/bootstrap_petrin_train.md for the full procedure write-up.
+#'
+#'   1. FIRST STAGE (demand-side 2SLS; the demand == TRUE rows of the
+#'      parameter table): inference is analytical. We compute the asymptotic
+#'      cluster-robust (CR1) variance-covariance matrix of the 2SLS estimator,
+#'      clustered at location_id, and its SEs are the reported first-stage
+#'      standard errors. Saved to results/data/07_first_stage_vcov.rds.
+#'   2. SECOND STAGE (structural wage + price parameters): each replication r
+#'      draws beta^(r) ~ N(beta_hat, V_clustered) and re-runs the second-stage
+#'      estimation (wage solver + price L-BFGS-B step) on the ORIGINAL,
+#'      unweighted sample, conditioning on beta^(r). The reported second-stage
+#'      SE (computed in 08_display_estimates.R) is the standard deviation of
+#'      each parameter across replications.
 #'
 #' Inputs:
 #'   - mkdata/data/04_estimation_sample.rds
@@ -12,7 +25,8 @@
 #'     :avg_labor:E_raw_* pattern)
 #'
 #' Outputs:
-#'   - results/data/07_boot_weights.rds
+#'   - results/data/07_first_stage_vcov.rds
+#'   - results/data/07_boot_draws.rds
 #'   - results/data/bootstrap_reps/boot_res_<iteration>.rds
 #'   - results/data/07_bootstrap.rds
 #' =============================================================================
@@ -26,7 +40,8 @@ script_start <- Sys.time()
 
 estimation_sample_path <- file.path(CONFIG$prep_output_dir, "04_estimation_sample.rds")
 parameters_06_path <- file.path("results", "data", "06_parameters.rds")
-weights_path <- file.path("results", "data", "07_boot_weights.rds")
+first_stage_path <- file.path("results", "data", "07_first_stage_vcov.rds")
+draws_path <- file.path("results", "data", "07_boot_draws.rds")
 reps_dir <- CONFIG$bootstrap_results_dir
 assert_required_files(c(estimation_sample_path, parameters_06_path))
 ensure_directory(file.path("results", "data"))
@@ -37,16 +52,58 @@ working_data <- data.table(estimation_sample$working_data)
 estim_matrix <- estimation_sample$estim_matrix
 min_wage_levels <- data.table(estimation_sample$min_wage_levels)
 
+## The analytical first-stage vcov below is for the UNCONSTRAINED 2SLS demand
+## estimator. Under the workers_rows monotonicity restriction beta solves a
+## constrained QP, whose sampling distribution is not the 2SLS sandwich.
+if (!identical(CONFIG$skill_monotone_orientation, "none")) {
+  stop("07_bootstrap.R (Petrin-Train) requires skill_monotone_orientation = ",
+       "'none'; got '", CONFIG$skill_monotone_orientation, "'. The analytical ",
+       "2SLS vcov does not apply to the constrained demand estimator.")
+}
+
+## ---------------------------------------------------------------------------
+## First stage: 2SLS point estimates + analytical clustered vcov.
+## beta_hat re-derives the exact 06 demand coefficients (same rank-aware 2SLS
+## on the same sample); cluster_vcov_2sls() gives the CR1 sandwich clustered
+## at location_id.
+## ---------------------------------------------------------------------------
+estimation_objects <- build_estimation_setup(working_data, estim_matrix, config = CONFIG)
+beta_hat <- estimation_objects$beta
+beta_2 <- estimation_objects$beta_2
+
+first_stage <- cluster_vcov_2sls(
+  x = estimation_objects$mm_1,
+  z = estimation_objects$z_mm_1,
+  y = estim_matrix[, "log_rel_mkt"],
+  beta = beta_hat,
+  cluster = estim_matrix[, "location_id"],
+  context = "demand IV clustered vcov"
+)
+rm(estimation_objects)
+
+first_stage_record <- list(
+  beta = beta_hat,
+  vcov = first_stage$vcov,
+  se = first_stage$se,
+  cluster_variable = "location_id",
+  n_clusters = first_stage$n_clusters,
+  n_obs = first_stage$n_obs,
+  rank = first_stage$rank,
+  small_sample_adjustment = first_stage$adjustment,
+  type = "CR1",
+  estimator = "rank_aware_2sls (demand IV)"
+)
+message("First stage: ", nrow(beta_hat), " demand parameters, ",
+        first_stage$n_clusters, " location_id clusters, ",
+        first_stage$n_obs, " observations; median analytical SE ",
+        signif(stats::median(first_stage$se), 4))
+
 ## Wage warm start. Pull the wage coefficients straight from 06_parameters.rds.
 ## In utils/estimation_pipeline.R, the parameter_table's wage rows are written
 ## with parm_name = names(wage_coefs) = names(beta_2_subset) = the
 ## :avg_labor:E_raw_* names off beta_2's rownames; so we filter on that pattern
 ## and reorder to match rownames(beta_2)[wage_idx], which is the order
 ## extract_wage_start expects.
-estimation_objects <- build_estimation_setup(working_data, estim_matrix, config = CONFIG)
-beta_2 <- estimation_objects$beta_2
-rm(estimation_objects)
-
 wage_terms <- paste0(":avg_labor:E_raw_", 2:CONFIG$n_worker_types, "$")
 wage_idx <- Reduce(`|`, lapply(wage_terms, grepl, rownames(beta_2)))
 wage_names <- rownames(beta_2)[wage_idx]
@@ -78,44 +135,62 @@ resolve_bootstrap_iterations <- function(config = CONFIG) {
   seq_len(config$bootstrap_reps)
 }
 
-build_bootstrap_weights <- function(data, config = CONFIG) {
-  location_ids <- unique(data$location_id)
+## All replications' first-stage draws are generated in one block from
+## config$bootstrap_seed, so every concurrent array task regenerates the
+## identical draw matrix and indexes its own row -- same determinism contract
+## the Dirichlet weights had before the Petrin-Train rewrite.
+build_bootstrap_parameter_draws <- function(beta, vcov, config = CONFIG) {
   set.seed(config$bootstrap_seed)
-  rbindlist(lapply(seq_len(config$bootstrap_reps), function(iter) {
-    temp_weight <- stats::rexp(length(location_ids), 1)
-    temp_weight <- temp_weight / sum(temp_weight)
-    data.table(iteration = iter, location_id = location_ids, bweight = temp_weight)
-  }))
+  draw_first_stage_parameters(beta, vcov, n_draws = config$bootstrap_reps)
 }
 
-load_or_create_bootstrap_weights <- function(data, path, config = CONFIG, persist = TRUE) {
+load_or_create_parameter_draws <- function(beta, vcov, path, config = CONFIG,
+                                           persist = TRUE) {
   if (file.exists(path)) {
-    weights <- readRDS(path)
-    if (max(weights$iteration) >= config$bootstrap_reps) {
-      return(data.table(weights))
+    stored <- tryCatch(readRDS(path), error = function(e) NULL)
+    if (is.list(stored) &&
+        identical(stored$seed, config$bootstrap_seed) &&
+        is.matrix(stored$draws) &&
+        nrow(stored$draws) >= config$bootstrap_reps &&
+        identical(colnames(stored$draws), rownames(beta)) &&
+        isTRUE(max(abs(stored$beta - as.numeric(beta))) <= 1e-8)) {
+      return(stored$draws)
     }
-    message("Existing bootstrap weights do not cover all configured reps; regenerating.")
+    message("Existing first-stage draws do not match the current seed, reps, ",
+            "or point estimates; regenerating.")
   }
 
-  weights <- build_bootstrap_weights(data, config)
+  draws <- build_bootstrap_parameter_draws(beta, vcov, config)
   if (isTRUE(persist)) {
-    saveRDS(weights, path)
+    saveRDS(list(seed = config$bootstrap_seed,
+                 beta = as.numeric(beta),
+                 parm_names = rownames(beta),
+                 draws = draws),
+            path)
   }
-  weights
+  draws
 }
 
-bootstrap_row_weights <- function(iter, data, boot_weight_all) {
-  current_weights <- boot_weight_all[iteration == iter]
-  if (nrow(current_weights) == 0) {
-    stop("No bootstrap weights found for iteration ", iter, ".")
+## One replication's first-stage parameter vector, shaped exactly like the
+## rank_aware_2sls output (1-column matrix with named rows) so every
+## downstream consumer (build_cost_matrix, add_price_adjustment, the wage
+## moment objectives) indexes it identically to the 06 point estimates.
+bootstrap_draw_beta <- function(iter, draws) {
+  if (iter < 1L || iter > nrow(draws)) {
+    stop("No first-stage draw found for iteration ", iter, ".")
   }
-
-  weights <- current_weights$bweight[match(data$location_id, current_weights$location_id)]
-  if (anyNA(weights)) {
-    stop("Missing bootstrap weights for one or more locations in iteration ", iter, ".")
+  values <- draws[iter, ]
+  if (anyNA(values) || any(!is.finite(values))) {
+    stop("Non-finite first-stage draw for iteration ", iter, ".")
   }
-  weights
+  matrix(values, ncol = 1L, dimnames = list(colnames(draws), NULL))
 }
+
+## Stamped into every rep row. Distinguishes Petrin-Train first-stage-draw
+## reps from the pre-2026-06 Dirichlet-reweighting reps so the resume logic
+## never silently reuses a stale rep and the combine pass never mixes the two
+## procedures in one SE distribution.
+BOOTSTRAP_PROCEDURE <- "petrin_train_draws"
 
 bootstrap_result_row <- function(iter, parameter_table,
                                  wage_convergence = NA_integer_,
@@ -133,7 +208,8 @@ bootstrap_result_row <- function(iter, parameter_table,
     wage_convergence  = as.integer(wage_convergence),
     price_convergence = as.integer(price_convergence),
     status            = as.character(status),
-    error_message     = as.character(error_message)
+    error_message     = as.character(error_message),
+    procedure         = BOOTSTRAP_PROCEDURE
   )]
   out
 }
@@ -199,6 +275,19 @@ combine_bootstrap_results <- function(iterations, reps_dir, output_path) {
 
   combined <- rbindlist(lapply(rep_paths, readRDS), fill = TRUE)
   setorder(combined, iteration)
+  stale <- if (!"procedure" %in% names(combined)) {
+    combined$iteration
+  } else {
+    combined[is.na(procedure) | procedure != BOOTSTRAP_PROCEDURE, iteration]
+  }
+  if (length(stale) > 0L) {
+    stop("Refusing to combine: ", length(stale), " replication file(s) predate ",
+         "the Petrin-Train procedure (no procedure='", BOOTSTRAP_PROCEDURE,
+         "' stamp), e.g. iterations ",
+         paste(head(stale, 10L), collapse = ", "),
+         ". Delete or archive the stale files under ", reps_dir,
+         " and re-run the array.", call. = FALSE)
+  }
   validate_bootstrap_results(combined, "Combined bootstrap results")
   saveRDS(combined, output_path)
   invisible(combined)
@@ -216,14 +305,24 @@ run_bootstrap_iteration <- function(iter, config = CONFIG) {
   out_path <- file.path(reps_dir, paste0("boot_res_", iter, ".rds"))
   if (file.exists(out_path)) {
     existing <- tryCatch(readRDS(out_path), error = function(e) NULL)
-    if (!is.null(existing) && identical(as.character(existing$status[[1L]]), "ok")) {
+    if (!is.null(existing) &&
+        identical(as.character(existing$status[[1L]]), "ok") &&
+        "procedure" %in% names(existing) &&
+        identical(as.character(existing$procedure[[1L]]), BOOTSTRAP_PROCEDURE)) {
       message("--- Skipping bootstrap iteration ", iter,
               " (existing rep has status=ok at ", out_path, ") ---")
       return(existing)
     }
+    if (!is.null(existing) &&
+        (!"procedure" %in% names(existing) ||
+         !identical(as.character(existing$procedure[[1L]]), BOOTSTRAP_PROCEDURE))) {
+      message("--- Re-running bootstrap iteration ", iter,
+              " (existing rep at ", out_path,
+              " predates the Petrin-Train procedure) ---")
+    }
   }
   message("\n--- Starting bootstrap iteration ", iter, " at ", Sys.time(), " ---")
-  weights <- bootstrap_row_weights(iter, working_data, boot_weight_all)
+  beta_draw <- bootstrap_draw_beta(iter, boot_param_draws)
   iter_config <- config
   iter_config$bootstrap_iteration <- iter
   clust <- NULL
@@ -240,7 +339,8 @@ run_bootstrap_iteration <- function(iter, config = CONFIG) {
         min_wage_levels,
         config = iter_config,
         clust = clust,
-        weights = weights,
+        weights = NULL,
+        beta = beta_draw,
         beta_2_subset = beta_2_subset,
         skip_structural_optimizer = isTRUE(iter_config$skip_structural_optimizer)
       ),
@@ -348,7 +448,7 @@ run_bootstrap_iterations <- function(iterations, config = CONFIG) {
     parallel::clusterExport(
       clust,
       c("working_data", "estim_matrix", "min_wage_levels", "beta_2_subset",
-        "boot_weight_all", "reps_dir", "bootstrap_row_weights",
+        "boot_param_draws", "reps_dir", "bootstrap_draw_beta",
         "bootstrap_result_row", "validate_bootstrap_results", "run_bootstrap_iteration"),
       envir = .GlobalEnv
     )
@@ -374,13 +474,21 @@ if (any(iters_to_run < 1L | iters_to_run > CONFIG$bootstrap_reps)) {
   stop("Bootstrap iterations must be between 1 and ", CONFIG$bootstrap_reps, ".")
 }
 
+## In array mode every task derives the first stage + draws deterministically
+## in memory; only non-array runs (and the combine-only pass) persist them, so
+## 1100 concurrent tasks never race on the same output files.
 array_task_mode <- !is.na(CONFIG$slurm_array_task_id)
-persist_weights <- !array_task_mode || isTRUE(CONFIG$bootstrap_combine_only)
-boot_weight_all <- load_or_create_bootstrap_weights(
-  working_data,
-  weights_path,
+persist_first_stage <- !array_task_mode || isTRUE(CONFIG$bootstrap_combine_only)
+if (persist_first_stage) {
+  saveRDS(first_stage_record, first_stage_path)
+  message("Saved first-stage clustered vcov to ", first_stage_path)
+}
+boot_param_draws <- load_or_create_parameter_draws(
+  beta_hat,
+  first_stage_record$vcov,
+  draws_path,
   CONFIG,
-  persist = persist_weights
+  persist = persist_first_stage
 )
 
 if (!isTRUE(CONFIG$bootstrap_combine_only)) {

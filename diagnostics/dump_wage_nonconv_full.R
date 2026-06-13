@@ -13,5 +13,5 @@ CONFIG$bootstrap_combine_only <- FALSE
 Sys.setenv(SLURM_ARRAY_TASK_ID = "26")
 CONFIG$slurm_array_task_id <- 26L
 
-source("07_bootstrap.R")
+source("legacy/07_bootstrap.R")
 EOF

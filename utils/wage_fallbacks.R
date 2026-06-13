@@ -38,11 +38,18 @@ wage_fallback_county_par_idx <- function(cnty, par_names) {
 }
 
 #' Build the per-county slice objective `ssq(parms) = sum_v moments_county^2`
+#' (plus the interior-share penalty when enabled, so the ladder searches and
+#' diagnoses the SAME criterion the solvers minimize and the gates accept on)
 #' where `parms` is the 4-vector of `:avg_labor:E_raw_2..5` entries for county
 #' `cnty`, and the rest of the parameter vector is held at `full_par`.
 wage_fallback_make_slice_objective <- function(cnty, full_par, par_idx, x_county,
                                                beta, beta_2_subset, config,
                                                clust, county_weights) {
+  interior_pen_on <- solver_flag(config, "wage_interior_penalty_enabled", FALSE)
+  interior_pen_weight <- solver_value(config, "wage_interior_penalty_weight", 1)
+  county_obs_means <- if (interior_pen_on) {
+    wage_interior_obs_means(x_county, config, county_weights)
+  } else NULL
   function(parms) {
     candidate <- full_par
     candidate[par_idx] <- parms
@@ -62,7 +69,12 @@ wage_fallback_make_slice_objective <- function(cnty, full_par, par_idx, x_county
     if (anyNA(v) || any(!is.finite(v))) {
       return(solver_value(config, "optimizer_failure_penalty", 1e6))
     }
-    sum(v^2)
+    ssq <- sum(v^2)
+    if (interior_pen_on) {
+      ssq <- ssq + interior_pen_weight *
+        wage_interior_penalty_county(v, county_obs_means, config)
+    }
+    ssq
   }
 }
 

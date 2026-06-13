@@ -821,10 +821,91 @@ structural_bound_moments <- function(theta, x, beta, beta_2_subset,
   out
 }
 
+#' Interior-share penalty terms for one county (see config.R
+#' `wage_interior_penalty_*` and docs/wage_interior_penalty_proposal.md).
+#' `moment_means` are the county-subset weighted column means of the wage
+#' moment matrix (E_model - E_obs, types 2..n_w in ascending order), so
+#' `moment_means + obs_means` recovers the county-mean MODEL shares.
+#' Enforces interiority ONLY: every type's county-mean model share must stay
+#' at or above the absolute floor `wage_interior_penalty_min_share`; the
+#' observed shares enter solely to recover the model share from the moment
+#' means. Exactly zero when all types are interior; grows like log(share)^2
+#' as a type goes numerically extinct.
+wage_interior_penalty_county <- function(moment_means, obs_means, config = CONFIG) {
+  share <- pmax(as.numeric(moment_means) + as.numeric(obs_means), config$numeric_floor)
+  floor_k <- max(
+    solver_value(config, "wage_interior_penalty_min_share", 1e-3),
+    config$numeric_floor
+  )
+  gap <- pmax(0, log(floor_k) - log(share))
+  sum(gap^2)
+}
+
+#' County-subset weighted means of the observed shares E_raw_2..E_raw_n,
+#' the `obs_means` argument of wage_interior_penalty_county().
+wage_interior_obs_means <- function(x, config = CONFIG, weights = NULL) {
+  data <- as.data.frame(x)
+  w <- normalize_moment_weights(weights, nrow(data))
+  if (is.null(w)) w <- rep(1 / nrow(data), nrow(data))
+  vapply(
+    2:config$n_worker_types,
+    function(k) sum(w * data[[paste0("E_raw_", k)]]),
+    numeric(1)
+  )
+}
+
+#' Full-vector wrapper used by the accept/revert gates: splits a (possibly
+#' joint, all-county) wage moment-mean vector by county, undoes the
+#' off-county zero dilution (means over all of x -> county means via the
+#' county weight fraction), and sums the per-county penalties. Unnamed
+#' vectors are only accepted when x contains a single county (the per-county
+#' gate calls), in which ascending-type order is assumed.
+wage_interior_penalty_terms <- function(moment_vector, x, config = CONFIG,
+                                        weights = NULL) {
+  data <- as.data.frame(x)
+  w <- normalize_moment_weights(weights, nrow(data))
+  if (is.null(w)) w <- rep(1 / nrow(data), nrow(data))
+  counties_in_x <- unique(as.character(data$county))
+  k_range <- 2:config$n_worker_types
+
+  if (is.null(names(moment_vector))) {
+    if (length(counties_in_x) == 1L && length(moment_vector) == length(k_range)) {
+      names(moment_vector) <- paste0("county", counties_in_x, ":E_", k_range)
+    } else {
+      warning("wage_interior_penalty_terms: unnamed multi-county moment vector; ",
+              "penalty skipped.", call. = FALSE)
+      return(0)
+    }
+  }
+
+  total <- 0
+  for (cnty in counties_in_x) {
+    row_idx <- as.character(data$county) == cnty
+    w_frac <- sum(w[row_idx])
+    if (w_frac <= 0) next
+    nms <- paste0("county", cnty, ":E_", k_range)
+    if (!all(nms %in% names(moment_vector))) next
+    m_county <- as.numeric(moment_vector[nms]) / w_frac
+    if (anyNA(m_county) || any(!is.finite(m_county))) next
+    obs_means <- vapply(
+      k_range,
+      function(k) sum(w[row_idx] * data[row_idx, paste0("E_raw_", k)]) / w_frac,
+      numeric(1)
+    )
+    total <- total + wage_interior_penalty_county(m_county, obs_means, config)
+  }
+  total
+}
+
 structural_wage_objective_score <- function(moment_vector, theta, x, beta,
                                             beta_2_subset, config = CONFIG,
                                             weights = NULL) {
   moment_score <- sum(as.numeric(moment_vector)^2)
+  if (solver_flag(config, "wage_interior_penalty_enabled", FALSE)) {
+    moment_score <- moment_score +
+      solver_value(config, "wage_interior_penalty_weight", 1) *
+      wage_interior_penalty_terms(moment_vector, x, config, weights)
+  }
   if (!solver_flag(config, "structural_bound_guard_enabled", TRUE)) {
     return(moment_score)
   }
@@ -1089,6 +1170,11 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
 
     x_county <- data[row_idx, , drop = FALSE]
     county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
+    interior_pen_on <- solver_flag(objective_config, "wage_interior_penalty_enabled", FALSE)
+    interior_pen_weight <- solver_value(objective_config, "wage_interior_penalty_weight", 1)
+    county_obs_means <- if (interior_pen_on) {
+      wage_interior_obs_means(x_county, objective_config, county_weights)
+    } else NULL
 
     objective_county_ssq <- function(parms) {
       candidate <- full_par
@@ -1114,7 +1200,12 @@ estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
       if (anyNA(v) || any(!is.finite(v))) {
         return(solver_value(config, "optimizer_failure_penalty", 1e6))
       }
-      sum(v^2)
+      ssq <- sum(v^2)
+      if (interior_pen_on) {
+        ssq <- ssq + interior_pen_weight *
+          wage_interior_penalty_county(v, county_obs_means, objective_config)
+      }
+      ssq
     }
 
     objective_county_vec <- function(parms) {
@@ -1504,6 +1595,11 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
 
     x_county <- data[row_idx, , drop = FALSE]
     county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
+    interior_pen_on <- solver_flag(objective_config, "wage_interior_penalty_enabled", FALSE)
+    interior_pen_weight <- solver_value(objective_config, "wage_interior_penalty_weight", 1)
+    county_obs_means <- if (interior_pen_on) {
+      wage_interior_obs_means(x_county, objective_config, county_weights)
+    } else NULL
 
     objective_county_ssq <- function(parms) {
       candidate <- full_par
@@ -1524,7 +1620,12 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       if (anyNA(v) || any(!is.finite(v))) {
         return(solver_value(config, "optimizer_failure_penalty", 1e6))
       }
-      sum(v^2)
+      ssq <- sum(v^2)
+      if (interior_pen_on) {
+        ssq <- ssq + interior_pen_weight *
+          wage_interior_penalty_county(v, county_obs_means, objective_config)
+      }
+      ssq
     }
 
     objective_county_vec <- function(parms) {

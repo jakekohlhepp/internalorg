@@ -19,7 +19,7 @@
 #'   4. Demand IV spec comparison (05_iv_spec_comparison.R)
 #'   5. Run estimation (06_estimation.R)
 #'   5c. Wage identification diagnostic (06c_wage_identification.R)
-#'   6. Bayesian bootstrap (07_bootstrap.R)
+#'   6. Petrin-Train bootstrap SEs (07_bootstrap.R)
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
 #'   9. Validate model (12_validate.R)
@@ -61,7 +61,7 @@ RUN_BUILD_DATA <- TRUE
 RUN_ESTIMATION_SAMPLE <- TRUE
 RUN_ESTIMATION <- TRUE
 RUN_IV_SPEC_COMPARISON <- TRUE
-RUN_BOOTSTRAP <- TRUE
+RUN_VCOV <- TRUE
 RUN_DISPLAY_ESTIMATES <- TRUE
 RUN_INVERT_GAMMAS <- TRUE
 RUN_SUBSTITUTION <- TRUE
@@ -625,21 +625,25 @@ if (!exists("RUN_WAGE_IDENTIFICATION") || isTRUE(RUN_WAGE_IDENTIFICATION)) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 6: Bayesian Bootstrap (07_bootstrap.R)
+#' STEP 6: Standard errors -- analytical first-stage 2SLS + Murphy-Topel
+#'         structural sandwich (07_vcov.R)
 #' -----------------------------------------------------------------------------
+#' Replaces the retired Petrin-Train bootstrap (07_bootstrap.R, now in legacy/).
+#' 07_vcov.R produces both the analytical clustered 2SLS demand vcov and the
+#' two-step Murphy-Topel structural vcov; see docs/murphy_topel_proposal.md.
 
-if (RUN_BOOTSTRAP) {
+if (RUN_VCOV) {
   run_pipeline_step(
     step_label = "STEP 6",
-    script_name = "07_bootstrap.R",
-    deps = c("config.R", "preamble.R", "boot_settings.R",
+    script_name = "07_vcov.R",
+    deps = c("config.R", "preamble.R", "utils/estimation_pipeline.R",
              "mkdata/data/04_estimation_sample.rds",
              "results/data/06_parameters.rds"),
-    outputs = c("results/data/07_boot_weights.rds",
-                "results/data/07_bootstrap.rds"),
+    outputs = c("results/data/07_first_stage_vcov.rds",
+                "results/data/07_murphy_topel_vcov.rds"),
     required_inputs = c("mkdata/data/04_estimation_sample.rds",
                         "results/data/06_parameters.rds"),
-    description = "Bayesian bootstrap"
+    description = "first-stage 2SLS + Murphy-Topel structural SEs"
   )
 }
 

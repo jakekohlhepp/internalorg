@@ -133,6 +133,172 @@ rank_aware_2sls <- function(x, z, y, tolerance = sqrt(.Machine$double.eps),
   coef
 }
 
+#' Cluster-robust (CR1) asymptotic variance-covariance matrix of the 2SLS
+#' estimator produced by rank_aware_2sls().
+#'
+#'   V = c * (X'PzX)^{-1} [ sum_g s_g s_g' ] (X'PzX)^{-1}
+#'
+#' with Xhat = Pz X, score sums s_g = Xhat_g' u_g over cluster g, residuals
+#' u = y - X beta evaluated at the 2SLS coefficients on the ORIGINAL X (not
+#' Xhat), and the Stata-style small-sample factor
+#' c = G/(G-1) * (N-1)/(N-K). This matches sandwich::vcovCL(fit, cluster,
+#' type = "HC1") on an equivalent full-rank ivreg fit (validated in
+#' tests/testthat/test_bootstrap_draws.R).
+#' When return_scores = TRUE the result additionally carries the per-cluster
+#' score sums (`scores`, G x K with cluster ids as rownames) and the
+#' first-stage influence rows (`influence`, G x K, g-th row = (A^{-1} s_g)'),
+#' which satisfy vcov == adjustment * crossprod(influence). These are the
+#' psi_beta building blocks of the Murphy-Topel sandwich (07c_murphy_topel.R).
+cluster_vcov_2sls <- function(x, z, y, beta, cluster,
+                              tolerance = sqrt(.Machine$double.eps),
+                              context = "2SLS clustered vcov",
+                              return_scores = FALSE) {
+  x <- as.matrix(x)
+  z <- as.matrix(z)
+  y <- as.numeric(y)
+  cluster <- as.character(cluster)
+  stopifnot(
+    nrow(x) == length(y),
+    nrow(x) == nrow(z),
+    nrow(x) == length(cluster),
+    !anyNA(cluster),
+    nrow(beta) == ncol(x)
+  )
+
+  x_hat <- rank_aware_projection(z, x, tolerance, context)
+  bread <- crossprod(x, x_hat)
+  residuals <- y - as.numeric(x %*% beta)
+  scores <- rowsum(x_hat * residuals, group = cluster)
+  meat <- crossprod(scores)
+
+  n_obs <- nrow(x)
+  n_clusters <- nrow(scores)
+  k_rank <- qr(x, tol = tolerance)$rank
+  if (n_clusters < 2L) {
+    stop(context, ": at least 2 clusters are required; got ", n_clusters, ".")
+  }
+  if (n_clusters < ncol(x)) {
+    warning(
+      context, ": fewer clusters (", n_clusters, ") than parameters (",
+      ncol(x), "); the clustered vcov is singular with rank <= ", n_clusters,
+      ". Draws from it stay confined to a ", n_clusters,
+      "-dimensional subspace.",
+      call. = FALSE
+    )
+  }
+  adjustment <- (n_clusters / (n_clusters - 1)) * ((n_obs - 1) / (n_obs - k_rank))
+
+  bread_inv_meat <- rank_aware_solve(
+    bread, meat,
+    tolerance = tolerance,
+    context = paste(context, "bread")
+  )
+  vcov <- adjustment * t(rank_aware_solve(
+    bread, t(bread_inv_meat),
+    tolerance = tolerance,
+    context = paste(context, "bread")
+  ))
+  vcov <- (vcov + t(vcov)) / 2
+  dimnames(vcov) <- list(colnames(x), colnames(x))
+
+  variances <- diag(vcov)
+  if (any(variances < -tolerance * max(abs(variances)))) {
+    stop(context, ": vcov has materially negative diagonal entries; ",
+         "the bread solve is unreliable at this conditioning.")
+  }
+  se <- setNames(sqrt(pmax(variances, 0)), colnames(x))
+
+  out <- list(
+    vcov = vcov,
+    se = se,
+    n_obs = n_obs,
+    n_clusters = n_clusters,
+    rank = k_rank,
+    adjustment = adjustment
+  )
+  if (isTRUE(return_scores)) {
+    colnames(scores) <- colnames(x)
+    influence <- t(rank_aware_solve(
+      bread, t(scores),
+      tolerance = tolerance,
+      context = paste(context, "influence")
+    ))
+    dimnames(influence) <- dimnames(scores)
+    out$scores <- scores
+    out$influence <- influence
+  }
+  out
+}
+
+#' Murphy-Topel sandwich for the triangular three-stage system
+#' (beta -> wage -> price); see docs/murphy_topel_proposal.md.
+#'
+#' Solves the block-triangular joint-GMM influence functions per cluster g:
+#'   psi_b,g = A^{-1} s1_g                      (passed in as psi_b rows)
+#'   psi_w,g = -J_2w^{-1} (s2_g + J_2b psi_b,g)
+#'   psi_p,g = (MtM)^{-1} (s3_g + J_3b psi_b,g + J_3w psi_w,g)
+#' and returns V = adjustment * crossprod(cbind(psi_b, psi_w, psi_p)).
+#' All score matrices are per-cluster SUMS (G rows, aligned rownames);
+#' Jacobian blocks are derivatives of the SUMMED moments. MtM = M'M is the
+#' NEGATIVE of the price-moment Jacobian in p (g3 is linear in p).
+assemble_triangular_mt_vcov <- function(psi_b, s2, s3,
+                                        J_2w, J_2b, J_3w, J_3b, MtM,
+                                        adjustment = 1,
+                                        tolerance = sqrt(.Machine$double.eps)) {
+  stopifnot(
+    identical(rownames(psi_b), rownames(s2)),
+    identical(rownames(psi_b), rownames(s3)),
+    ncol(s2) == nrow(J_2w), ncol(s2) == ncol(J_2w),
+    nrow(J_2b) == ncol(s2), ncol(J_2b) == ncol(psi_b),
+    nrow(J_3w) == ncol(s3), ncol(J_3w) == ncol(s2),
+    nrow(J_3b) == ncol(s3), ncol(J_3b) == ncol(psi_b),
+    nrow(MtM) == ncol(s3), ncol(MtM) == ncol(s3)
+  )
+
+  ## psi_w,g' = -(s2_g + J_2b psi_b,g)' (J_2w^{-1})'
+  rhs_w <- s2 + psi_b %*% t(J_2b)
+  psi_w <- -t(solve(J_2w, t(rhs_w)))
+  colnames(psi_w) <- colnames(s2)
+
+  rhs_p <- s3 + psi_b %*% t(J_3b) + psi_w %*% t(J_3w)
+  psi_p <- t(rank_aware_solve(MtM, t(rhs_p), tolerance = tolerance,
+                              context = "Murphy-Topel price block"))
+  colnames(psi_p) <- colnames(s3)
+
+  psi <- cbind(psi_b, psi_w, psi_p)
+  vcov <- adjustment * crossprod(psi)
+  vcov <- (vcov + t(vcov)) / 2
+  list(
+    vcov = vcov,
+    se = setNames(sqrt(pmax(diag(vcov), 0)), colnames(psi)),
+    psi = psi
+  )
+}
+
+#' Draw first-stage parameter vectors from N(beta, vcov) for the Petrin-Train
+#' second-stage procedure (07_bootstrap.R). Returns an n_draws x K matrix with
+#' columns named by rownames(beta). The caller owns the RNG seed. vcov may be
+#' rank-deficient (fewer clusters than parameters); MASS::mvrnorm handles PSD
+#' matrices via its eigendecomposition.
+draw_first_stage_parameters <- function(beta, vcov, n_draws) {
+  if (!requireNamespace("MASS", quietly = TRUE)) {
+    stop("Package 'MASS' is required to draw first-stage parameters.")
+  }
+  parm_names <- rownames(beta)
+  stopifnot(
+    n_draws >= 1L,
+    length(parm_names) == nrow(vcov),
+    identical(parm_names, rownames(vcov)),
+    identical(parm_names, colnames(vcov))
+  )
+  draws <- MASS::mvrnorm(n = n_draws, mu = as.numeric(beta), Sigma = vcov)
+  if (n_draws == 1L) {
+    draws <- matrix(draws, nrow = 1L)
+  }
+  colnames(draws) <- parm_names
+  draws
+}
+
 rank_aware_ols <- function(x, y, tolerance = sqrt(.Machine$double.eps),
                            context = "OLS") {
   coef <- rank_aware_solve(
