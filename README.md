@@ -80,7 +80,7 @@ refactor_estimation/
 |-- 06_estimation.R
 |-- 06b_estimation_monotone.R
 |-- 06c_wage_identification.R
-|-- 07_bootstrap.R
+|-- 07_vcov.R
 |-- 08_display_estimates.R
 |-- 09_invert_gammas.R
 |-- 12_validate.R

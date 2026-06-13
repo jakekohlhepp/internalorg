@@ -36,10 +36,14 @@ The project's `config.R` now automatically detects Slurm allocations.
 | **`interact`** | Debugging | Max 8 cores / 64GB RAM. |
 | **`a100-gpu`** | GPU | **Cap:** 16 CPUs and 128GB RAM per GPU requested. |
 
-## 5. Slurm Job Arrays (Bootstrap)
-The bootstrap script (`07_bootstrap.R`) supports Slurm Job Arrays. This is highly recommended to avoid exceeding wall-time limits.
+## 5. Slurm Job Arrays
+Standard errors no longer use a job array: they come from the analytical
+Murphy-Topel sandwich computed in a single `07_vcov.R` job (the Petrin-Train
+bootstrap that used arrays is retired to `legacy/`; its array notes live in
+`legacy/bootstrap_slurm.md`). Job arrays are still useful for other embarrassingly
+parallel sweeps (e.g. SE-validation batches, counterfactual scenarios). Generic
+template:
 
-### Example Array Script (`run_bootstrap_array.sl`)
 ```bash
 #!/bin/bash
 #SBATCH -p general
@@ -47,14 +51,14 @@ The bootstrap script (`07_bootstrap.R`) supports Slurm Job Arrays. This is highl
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16g
 #SBATCH -t 08:00:00
-#SBATCH --array=1-200%20   # Run 200 reps, 20 at a time
-#SBATCH -o logs/boot_%a.out
+#SBATCH --array=1-200%20   # Run 200 tasks, 20 at a time
+#SBATCH -o logs/task_%a.out
 
 cd $SLURM_SUBMIT_DIR
 module load r/4.4.0
 
-# The script detects $SLURM_ARRAY_TASK_ID and runs only that rep
-Rscript 07_bootstrap.R
+# The script detects $SLURM_ARRAY_TASK_ID and runs only that task
+Rscript <your_array_script>.R
 ```
 
 ## 6. Storage & I/O Best Practices

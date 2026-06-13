@@ -56,9 +56,10 @@ Implementation conventions (decisions made at implementation time):
   `2h` and reports the disagreement. `JMP_MT_SMOKE=true` runs the base
   evaluation + diagnostics + one column per block and exits without writing.
 - The original proposal text follows. Companion to
-[bootstrap_petrin_train.md](bootstrap_petrin_train.md), which documents the
-draw-based procedure currently shipped in `07_bootstrap.R`. That procedure
-captures only the first-stage propagation term; Murphy & Topel (1985) /
+[legacy/bootstrap_petrin_train.md](../legacy/bootstrap_petrin_train.md), which
+documents the draw-based procedure formerly shipped in `07_bootstrap.R` (now
+retired to `legacy/`). That procedure captured only the first-stage propagation
+term; Murphy & Topel (1985) /
 Newey & McFadden (1994, §6) give the full asymptotic variance of a two-step
 estimator, including the second stage's own conditional sampling variance and
 the cross-stage covariance that arises because both stages are estimated on

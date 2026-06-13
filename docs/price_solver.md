@@ -204,7 +204,7 @@ reformulations of the FOC into a fixed point with small contraction modulus
    decomposition, and a contraction proof for endogenous costs (which here
    come from the entropy organization step, not exogenous primitives).
 5. **Numbers move.** Anything that changes the post‑merger equilibrium
-   requires re‑bootstrapping and rewriting.
+   requires re‑computing standard errors (`07_vcov.R`) and rewriting.
 6. **Migration touches four files.** `best_respond()` is duplicated, so
    either factor it into [utils/counterfactuals_core.R](../utils/counterfactuals_core.R)
    first or accept four edits.

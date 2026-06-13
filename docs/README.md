@@ -18,14 +18,16 @@ Source-of-truth references kept aligned with the runners and current code.
 - `mk_tasks_cosmo_summary.md` -- stage-0 task construction note
 - `legacy_import_data_issue.md` -- post-mortem on the legacy-duration drop
   (kept as a permanent reference)
-- `bootstrap_slurm.md` -- SLURM array spec, wage-gate semantics, and resource
-  tuning rationale for `run_bootstrap_array.sl`
+- `murphy_topel_proposal.md` -- the analytical two-step (Murphy-Topel) standard
+  errors produced by `07_vcov.R`; this is the current SE method (the
+  Petrin-Train bootstrap it replaced is retired to `legacy/`, with its SLURM
+  array notes in `legacy/bootstrap_slurm.md`)
 - `STYLE_GUIDE.md` -- coding conventions
 
 ## Wage-Stage Retrospectives
 
 Empirical records of the wage-solver investigation. These are historical but
-still cited by live code (`run_bootstrap_array.sl`, `06_estimation.R`).
+still cited by live code (`06_estimation.R`, `07_vcov.R`).
 
 - `wage_solver_stability.md` -- multi-seed PSO and polisher experiments;
   basis for the PSO+dual-polish production path

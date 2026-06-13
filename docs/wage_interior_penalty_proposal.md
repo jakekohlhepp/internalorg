@@ -175,7 +175,7 @@ Two different stories:
 - **Hard box constraints on wage coefficients** (cap w below the cliff):
   simplest, but the cap value is arbitrary, binds exactly (boundary
   inference again), and the admissible window depends on beta — it would
-  move under bootstrap draws.
+  move with first-stage sampling variation.
 - **Status quo + set-identification reporting** (current path): fix the two
   coordinates, NA SEs, footnote. Zero re-estimation cost; the model keeps
   its "cannot fit small interior shares" property and counterfactual

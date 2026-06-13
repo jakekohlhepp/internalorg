@@ -94,15 +94,16 @@ though it's still a different sign pattern.
    Re-running 06_estimation with the patched `seeit_bb.rds` (NYC =
    `(−24.1, +495.8, +151.9, +342.75)` for E_2..E_5) and the dual-polish PSO
    would produce a slightly lower ssq.
-2. **Bootstrap E_5 standard errors will be enormous** regardless of which
-   local minimum the point estimate sits in. Each bootstrap replicate's
-   solver is likely to land at a different one of these shallow minima.
-   Standard-error reporting for E_5 (and to a lesser extent E_3) needs to
-   be interpreted as identifying which basin the data anchored, not as
-   precision around a single point.
+2. **E_5 standard errors will be enormous** regardless of which local minimum
+   the point estimate sits in. The wage surface is flat/multi-basin in that
+   direction, so the Murphy-Topel sandwich (`07_vcov.R`) reports a very large SE
+   off the near-singular local curvature (this is the same weak-identification
+   the retired bootstrap surfaced as basin-to-basin scatter across replicates).
+   The E_5 SE (and to a lesser extent E_3) should be read as identifying which
+   basin the data anchored, not as precision around a single point.
 3. **The diagnostic should run on every estimation pass.** Step 5c in
    [run_all.R](../run_all.R) wires it in immediately after 06_estimation
-   and before 07_bootstrap. The flag `RUN_WAGE_IDENTIFICATION` (default
+   and before 07_vcov. The flag `RUN_WAGE_IDENTIFICATION` (default
    TRUE) lets you skip if needed.
 
 ## Outputs
@@ -164,8 +165,8 @@ has been implemented as a layered post-solve escalation inside
   search after local escape" step).
 - **L5** -- joint multistart, opt-in via `JMP_WAGE_FB_L5_K`.
 
-Defaults: L1-L3 enabled on solo `06_estimation.R` runs; the full ladder
-runs in bootstrap reps as of `ff6f6a0` (2026-05-26) when
-`wage_fallback_skip_in_bootstrap` is overridden to FALSE. See `config.R`
-and [docs/bootstrap_slurm.md](bootstrap_slurm.md) for the bootstrap
-gating.
+Defaults: L1-L3 enabled on `06_estimation.R` runs. (The
+`wage_fallback_skip_in_bootstrap` gate, flipped to FALSE in `ff6f6a0`
+2026-05-26, applied only to the retired Petrin-Train bootstrap reps; see
+[legacy/bootstrap_slurm.md](../legacy/bootstrap_slurm.md). Standard errors are
+now the analytical Murphy-Topel sandwich from `07_vcov.R`.)
