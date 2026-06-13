@@ -27,7 +27,7 @@
 #'  11. Substitution patterns at equilibrium (20_substitution.R)
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'
-#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_bootstrap.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
+#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
 #' =============================================================================
 
 # Clear environment

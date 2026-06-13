@@ -8,7 +8,11 @@
 #' Inputs:
 #'   - mkdata/data/01_keytask.rds
 #'   - results/data/06_parameters.rds
-#'   - results/data/07_bootstrap.rds  (optional; falls back to zero SEs)
+#'   - results/data/07_first_stage_vcov.rds   (demand 2SLS SEs; from 07_vcov.R)
+#'   - results/data/07_murphy_topel_vcov.rds  (structural SEs; default source)
+#'   - results/data/07_bootstrap.rds  (LEGACY; only read when
+#'       JMP_STRUCTURAL_SE_SOURCE=draws, produced by legacy/07_bootstrap.R;
+#'       optional, falls back to zero SEs if absent)
 #'   - mkdata/data/04_estimation_sample.rds
 #'   - preamble.R
 #'
@@ -61,6 +65,9 @@ all_results[, county_name := ifelse(county == "17031", "Cook", ifelse(county == 
 ### create se
 
 
+# LEGACY: only used when JMP_STRUCTURAL_SE_SOURCE=draws (retired Petrin-Train
+# bootstrap, see legacy/07_bootstrap.R). Absent under the Murphy-Topel default,
+# in which case the draws branch is skipped. first_stage + MT vcov come from 07_vcov.R.
 bootstrap_path <- file.path("results", "data", "07_bootstrap.rds")
 first_stage_path <- file.path("results", "data", "07_first_stage_vcov.rds")
 
