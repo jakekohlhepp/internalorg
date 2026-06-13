@@ -62,7 +62,9 @@ all_results[, county_name := ifelse(county == "17031", "Cook", ifelse(county == 
 
 
 bootstrap_path <- file.path("results", "data", "07_bootstrap.rds")
+first_stage_path <- file.path("results", "data", "07_first_stage_vcov.rds")
 
+all_se <- NULL
 if (file.exists(bootstrap_path)) {
   all_bootreps <- data.table(readRDS(bootstrap_path))
   parameter_cols <- names(point_estimates)
@@ -78,22 +80,45 @@ if (file.exists(bootstrap_path)) {
          paste(missing_parameter_cols, collapse = ", "))
   }
 
+  ## Default (CONFIG$bootstrap_se_filter_to_ok = FALSE): compute SEs over ALL
+  ## non-error reps and FLAG the soft-reverted / non-converged ones via message,
+  ## rather than dropping them or erroring out. status=="error" reps have no
+  ## parameter columns and are always excluded. Set
+  ## JMP_BOOTSTRAP_SE_FILTER_TO_OK=true to restore the strict ok-only filter.
+  ## See docs/bootstrap_slurm.md "Post-hoc filtering in 08".
   if ("status" %in% names(all_bootreps)) {
-    bad_status <- all_bootreps[is.na(status) | status != "ok"]
-    if (nrow(bad_status) > 0L) {
-      stop("Bootstrap file contains non-ok replications: ",
-           paste(head(paste0("iteration ", bad_status$iteration, " (", bad_status$status, ")"), 10L),
-                 collapse = ", "))
+    error_reps <- all_bootreps[!is.na(status) & status == "error"]
+    if (nrow(error_reps) > 0L) {
+      message("08: dropping ", nrow(error_reps),
+              " status=error replication(s) (no parameters): ",
+              paste(head(error_reps$iteration, 10L), collapse = ", "),
+              if (nrow(error_reps) > 10L) ", ..." else "")
+      all_bootreps <- all_bootreps[is.na(status) | status != "error"]
     }
-    all_bootreps <- all_bootreps[status == "ok"]
+    flagged <- all_bootreps[!is.na(status) & status != "ok"]
+    if (nrow(flagged) > 0L) {
+      flag_summary <- flagged[, .N, by = status][order(-N)]
+      flag_text <- paste(sprintf("%s=%d", flag_summary$status, flag_summary$N), collapse = ", ")
+      if (isTRUE(CONFIG$bootstrap_se_filter_to_ok)) {
+        message("08: FILTERING OUT ", nrow(flagged),
+                " non-ok replication(s) before SE (JMP_BOOTSTRAP_SE_FILTER_TO_OK=true): ", flag_text)
+        all_bootreps <- all_bootreps[status == "ok"]
+      } else {
+        message("08: KEEPING ", nrow(flagged),
+                " flagged (soft-reverted / non-converged) replication(s) in the SE distribution: ",
+                flag_text, ". Set JMP_BOOTSTRAP_SE_FILTER_TO_OK=true to exclude them.")
+      }
+    }
   }
 
   for (conv_col in intersect(c("wage_convergence", "price_convergence"), names(all_bootreps))) {
     bad_conv <- all_bootreps[!is.na(get(conv_col)) & get(conv_col) != 0L]
     if (nrow(bad_conv) > 0L) {
-      stop("Bootstrap file contains non-converged replications in ", conv_col, ": ",
-           paste(head(paste0("iteration ", bad_conv$iteration, " (", bad_conv[[conv_col]], ")"), 10L),
-                 collapse = ", "))
+      message("08: ", nrow(bad_conv), " replication(s) with ", conv_col,
+              " != 0 retained in SE distribution: ",
+              paste(head(paste0("iteration ", bad_conv$iteration, " (code=", bad_conv[[conv_col]], ")"), 10L),
+                    collapse = ", "),
+              if (nrow(bad_conv) > 10L) ", ..." else "")
     }
   }
 
@@ -111,10 +136,92 @@ if (file.exists(bootstrap_path)) {
     by = "parm_name",
     sort = FALSE
   )
+}
 
+## Demand-stage SEs are the ANALYTICAL clustered 2SLS SEs in
+## results/data/07_first_stage_vcov.rds (produced by 07_vcov.R; formerly by the
+## retired 07_bootstrap.R). The structural (wage/price) SEs come from the source
+## selected below (Murphy-Topel by default; "draws" only if legacy reps exist).
+if (file.exists(first_stage_path)) {
+  first_stage <- readRDS(first_stage_path)
+  if (is.null(all_se)) {
+    all_se <- data.table(parm_name = names(point_estimates),
+                         demand = point_estimates_demand_flag,
+                         se = NA_real_)
+  }
+  fs_se <- data.table(parm_name = names(first_stage$se),
+                      analytic_se = as.numeric(first_stage$se))
+  all_se <- merge(all_se, fs_se, by = "parm_name", all.x = TRUE, sort = FALSE)
+  missing_analytic <- all_se[demand == TRUE & is.na(analytic_se), parm_name]
+  if (length(missing_analytic) > 0L) {
+    stop("07_first_stage_vcov.rds is missing analytical SEs for demand parameters: ",
+         paste(head(missing_analytic, 10L), collapse = ", "))
+  }
+  all_se[demand == TRUE, se := analytic_se]
+  all_se[, analytic_se := NULL]
+  message("08: demand SEs = analytical clustered 2SLS (cluster = ",
+          first_stage$cluster_variable, ", G = ", first_stage$n_clusters,
+          "); structural SEs = SD across first-stage-draw replications.")
+} else if (!is.null(all_se)) {
+  message("08: results/data/07_first_stage_vcov.rds not found; demand SEs fall ",
+          "back to the across-rep SD. Re-run 07_vcov.R to generate the ",
+          "analytical first-stage SEs.")
+}
+
+## Structural-SE source switch (JMP_STRUCTURAL_SE_SOURCE): "draws" (default)
+## keeps the across-rep SD from the Petrin-Train replications; "murphy_topel"
+## replaces the second-stage SEs with the analytical two-step sandwich from
+## 07c_murphy_topel.R (docs/murphy_topel_proposal.md). Price coordinates that
+## bind their lower bound have NA Murphy-Topel SEs and keep the draw-based SD.
+if (identical(CONFIG$structural_se_source, "murphy_topel")) {
+  mt_path <- file.path("results", "data", "07_murphy_topel_vcov.rds")
+  if (!file.exists(mt_path)) {
+    stop("JMP_STRUCTURAL_SE_SOURCE=murphy_topel but ", mt_path,
+         " not found; run 07c_murphy_topel.R first.")
+  }
+  mt <- readRDS(mt_path)
+  if (is.null(all_se)) {
+    all_se <- data.table(parm_name = names(point_estimates),
+                         demand = point_estimates_demand_flag,
+                         se = NA_real_)
+  }
+  ## Merge on the STRUCTURAL-only SE vector (wage + price block). Its names are
+  ## unique, whereas mt$se spans the full system where demand county:quarter FEs
+  ## share names with their price/B twins -- a by-name merge on mt$se would
+  ## double-match those 33 names and drop/duplicate their structural SEs.
+  mt_struct <- if (!is.null(mt$se_structural)) mt$se_structural else mt$se
+  mt_se <- data.table(parm_name = names(mt_struct), mt_se = as.numeric(mt_struct))
+  all_se <- merge(all_se, mt_se, by = "parm_name", all.x = TRUE, sort = FALSE)
+  missing_mt <- all_se[demand == FALSE & is.na(mt_se) &
+                         !parm_name %in% mt$binding_price_coords, parm_name]
+  if (length(missing_mt) > 0L) {
+    stop("07_murphy_topel_vcov.rds is missing SEs for structural parameters: ",
+         paste(head(missing_mt, 10L), collapse = ", "))
+  }
+  both <- all_se[demand == FALSE & !is.na(mt_se) & !is.na(se) & se > 0]
+  if (nrow(both) > 0L) {
+    message("08: max |MT/draws - 1| over ", nrow(both),
+            " structural SEs with both sources: ",
+            signif(max(abs(both$mt_se / both$se - 1)), 3))
+  }
+  all_se[demand == FALSE & !is.na(mt_se), se := mt_se]
+  all_se[, mt_se := NULL]
+  message("08: structural SEs = Murphy-Topel sandwich (G = ", mt$n_clusters,
+          " clusters, k_total = ", mt$k_total, ")",
+          if (length(mt$binding_price_coords) > 0L) {
+            paste0("; bound-binding coords keep the draw-based SD: ",
+                   paste(mt$binding_price_coords, collapse = ", "))
+          } else "", ".")
+}
+
+if (!is.null(all_se)) {
   all_results <- merge(all_results, all_se, by = c("parm_name", "demand"))
   stopifnot(nrow(all_results) == nrow(all_se))
-  all_results[, se := str_replace(as.character(paste0("(", format(round(se, 3), nsmall = 3), ")")), " 0.", "."), ]
+  all_results[, se_formatted := as.character(0.001)]
+  all_results[!is.na(se),
+              se_formatted := str_replace(as.character(paste0("(", format(round(se, 3), nsmall = 3), ")")), " 0.", ".")]
+  all_results[, se := NULL]
+  setnames(all_results, "se_formatted", "se")
 } else {
   all_results[, se := as.character(0.001), ]
 }

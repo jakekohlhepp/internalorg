@@ -3,11 +3,24 @@
 How `run_bootstrap_array.sl` is sized, and why. Update this file when the
 specs in the script change.
 
+**Procedure (as of 2026-06-10):** `07_bootstrap.R` implements the
+Petrin-Train two-step SE procedure — analytical clustered (location_id, CR1)
+vcov for the first-stage 2SLS demand coefficients, and per-rep draws
+`beta^(r) ~ N(beta_hat, V_clustered)` followed by a second-stage
+(wage + price) re-estimation on the original unweighted sample. See
+[bootstrap_petrin_train.md](bootstrap_petrin_train.md) for the statistics;
+this file covers deployment. Each array task is still "one rep = one R
+process running the wage + price solve", so everything below about sizing,
+tolerances, and convergence gates carries over from the pre-2026-06
+Dirichlet-reweighting scheme (under which the empirical timings/tolerances
+were measured — first-stage draws perturb the wage moment surface the same
+way reweighting did).
+
 ## Submission
 
 **Always submit via `sbatch run_bootstrap_array.sl`, not `sbatch --wrap`.**
 The script in this repo pins the array range (`--array=1-1100%200`), the
-bootstrap-mode env vars (`JMP_WAGE_OPTIMIZER_MODE=pso`,
+bootstrap-mode env vars (`JMP_WAGE_OPTIMIZER_MODE=min_optim_warm`,
 `JMP_PSO_STRICT_OBJ_TOL=0.1`, `JMP_OBJ_TOL=1e-4`), the BLAS/OpenMP thread caps,
 and the renv pre-flight. Hand-rolling those with `--wrap` is how reps go
 missing — e.g. job `51533265` was submitted as `--wrap --array=1-200%200`,
@@ -36,9 +49,15 @@ JMP_BOOTSTRAP_COMBINE_ONLY=true Rscript -e \
 The bootstrap reads `mkdata/data/04_estimation_sample.rds` and
 `results/data/06_parameters.rds` (wage warm start is pulled from
 `parameter_table` rows whose `parm_name` matches `:avg_labor:E_raw_*`,
-reordered to match `rownames(beta_2)[wage_idx]`). It writes one
-`results/data/bootstrap_reps/boot_res_<i>.rds` per array task, and combines
-them into `results/data/07_bootstrap.rds` on the combine-only pass.
+reordered to match `rownames(beta_2)[wage_idx]`). Every task recomputes the
+first-stage 2SLS + clustered vcov and the full draw matrix deterministically
+from `JMP_BOOTSTRAP_SEED` (cheap; seconds), then runs the second stage at its
+own draw. It writes one `results/data/bootstrap_reps/boot_res_<i>.rds` per
+array task, and combines them into `results/data/07_bootstrap.rds` on the
+combine-only pass; the combine-only pass (and any non-array run) also
+persists `results/data/07_first_stage_vcov.rds` and
+`results/data/07_boot_draws.rds`. The old `07_boot_weights.rds` is obsolete
+and no longer read.
 
 ## Spec table
 
@@ -51,7 +70,7 @@ them into `results/data/07_bootstrap.rds` on the combine-only pass.
 | `-t 3-00:00:00` | 72 h | Retuned 2026-05-25 from production array 50012608, which CANCELLED 109 first-wave reps at the prior 2-day ceiling. COMPLETED reps spanned 3.08-44.07 h (median 7.73, p90 19.7, p95 27.9). 3 days clears the p95 tail with margin and avoids the silent truncation that the 2-day cap caused. Tighten back to 2 days if the next array shows p99 < 36h. |
 | `--array=1-1100%200` | 1100 reps, 200 concurrent | `CONFIG$bootstrap_reps` is 1100 in [config.R](../config.R). At ~8h median per rep, %200 finishes the array in ~5.5 waves ≈ ~2-2.5 days wall (vs ~4-5 days at %100). 200 tasks × 2 CPUs = 400 CPUs ≈ 1.5% of TotalCPUs=26240; well under any fairshare cost. Drop to %100 if queue-priority pressure shows up. |
 | OMP/OpenBLAS/MKL/vecLib `_NUM_THREADS=1` | env vars | Force BLAS/OpenMP single-threaded so we don't silently oversubscribe the 2 allocated cores. Required because the R-level backend is serial (next section). |
-| `JMP_PSO_STRICT_OBJ_TOL=0.1` | env var | Loosened from 0.01 default for bootstrap mode. The 0.01 gate was sized for the uniform-weight surface (NYC basin floor ~1.3e-3 + safety margin per [docs/wage_solver_stability.md](wage_solver_stability.md)); bootstrap reweighting shifts that floor by ~1 order of magnitude per draw. Cancelled job 49194150 had 38 strict-tol failures (worst Cook 0.023, worst NYC 0.032), and bench rep 1 (job 49320283) hit NYC polish_seed=0.0497 — only 0.7% under a 0.05 gate. 0.1 absorbs that tail with ~2x headroom over the bench. **Caveat:** NYC's "wrong basin" floor (~0.025) sits below 0.1, so the strict guard alone will not catch a rep that lands there — pair with a post-hoc filter in 08 that drops reps whose NYC ssq exceeds (e.g.) 0.1 or whose `wage_convergence` is non-zero. |
+| `JMP_PSO_STRICT_OBJ_TOL=0.1` | env var | Loosened from 0.01 default for bootstrap mode. The 0.01 gate was sized for the point-estimate surface (NYC basin floor ~1.3e-3 + safety margin per [docs/wage_solver_stability.md](wage_solver_stability.md)); per-rep perturbation (Dirichlet reweighting then, first-stage beta draws now) shifts that floor by ~1 order of magnitude per draw. Cancelled job 49194150 had 38 strict-tol failures (worst Cook 0.023, worst NYC 0.032), and bench rep 1 (job 49320283) hit NYC polish_seed=0.0497 — only 0.7% under a 0.05 gate. 0.1 absorbs that tail with ~2x headroom over the bench. **Caveat:** NYC's "wrong basin" floor (~0.025) sits below 0.1, so the strict guard alone will not catch a rep that lands there — pair with a post-hoc filter in 08 that drops reps whose NYC ssq exceeds (e.g.) 0.1 or whose `wage_convergence` is non-zero. |
 | `JMP_OBJ_TOL=1e-4` | env var | Loosened from 1e-6 default. The polish step's `reltol` was making Nelder-Mead burn 160+ evals stuck at the same value chasing precision the reweighted moment surface doesn't have. 1e-4 lets polish exit when relevant progress stops; cuts wall time materially. |
 | Wage fallback ladder (L1-L4) | now on by default in bootstrap | [config.R](../config.R) default for `wage_fallback_skip_in_bootstrap` flipped 2026-05-26 from `true` to `false`. Production array 52396589 had 151/263 reps (57%) flagged `wage_nonconverged` with the gate on; the strict tolerance gate also does not catch the NYC "wrong basin" failure mode the ladder is designed to escape. With the gate off, bootstrap reps run the same path 06_estimation runs by default: L1 (per-county Nelder-Mead polish at tight reltol), L2 (slice-Hessian diagnostic), L3 (per-county multistart, K=4), and L4 (re-PSO from the improved warm start, up to 2 rounds). L5 (joint multistart) stays off via `wage_fallback_joint_multistart_k=0`. Expect wall time per rep to grow by ~1-3 h. Restore the old fast path with `JMP_WAGE_FB_SKIP_BOOTSTRAP=true` if needed. |
 
@@ -167,18 +186,41 @@ codes produce a `message()`, not a `stop()`.
 
 ### Post-hoc filtering in 08
 
+Note: as of the Petrin-Train rewrite, 08's bootstrap-distribution SEs apply
+only to the **second-stage (wage/price) rows** — demand rows take the
+analytical clustered SEs from `07_first_stage_vcov.rds` directly, so the
+filtering discussion below only affects the structural SEs.
+
 `pso_strict_obj_tol = 0.1` is loose enough that the gate-1 check cannot
 distinguish a "right basin, reweighting-shifted floor" rep (e.g. NYC
 polish_seed = 0.05) from a "wrong basin" rep (NYC basin floor ≈ 0.025
 under uniform weights — see [wage_solver_stability.md](wage_solver_stability.md)).
 Soft-revert reps (gate 2/3) similarly land in the file with parameters
-that are partly 06-warm-start. The natural defense is a downstream
-filter in `08_display_estimates.R` that drops or flags reps whose NYC
-moment ssq exceeds some threshold, or whose `status` is non-`ok`, or
-whose `wage_convergence`/`price_convergence` is non-zero. **This filter
-has not yet been added** — the validator now lets these reps through, so
-without the 08 filter they will silently contribute to the final
-standard errors.
+that are partly 06-warm-start.
+
+As of 2026-06-01, `08_display_estimates.R` no longer hard-`stop()`s on
+non-`ok` reps. Its **default** (`CONFIG$bootstrap_se_filter_to_ok =
+FALSE`) is to compute the SEs over **all non-error reps** and emit a
+`message()` flagging how many soft-reverted / non-converged reps were
+retained (and which `wage_convergence`/`price_convergence` codes). Only
+`status == "error"` reps (no parameter columns) are dropped. Rationale:
+filtering on `status == "ok"` induces selection bias — the reltol gate
+flags genuine local minima as "non-converged", and (e.g. for NYC) the
+`wage_nonconverged` reps are real re-estimates that carry full parameter
+tables, none revert exactly to the 06 warm start, and they sit *more* in
+the low basin, so dropping them actually *inflates* the reported SE
+(empirically NYC E_raw_5 SE 644.7 over all non-error reps vs 703.6
+ok-only). Set `JMP_BOOTSTRAP_SE_FILTER_TO_OK=true` to restore the strict
+ok-only filter.
+
+**Still not implemented:** a *wrong-basin* filter keyed on the per-county
+wage moment ssq. The rep `.rds` files store only the parameter table, not
+the per-county ssq, so an all-negative wrong-basin rep (e.g. iter109) can
+pass as `status == "ok"` and inflate the NYC E_raw_2 SE. To add this,
+either write the per-county wage ssq into `bootstrap_result_row` going
+forward, or recompute it in 08 from `(data, beta, weights)`, then drop
+reps above a threshold (e.g. 0.1). See
+[project memory: NYC bootstrap SE — weak identification].
 
 ## Why serial
 

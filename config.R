@@ -315,6 +315,26 @@ CONFIG <- list(
   wage_fallback_verbose = tolower(Sys.getenv("JMP_WAGE_FB_VERBOSE", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
 
+  ## Interior-share penalty for the wage stage (PROPOSAL, off by default; see
+  ## docs/wage_interior_penalty_proposal.md). Adds to the wage minimizers'
+  ## objective a smooth hinge penalty
+  ##   weight * sum_{county c, type k>=2} max(0, log(min_share) - log(model_ck))^2
+  ## on the county-mean model worker shares, which is exactly zero whenever
+  ## every type keeps a model share of at least min_share and diverges like
+  ## log(share)^2 as a type's share -> 0. It enforces interiority ONLY: the
+  ## floor is an absolute share level, with no reference to the observed
+  ## shares (which enter solely to recover model shares from moment means).
+  ## Purpose: rule out the "priced-out plateau" solutions (Cook type-3 /
+  ## LA type-5, 2026-06) where a worker type's share hits the numeric floor,
+  ## the wage coefficient becomes locally unidentified, and warm-started
+  ## re-runs walk it outward arbitrarily. Applies to the minimizer modes
+  ## (min_optim / min_optim_warm / pso) and the accept/revert gates; the
+  ## nleqslv root-finding mode ignores it.
+  wage_interior_penalty_enabled = tolower(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  wage_interior_penalty_weight = as.numeric(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY_WEIGHT", unset = "1")),
+  wage_interior_penalty_min_share = as.numeric(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY_MIN_SHARE", unset = "1e-3")),
+
   structural_bound_guard_enabled = tolower(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   structural_bound_guard_weight = as.numeric(Sys.getenv("JMP_STRUCTURAL_BOUND_GUARD_WEIGHT", unset = "10")),
@@ -469,6 +489,32 @@ CONFIG <- list(
   # reps (no parameter columns) are always excluded. Set
   # JMP_BOOTSTRAP_SE_FILTER_TO_OK=true to restore the strict ok-only filter.
   bootstrap_se_filter_to_ok = tolower(Sys.getenv("JMP_BOOTSTRAP_SE_FILTER_TO_OK", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+
+  # ---------------------------------------------------------------------------
+  # Murphy-Topel structural standard errors (07_vcov.R)
+  # ---------------------------------------------------------------------------
+  # Which SEs 08_display_estimates.R reports for the SECOND-stage (wage/price)
+  # rows: "murphy_topel" (default; analytical two-step sandwich from
+  # results/data/07_murphy_topel_vcov.rds; see docs/murphy_topel_proposal.md)
+  # or "draws" (legacy; SD across the retired 07_bootstrap Petrin-Train
+  # first-stage-draw replications). Default changed 2026-06-13 from "draws" to
+  # "murphy_topel" when the bootstrap was retired in favor of the analytical
+  # sandwich. Demand rows always use the analytical clustered 2SLS SEs either way.
+  structural_se_source = tolower(Sys.getenv("JMP_STRUCTURAL_SE_SOURCE", unset = "murphy_topel")),
+  # Workers for the numerical Jacobian columns (mclapply forks; serial default).
+  mt_workers = as.integer(Sys.getenv("JMP_MT_WORKERS", unset = "1")),
+  # Multiplier on the finite-difference step sizes (beta: 0.01*SE_j;
+  # wage: 1e-3*max(|w_j|, county parscale)). Use with JMP_MT_STEP_CHECK to
+  # probe derivative stability.
+  mt_step_scale = as.numeric(Sys.getenv("JMP_MT_STEP_SCALE", unset = "1")),
+  # Richardson-style robustness probe: recompute the first few Jacobian
+  # columns at 2h and report the relative disagreement.
+  mt_step_check = tolower(Sys.getenv("JMP_MT_STEP_CHECK", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
+  # Smoke mode: run the base evaluation, alignment/FOC/bound diagnostics and
+  # one Jacobian column per block, then exit WITHOUT writing the vcov file.
+  mt_smoke = tolower(Sys.getenv("JMP_MT_SMOKE", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
 
   # Whether to use parallel processing
