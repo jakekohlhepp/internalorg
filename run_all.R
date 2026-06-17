@@ -15,19 +15,23 @@
 #'   0. Make task data (00_mk_tasks_cosmo.R) - only if raw data file exists
 #'   1. Setup environment (packages from fixed snapshot date)
 #'   2. Build data (01_build_data.R)
+#'   2b. Stylized facts (02_stylized_facts.R) - only if raw pulls available
+#'   2c. Spatial correlation maps (03_spatial_corr.R) - only if geo files available
 #'   3. Assemble estimation sample (04_estimation_sample.R)
 #'   4. Demand IV spec comparison (05_iv_spec_comparison.R)
 #'   5. Run estimation (06_estimation.R)
+#'   5b. Monotone-restricted estimation (06b_estimation_monotone.R)
 #'   5c. Wage identification diagnostic (06c_wage_identification.R)
-#'   6. Petrin-Train bootstrap SEs (07_bootstrap.R)
+#'   6. Standard errors: first-stage 2SLS + Murphy-Topel (07_vcov.R)
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
 #'   9. Validate model (12_validate.R)
+#'   9b. Compile counterfactual warm-start wages (compile_warm_start_wages.R)
 #'  10. Counterfactual pipeline (run_counterfactuals.R)
 #'  11. Substitution patterns at equilibrium (20_substitution.R)
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'
-#' Outputs: mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/out/tables/05_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
+#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/out/tables/05_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/13_warm_start_wages.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
 #' =============================================================================
 
 # Clear environment
@@ -58,8 +62,11 @@ MIN_R_VERSION <- "4.3.0"
 RUN_MAKE_TASKS <- TRUE
 RUN_SETUP <- TRUE
 RUN_BUILD_DATA <- TRUE
+RUN_STYLIZED_FACTS <- TRUE
+RUN_SPATIAL_CORR <- TRUE
 RUN_ESTIMATION_SAMPLE <- TRUE
 RUN_ESTIMATION <- TRUE
+RUN_ESTIMATION_MONOTONE <- TRUE
 RUN_IV_SPEC_COMPARISON <- TRUE
 RUN_VCOV <- TRUE
 RUN_DISPLAY_ESTIMATES <- TRUE
@@ -67,6 +74,7 @@ RUN_INVERT_GAMMAS <- TRUE
 RUN_SUBSTITUTION <- TRUE
 RUN_SUBSTITUTION_PROD <- TRUE
 RUN_VALIDATE <- TRUE
+RUN_WARM_START_WAGES <- TRUE
 RUN_COUNTERFACTUALS <- TRUE
 
 # Track whether downstream steps should be forced due to upstream changes
@@ -326,6 +334,158 @@ if (RUN_BUILD_DATA) {
     } else {
       message("STEP 2 skipped (no changes detected)")
       pipeline_results[["01_build_data.R"]] <- list(
+        ran = FALSE, success = TRUE, duration = 0,
+        error = NULL, skipped = TRUE
+      )
+    }
+  }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 2b: Stylized Facts (02_stylized_facts.R)
+#' -----------------------------------------------------------------------------
+#' Descriptive industry-wide evidence on the FULL national sample. Requires the
+#' confidential raw pulls (chair renters / tips / products) under
+#' CONFIG$raw_data_base; skipped gracefully when those are unavailable on this
+#' machine, like STEP 0.
+
+if (RUN_STYLIZED_FACTS) {
+  message("\n", strrep("-", 70))
+  message("STEP 2b: Checking 02_stylized_facts.R")
+  message(strrep("-", 70))
+
+  step2b_inputs <- c(
+    "mkdata/data/00_tasks_cosmo.rds",
+    "mkdata/data/01_staff_task_full.rds"
+  )
+  chairrenter_path <- if (nzchar(CONFIG$raw_data_base)) {
+    file.path(CONFIG$raw_data_base, "20201204_chair_renters/staff_renters.csv")
+  } else {
+    ""
+  }
+
+  if (!nzchar(CONFIG$raw_data_base) ||
+      any(!file.exists(step2b_inputs)) ||
+      !file.exists(chairrenter_path)) {
+    message("STEP 2b skipped (raw pulls / build-data inputs not available on this machine)")
+    pipeline_results[["02_stylized_facts.R"]] <- list(
+      ran = FALSE, success = TRUE, duration = 0,
+      error = NULL, skipped = TRUE
+    )
+  } else {
+    step2b_deps <- c("config.R", step2b_inputs)
+    step2b_outputs <- c("results/data/02_stylized_facts_data.rds")
+
+    if (force_downstream || !file.exists(step2b_outputs) ||
+        needs_rerun("02_stylized_facts.R", step2b_deps)) {
+      step2b_start <- Sys.time()
+
+      log_init("02_stylized_facts.R")
+      log_message("Starting stylized-facts analysis")
+
+      tryCatch({
+        source("02_stylized_facts.R", local = new.env(parent = globalenv()))
+        assert_required_files(step2b_outputs)
+        log_message("Stylized-facts analysis completed successfully")
+        log_complete(success = TRUE)
+
+        step2b_time <- difftime(Sys.time(), step2b_start, units = "mins")
+        message("STEP 2b complete (", round(step2b_time, 2), " minutes)")
+
+        pipeline_results[["02_stylized_facts.R"]] <- list(
+          ran = TRUE, success = TRUE, duration = as.numeric(step2b_time),
+          error = NULL, skipped = FALSE
+        )
+      }, error = function(e) {
+        log_message(paste("ERROR:", e$message), "ERROR")
+        log_complete(success = FALSE)
+        pipeline_results[["02_stylized_facts.R"]] <<- list(
+          ran = TRUE, success = FALSE, duration = 0,
+          error = e$message, skipped = FALSE
+        )
+        stop("Stylized-facts analysis failed: ", e$message)
+      })
+    } else {
+      message("STEP 2b skipped (no changes detected)")
+      pipeline_results[["02_stylized_facts.R"]] <- list(
+        ran = FALSE, success = TRUE, duration = 0,
+        error = NULL, skipped = TRUE
+      )
+    }
+  }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 2c: Spatial Correlation Maps (03_spatial_corr.R)
+#' -----------------------------------------------------------------------------
+#' ZIP-level choropleths of productivity / specialization / return rate for the
+#' three focal counties plus a sample-coverage map. Consumes 02's firm-quarter
+#' panel and the Census/GEOCORR geo files under CONFIG$raw_data_path; skipped
+#' gracefully when those are unavailable.
+
+if (RUN_SPATIAL_CORR) {
+  message("\n", strrep("-", 70))
+  message("STEP 2c: Checking 03_spatial_corr.R")
+  message(strrep("-", 70))
+
+  stylized_path <- "results/data/02_stylized_facts_data.rds"
+  zcta_county_path <- if (nzchar(CONFIG$raw_data_path)) {
+    file.path(CONFIG$raw_data_path, "20220727_countypop/geocorr2022_2220801561.csv")
+  } else {
+    ""
+  }
+  zcta_shape_path <- if (nzchar(CONFIG$raw_data_path)) {
+    file.path(CONFIG$raw_data_path,
+              "20240415_census_zcta_shapefiles/cb_2018_us_zcta510_500k.shp")
+  } else {
+    ""
+  }
+
+  if (!file.exists(stylized_path) ||
+      !nzchar(CONFIG$raw_data_path) ||
+      !file.exists(zcta_county_path) ||
+      !file.exists(zcta_shape_path)) {
+    message("STEP 2c skipped (02 output or Census geo files not available on this machine)")
+    pipeline_results[["03_spatial_corr.R"]] <- list(
+      ran = FALSE, success = TRUE, duration = 0,
+      error = NULL, skipped = TRUE
+    )
+  } else {
+    step2c_deps <- c("config.R", stylized_path)
+    step2c_outputs <- c("results/out/figures/03_coverage.png")
+
+    if (force_downstream || !file.exists(step2c_outputs) ||
+        needs_rerun("03_spatial_corr.R", step2c_deps)) {
+      step2c_start <- Sys.time()
+
+      log_init("03_spatial_corr.R")
+      log_message("Starting spatial-correlation maps")
+
+      tryCatch({
+        source("03_spatial_corr.R", local = new.env(parent = globalenv()))
+        assert_required_files(step2c_outputs)
+        log_message("Spatial-correlation maps completed successfully")
+        log_complete(success = TRUE)
+
+        step2c_time <- difftime(Sys.time(), step2c_start, units = "mins")
+        message("STEP 2c complete (", round(step2c_time, 2), " minutes)")
+
+        pipeline_results[["03_spatial_corr.R"]] <- list(
+          ran = TRUE, success = TRUE, duration = as.numeric(step2c_time),
+          error = NULL, skipped = FALSE
+        )
+      }, error = function(e) {
+        log_message(paste("ERROR:", e$message), "ERROR")
+        log_complete(success = FALSE)
+        pipeline_results[["03_spatial_corr.R"]] <<- list(
+          ran = TRUE, success = FALSE, duration = 0,
+          error = e$message, skipped = FALSE
+        )
+        stop("Spatial-correlation maps failed: ", e$message)
+      })
+    } else {
+      message("STEP 2c skipped (no changes detected)")
+      pipeline_results[["03_spatial_corr.R"]] <- list(
         ran = FALSE, success = TRUE, duration = 0,
         error = NULL, skipped = TRUE
       )
@@ -605,6 +765,30 @@ run_pipeline_step <- function(step_label, script_name, deps, outputs,
 }
 
 #' -----------------------------------------------------------------------------
+#' STEP 5b: Monotone-restricted estimation (06b_estimation_monotone.R)
+#' -----------------------------------------------------------------------------
+#' Robustness variant of STEP 5: re-estimates the structural model imposing the
+#' workers-as-rows monotonicity restriction on each county's skill matrix. Feeds
+#' the 06b comparison diagnostics (compare/figures/display scripts).
+
+if (RUN_ESTIMATION_MONOTONE) {
+  run_pipeline_step(
+    step_label = "STEP 5b",
+    script_name = "06b_estimation_monotone.R",
+    deps = c("config.R", "preamble.R",
+             "utils/constrained_demand_iv.R",
+             "mkdata/data/04_estimation_sample.rds",
+             "mkdata/data/seeit_bb.rds"),
+    outputs = c("results/data/06b_parameters_monotone.rds",
+                "results/data/06b_perms.rds",
+                "results/data/06b_qp_diagnostics.rds"),
+    required_inputs = c("mkdata/data/04_estimation_sample.rds",
+                        "mkdata/data/seeit_bb.rds"),
+    description = "monotone-restricted (workers-as-rows) estimation"
+  )
+}
+
+#' -----------------------------------------------------------------------------
 #' STEP 5c: Wage-stage local identification diagnostic (06c_wage_identification.R)
 #' -----------------------------------------------------------------------------
 
@@ -710,6 +894,24 @@ if (RUN_VALIDATE) {
                         "results/data/09_withgammas.rds",
                         "mkdata/data/01_staff_task_full.rds"),
     description = "model validation"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 9b: Compile counterfactual warm-start wages (compile_warm_start_wages.R)
+#' -----------------------------------------------------------------------------
+#' Persists the best-known cleared wage vectors per (county, quarter_year) so the
+#' counterfactual labor-clearing solver in 13_counterfactual_prep.R warm-starts
+#' near a market-clearing equilibrium. Must run before STEP 10.
+
+if (RUN_WARM_START_WAGES) {
+  run_pipeline_step(
+    step_label = "STEP 9b",
+    script_name = "compile_warm_start_wages.R",
+    deps = c("config.R", "utils/counterfactuals_core.R",
+             "compile_warm_start_wages.R"),
+    outputs = c("results/data/counterfactuals/13_warm_start_wages.rds"),
+    description = "compile counterfactual warm-start wages"
   )
 }
 

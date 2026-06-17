@@ -21,10 +21,10 @@ counterfactual pipeline (now numbered `13_*` through `19_*`) is wired into
    artifact. `preamble.R` exposes `build_estimation_setup()` and no longer
    mutates ambient session state when sourced.
 4. `06c_wage_identification.R` is a lightweight wage-stage Hessian +
-   perturbation diagnostic that runs after `06_estimation.R` (also has a
-   parallel-track companion, `06b_estimation_monotone.R`, plus
-   `compare_06_vs_06b.R` / `compare_06_vs_06b_figures.R` /
-   `display_06b_skills.R` outside the runner).
+   perturbation diagnostic that runs after `06_estimation.R`. The monotone
+   parallel track `06b_estimation_monotone.R` now runs in `run_all.R` as
+   STEP 5b; its comparison helper `06b_compare.R` (tables + heatmaps) is run
+   standalone.
 5. `07_vcov.R` produces the standard errors: the analytical clustered 2SLS
    demand vcov (`07_first_stage_vcov.rds`) and the Murphy-Topel two-step
    structural sandwich (`07_murphy_topel_vcov.rds`); see
@@ -236,26 +236,33 @@ The automated workflow writes:
   `18_bytype_counterfactuals.tex`
 - `results/out/figures/19_realloc_*.png`, `19_reorg_*.png`
 
-## Standalone Analysis Scripts
+## Pipeline Integration Notes
 
-The following scripts remain standalone on purpose:
+Several formerly-standalone scripts are now wired into `run_all.R`:
 
-- `02_stylized_facts.R`
-- `03_spatial_corr.R`
-- `06b_estimation_monotone.R`, `compare_06_vs_06b.R`,
-  `compare_06_vs_06b_figures.R`, `display_06b_skills.R`
-  (workers-as-rows monotone diagnostic track; see `6176a9b`).
-  `compare_06_vs_06b_figures.R` renders the constrained-vs-unconstrained
-  skill-matrix B as paired heatmaps to
-  `results/out/figures/06b_skillmatrix_{percounty,sharedlog,diff}.{png,pdf}`
-- `peek_skill_matrix.R`, `skill_matrix_dominance.R` (skill-matrix
-  diagnostics, see `b392cef`)
+- `02_stylized_facts.R` (STEP 2b) and `03_spatial_corr.R` (STEP 2c) run after
+  the build-data step; both skip gracefully when their confidential raw inputs
+  are unavailable.
+- `06b_estimation_monotone.R` (STEP 5b) runs the workers-as-rows monotone
+  estimation track.
+- `compile_warm_start_wages.R` (STEP 9b) persists the per-(county, quarter)
+  cleared wage vectors to `counterfactuals/13_warm_start_wages.rds` before the
+  counterfactual pipeline.
+
+The following remain standalone on purpose:
+
+- `06b_compare.R` — unified 06-vs-06b comparison (console tables + paired
+  skill-matrix heatmaps to
+  `results/out/figures/06b_skillmatrix_{percounty,sharedlog,diff}.{png,pdf}`).
+  Reads the saved 06/06b parameter files; supersedes the former
+  `compare_06_vs_06b.R`, `compare_06_vs_06b_figures.R`, and
+  `display_06b_skills.R` (consolidated 2026-06-17). The ad-hoc
+  `peek_skill_matrix.R` / `skill_matrix_dominance.R` inspectors were deleted in
+  the same pass.
 - `run_counterfactual_check.R` (single-call smoke through the counterfactual
   loop)
 - `22_skill_parameter_units.R` (skill matrix in interpretable units; produces
   `results/out/tables/22_*.tex`)
-- `compile_warm_start_wages.R` (assembles per-scenario warm starts from the
-  most recent 14-17 wage outputs into `counterfactuals/13_warm_start_wages_*.rds`)
 
 They stay outside `run_all.R` because they operate on the descriptive,
 full-sample branch or produce exploratory diagnostic output.
