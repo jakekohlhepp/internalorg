@@ -166,7 +166,7 @@ firm_initial      <- copy(panels$initial$firm)
 firm_initial[, version := NULL]
 
 
-## ===== firm-level summary table (Reallocation/Reorganization x s-index/Prod./Rev. per Labor) =====
+## ===== firm-level summary table (Reallocation/Reorganization x s-index/Prod.) =====
 tot_table <- rbindlist(lapply(panels[cf_names], `[[`, "firm"))
 colnames(firm_initial) <- c("county", "sol_type", "initial_s",
                             "initial_prod", "initial_rev_per_labor")
@@ -174,29 +174,27 @@ colnames(firm_initial) <- c("county", "sol_type", "initial_s",
 tot_table <- merge(tot_table, firm_initial[, -"sol_type"], by = "county")
 tot_table[, pct_sindex        := (s_avg - initial_s) / initial_s]
 tot_table[, pct_prod          := (labor_prod - initial_prod) / initial_prod]
-tot_table[, pct_rev_per_labor := (rev_per_labor - initial_rev_per_labor) /
-                                  initial_rev_per_labor]
 
 tot_table <- dcast(tot_table, version + county ~ sol_type,
-                   value.var = c("pct_sindex", "pct_prod", "pct_rev_per_labor"))
+                   value.var = c("pct_sindex", "pct_prod"))
 setcolorder(tot_table,
             c("version", "county",
-              "pct_sindex_realloc", "pct_prod_realloc", "pct_rev_per_labor_realloc",
-              "pct_sindex_reorg",   "pct_prod_reorg",   "pct_rev_per_labor_reorg"))
+              "pct_sindex_realloc", "pct_prod_realloc",
+              "pct_sindex_reorg",   "pct_prod_reorg"))
 cols <- colnames(tot_table)[-c(1, 2)]
 tot_table[, (cols) := lapply(.SD, function(x) as.character(format(round(x, 3), nsmall = 3))),
           .SDcols = cols]
 
 tot_table[, county_name := county_display_name(county)]
 setcolorder(tot_table, "county_name")
-colnames(tot_table)[-c(1, 2, 3)] <- c("S-Index Change", "Prod. Change", "Rev/Labor Change",
-                                      "S-Index Change", "Prod. Change", "Rev/Labor Change")
+colnames(tot_table)[-c(1, 2, 3)] <- c("S-Index Change", "Prod. Change",
+                                      "S-Index Change", "Prod. Change")
 setnames(tot_table, "county_name", "County")
 setnames(tot_table, "version", "Counterfactual")
 
 output <- kable(tot_table[, -"county"], "latex", align = "c", booktabs = TRUE,
                 linesep = c(""), escape = F, caption = NA, label = NA)
-output <- add_header_above(output, c(" ", " ", "Reallocation" = 3, "Reorganization" = 3))
+output <- add_header_above(output, c(" ", " ", "Reallocation" = 2, "Reorganization" = 2))
 write_counterfactual_text(
   output,
   "18_tot_counterfactuals.tex",
