@@ -234,7 +234,7 @@ The automated workflow writes:
 - `results/data/counterfactuals/17_wages_merger.rds`, `17_prod_merger.rds`
 - `results/out/tables/18_tot_counterfactuals.tex`,
   `18_bytype_counterfactuals.tex`
-- `results/out/figures/19_realloc_*.png`, `19_reorg_*.png`
+- `results/out/figures/19_immigration_*.png`, `19_merger_*.png`
 
 ## Pipeline Integration Notes
 
