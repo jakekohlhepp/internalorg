@@ -242,6 +242,25 @@ geom_immigration_pies <- function(data, x_col, y_col, fill_cols, radius = 0.22) 
   )
 }
 
+## --- axis helpers for the standardized pie coordinate system ----------------
+## Pies are drawn at z-scored coordinates so coord_fixed() keeps them circular.
+## To label the axes in ORIGINAL units, place ticks at "pretty" values on the
+## original scale and map them back to standardized positions via the fitted
+## lm(original ~ standardized): original = a + b * standardized, so a tick at
+## original value v sits at standardized position (v - a) / b. This keeps the
+## labels round and unique. (The previous code rounded the proportion BEFORE
+## scaling to percent -- round(value, 1) -- which collapsed every sub-1% tick to
+## "0%", e.g. the realloc price axis printed "0%" at every break.)
+std_axis_breaks <- function(model, orig_values, n = 5) {
+  a <- coef(model)[1]
+  b <- coef(model)[2]
+  vals <- scales::pretty_breaks(n = n)(range(orig_values, na.rm = TRUE))
+  list(at = (vals - a) / b, vals = vals)
+}
+fmt_pct    <- function(v) paste0(round(100 * v, 1), "%")
+fmt_gamma  <- function(v) sprintf("%.1f", v)
+fmt_sindex <- function(v) sprintf("%.2f", v)
+
 ## reallocation logic
 ## high immigrant firms tend to have higher coordination cost
 ggplot(aes(x=log_gamma, y=`Initial Immigrant Skill Set` ), data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]) + 
@@ -260,13 +279,13 @@ imm_la[sol_type=="Reallocation" & is.finite(gamma_invert), sdelta_price:=scale(d
 
 m2 <- lm(delta_price ~ sdelta_price, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
 m1 <- lm(log_gamma ~ slog_gamma, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x,digits=1)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=1),"%")
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$log_gamma)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$delta_price)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reallocation" & is.finite(gamma_invert)], "slog_gamma", "sdelta_price", c("Initial Immigrant Skill Set", "Other Skill Set"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) +  geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_gamma(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) +  geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed() +theme_bw()+
   scale_fill_manual(values = pal_color)+ylab("Price Change")+xlab("Log Organization Cost (Gamma)")+ 
   theme(legend.position="bottom") +
@@ -286,14 +305,14 @@ imm_la[sol_type=="Reallocation" & is.finite(gamma_invert), slog_gamma:=scale(log
 imm_la[sol_type=="Reallocation" & is.finite(gamma_invert), sdelta_share:=scale(delta_share)]
 
 m2 <- lm(delta_share ~ sdelta_share, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
-m1 <- lm(log_gamma ~ slog_gamma, data=imm_la[sol_type=="Reallocation"& is.finite(log_gamma)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x,digits=2)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=1),"%")
+m1 <- lm(log_gamma ~ slog_gamma, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$log_gamma)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$delta_share)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reallocation" & is.finite(gamma_invert)], "slog_gamma", "sdelta_share", c("Initial Immigrant Skill Set", "Other Skill Set"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_gamma(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed() +theme_bw()+
   scale_fill_manual(values = pal_color)+ylab("Market Share Change")+xlab("Log Organization Cost (Gamma)")+ 
   theme(legend.position="bottom") +
@@ -312,14 +331,14 @@ imm_la[sol_type=="Reallocation" & is.finite(gamma_invert), slog_gamma:=scale(log
 imm_la[sol_type=="Reallocation" & is.finite(gamma_invert), ss_index:=scale(s_index)]
 
 m2 <- lm(delta_share ~ sdelta_share, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
-m1 <- lm(s_index ~ ss_index, data=imm_la[sol_type=="Reallocation"& is.finite(log_gamma)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x, digits=2)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=1),"%")
+m1 <- lm(s_index ~ ss_index, data=imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)])
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$s_index)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reallocation"& is.finite(gamma_invert)]$delta_share)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reallocation" & is.finite(gamma_invert)], "ss_index", "sdelta_share", c("Initial Immigrant Skill Set", "Other Skill Set"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_sindex(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed() +theme_bw()+geom_smooth(aes(x=ss_index, y=sdelta_share),data=imm_la[sol_type=="Reallocation" & is.finite(gamma_invert)],method='lm', formula=y ~ x, se=FALSE, linewidth=1.5, color='red', linetype='dashed')+
   scale_fill_manual(values = pal_color)+
   theme(legend.position="bottom") +
@@ -350,13 +369,13 @@ imm_la[sol_type=="Reorganization" & is.finite(gamma_invert), sdelta_price:=scale
 
 m2 <- lm(delta_price ~ sdelta_price, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
 m1 <- lm(log_gamma~ slog_gamma, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x,1)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=2),"%")
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$log_gamma)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$delta_price)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reorganization" & is.finite(gamma_invert)], "slog_gamma", "sdelta_price", c("Initial Immigrant Skill Set","Other Skill Set", "Immigration"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_gamma(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed() +theme_bw()+
   scale_fill_manual(values = pal_color)+ 
   theme(legend.position="bottom") +
@@ -375,13 +394,13 @@ imm_la[sol_type=="Reorganization" & is.finite(gamma_invert), sdelta_share:=scale
 
 m2 <- lm(delta_share ~ sdelta_share, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
 m1 <- lm(log_gamma~ slog_gamma, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x,1)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=2),"%")
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$log_gamma)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$delta_share)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reorganization" & is.finite(gamma_invert)], "slog_gamma", "sdelta_share", c("Initial Immigrant Skill Set","Other Skill Set", "Immigration"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_gamma(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) + geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed()+
   ylab('Market Share Change')+xlab("Log Organization Cost (Gamma)")+
   theme_bw()+
@@ -403,13 +422,13 @@ imm_la[sol_type=="Reorganization" & is.finite(gamma_invert), sdelta_share:=scale
 
 m2 <- lm(delta_share ~ sdelta_share, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
 m1 <- lm(s_index~ ss_index, data=imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)])
-trans_x <- function(x)round(coef(m1)[1] + coef(m1)[2]*x,digits=2)
-trans_y <- function(x) paste0(100*round(coef(m2)[1] + coef(m2)[2]*x,digits=2),"%")
+ax_x <- std_axis_breaks(m1, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$s_index)
+ax_y <- std_axis_breaks(m2, imm_la[sol_type=="Reorganization"& is.finite(gamma_invert)]$delta_share)
 
 ggplot() +
   geom_immigration_pies(imm_la[sol_type=="Reorganization" & is.finite(gamma_invert)], "ss_index", "sdelta_share", c("Initial Immigrant Skill Set","Other Skill Set", "Immigration"))+
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_x) + 
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 5),labels = trans_y) +  geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
+  scale_x_continuous(breaks = ax_x$at, labels = fmt_sindex(ax_x$vals)) +
+  scale_y_continuous(breaks = ax_y$at, labels = fmt_pct(ax_y$vals)) +  geom_hline(yintercept= -coef(m2)[1]/coef(m2)[2], linetype="dashed", linewidth=1)+
   coord_fixed() +theme_bw()+geom_smooth(aes(x=ss_index, y=sdelta_share),data=imm_la[sol_type=="Reorganization" & is.finite(gamma_invert)],method='lm', formula=y ~ x, se=FALSE, linewidth=1.5, color='red', linetype='dashed')+
   scale_fill_manual(values = pal_color)+ 
   theme(legend.position="bottom") +
