@@ -281,17 +281,24 @@ counterfactual_steps <- list(
     required_inputs_any = list(
       counterfactual_data_path("13_initial_wages.rds"),
       counterfactual_data_path("13_working_data.rds"),
-      counterfactual_data_path("16_wages_immigration.rds")
+      counterfactual_data_path("16_wages_immigration.rds"),
+      counterfactual_data_path("17_wages_merger.rds")
     ),
     outputs = c(
-      counterfactual_output_path("19_realloc_scatter.png", "figures"),
-      counterfactual_output_path("19_realloc_price.png", "figures"),
-      counterfactual_output_path("19_realloc_marketshare.png", "figures"),
-      counterfactual_output_path("19_realloc_sindex.png", "figures"),
-      counterfactual_output_path("19_reorg_scatter.png", "figures"),
-      counterfactual_output_path("19_reorg_price.png", "figures"),
-      counterfactual_output_path("19_reorg_marketshare.png", "figures"),
-      counterfactual_output_path("19_reorg_sindex.png", "figures")
+      counterfactual_output_path("19_immigration_realloc_scatter.png", "figures"),
+      counterfactual_output_path("19_immigration_realloc_price.png", "figures"),
+      counterfactual_output_path("19_immigration_realloc_marketshare.png", "figures"),
+      counterfactual_output_path("19_immigration_realloc_sindex.png", "figures"),
+      counterfactual_output_path("19_immigration_reorg_scatter.png", "figures"),
+      counterfactual_output_path("19_immigration_reorg_price.png", "figures"),
+      counterfactual_output_path("19_immigration_reorg_marketshare.png", "figures"),
+      counterfactual_output_path("19_immigration_reorg_sindex.png", "figures"),
+      counterfactual_output_path("19_merger_realloc_price.png", "figures"),
+      counterfactual_output_path("19_merger_realloc_marketshare.png", "figures"),
+      counterfactual_output_path("19_merger_realloc_sindex.png", "figures"),
+      counterfactual_output_path("19_merger_reorg_price.png", "figures"),
+      counterfactual_output_path("19_merger_reorg_marketshare.png", "figures"),
+      counterfactual_output_path("19_merger_reorg_sindex.png", "figures")
     ),
     skip_if_inputs_missing = TRUE
   )

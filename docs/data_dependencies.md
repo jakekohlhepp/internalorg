@@ -184,7 +184,7 @@ matching `19_` prefix.
 | CF 04 | `16_counterfactual_immigration.R` | `counterfactuals/16_wages_immigration.rds`, `counterfactuals/16_prod_immigration.rds` |
 | CF 06A | `17_counterfactual_merger.R` | `counterfactuals/17_wages_merger.rds`, `counterfactuals/17_prod_merger.rds` |
 | CF 06B | `18_counterfactual_summary.R` | `results/out/tables/18_tot_counterfactuals.tex`, `results/out/tables/18_bytype_counterfactuals.tex` |
-| CF 07 | `19_counterfactual_figures.R` | `results/out/figures/19_realloc_*.png`, `19_reorg_*.png` |
+| CF 07 | `19_counterfactual_figures.R` | `results/out/figures/19_immigration_*.png` (8: scatter/price/marketshare/sindex × realloc/reorg), `19_merger_*.png` (6: price/marketshare/sindex × realloc/reorg) |
 
 ## Standalone Analysis Scripts
 

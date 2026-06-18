@@ -189,13 +189,15 @@ setnames(imm_la, old=c("initial_share", "non_imm","newimm"), new=c("Initial Immi
 
 pal_color <- c("orange", "#377EB8", "#4DAF4A")
 
-save_immigration_figure <- function(filename, width, height, units = "in") {
+save_immigration_figure <- function(filename, width, height, units = "in",
+                                    plot = ggplot2::last_plot()) {
   output_path <- save_counterfactual_plot(
     filename,
     legacy_filename = filename,
     width = width,
     height = height,
-    units = units
+    units = units,
+    plot = plot
   )
   cf_log(paste("Wrote", output_path))
   invisible(output_path)
@@ -257,7 +259,7 @@ std_axis_breaks <- function(model, orig_values, n = 5) {
   vals <- scales::pretty_breaks(n = n)(range(orig_values, na.rm = TRUE))
   list(at = (vals - a) / b, vals = vals)
 }
-fmt_pct    <- function(v) paste0(round(100 * v, 1), "%")
+fmt_pct    <- function(v) ifelse(is.na(v), NA_character_, paste0(round(100 * v, 1), "%"))
 fmt_gamma  <- function(v) sprintf("%.1f", v)
 fmt_sindex <- function(v) sprintf("%.2f", v)
 
@@ -269,7 +271,7 @@ ggplot(aes(x=log_gamma, y=`Initial Immigrant Skill Set` ), data=imm_la[sol_type=
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_realloc_scatter.png",
+  "19_immigration_realloc_scatter.png",
   width=12, height=8, units="in"
 )
 
@@ -293,7 +295,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_realloc_price.png",
+  "19_immigration_realloc_price.png",
   width=14, height=12, units="in"
 )
 
@@ -320,7 +322,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_realloc_marketshare.png",
+  "19_immigration_realloc_marketshare.png",
   width=14, height=12, units="in"
 )
 
@@ -346,7 +348,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_realloc_sindex.png",
+  "19_immigration_realloc_sindex.png",
   width=14, height=12, units="in"
 )
 
@@ -358,7 +360,7 @@ ggplot(aes(x=log_gamma, y=Immigration ), data=imm_la[sol_type=="Reorganization"&
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_reorg_scatter.png",
+  "19_immigration_reorg_scatter.png",
   width=12, height=8, units="in"
 )
 
@@ -383,7 +385,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_reorg_price.png",
+  "19_immigration_reorg_price.png",
   width=14, height=12, units="in"
 )
 
@@ -410,7 +412,7 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_reorg_marketshare.png",
+  "19_immigration_reorg_marketshare.png",
   width=14, height=12, units="in"
 )
   
@@ -436,6 +438,98 @@ ggplot() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),text = element_text(size = 36))
 save_immigration_figure(
-  "19_reorg_sindex.png",
+  "19_immigration_reorg_sindex.png",
   width=14, height=12, units="in"
 )
+
+
+## ===========================================================================
+## Merger (increased-concentration) counterfactual for Los Angeles.
+## The merger counterfactual (17_counterfactual_merger.R) halves market weights
+## to mimic post-merger concentration, then re-solves wages. We reconstruct the
+## LA org snapshots on the halved weights; the baseline `orig_struct` above was
+## built before any halving, so it remains the pre-merger comparison point.
+## These are plain point plots in natural coordinates -- no pies, so none of the
+## immigrant-share decomposition / standardized-coordinate machinery is needed.
+## ===========================================================================
+cf_log("Loading merger wage solution")
+wage_vect_merger <- read_counterfactual_rds(
+  "17_wages_merger.rds",
+  legacy_filenames = "17_wages_merger.rds",
+  description = "merger counterfactual wages"
+)
+
+## Halve market weights to mimic post-merger concentration (see 17_*). The
+## get_everything_* closures read this global `working_data`, so the merger
+## snapshots below are built on the halved weights.
+working_data[, weight := weight / 2]
+
+cf_log("Reconstructing merger reallocation organization")
+realloc_struct_m <- build_counterfactual_structure_snapshot(
+  get_everything_realloc,
+  wage_vect_merger,
+  solution_type = "realloc"
+)
+
+cf_log("Reconstructing merger reorganization organization")
+reorg_struct_m <- build_counterfactual_structure_snapshot(
+  get_everything_reorg,
+  wage_vect_merger,
+  solution_type = "reorg"
+)
+
+cf_log("Preparing Los Angeles merger figure panel")
+reorg_struct_m[['6037']][, sol_type := "Reorganization"]
+realloc_struct_m[['6037']][, sol_type := "Reallocation"]
+
+merger_la <- rbind(reorg_struct_m[['6037']], realloc_struct_m[['6037']])
+merger_la <- merge(
+  merger_la,
+  orig_struct[['6037']][, c("location_id", "initial_price", "initial_s_index", "initial_newshare")],
+  by = "location_id"
+)
+merger_la[, delta_share := (new_share - initial_newshare) / initial_newshare]
+merger_la[, delta_price := (newprice - initial_price) / initial_price]
+merger_la[, log_gamma   := log(gamma_invert)]
+## exclude the firm with 0 market share (all task_4), as in the immigration panel
+merger_la <- merger_la[round(new_share, digits = 40) > 0, ]
+
+## Point-plot builder mirroring the immigration figures' look, minus the pies.
+make_merger_fig <- function(stype, x_col, y_col, x_lab, y_lab, filename,
+                            add_lm = FALSE) {
+  dat <- merger_la[sol_type == stype & is.finite(gamma_invert)]
+  p <- ggplot(dat, aes(x = .data[[x_col]], y = .data[[y_col]])) +
+    geom_point(size = 2) +
+    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1) +
+    scale_y_continuous(labels = fmt_pct) +
+    xlab(x_lab) + ylab(y_lab) + theme_bw() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), text = element_text(size = 36))
+  if (add_lm) {
+    p <- p + geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                         linewidth = 1.5, color = "red", linetype = "dashed")
+  }
+  save_immigration_figure(filename, width = 12, height = 8, units = "in", plot = p)
+}
+
+## prices and market shares fall most for high coordination-cost firms; the
+## s-index panel carries the productivity story (market-share shift vs. spec.).
+make_merger_fig("Reallocation", "log_gamma", "delta_price",
+                "Log Organization Cost (Gamma)", "Price Change",
+                "19_merger_realloc_price.png")
+make_merger_fig("Reallocation", "log_gamma", "delta_share",
+                "Log Organization Cost (Gamma)", "Market Share Change",
+                "19_merger_realloc_marketshare.png")
+make_merger_fig("Reallocation", "s_index", "delta_share",
+                "S-Index", "Market Share Change",
+                "19_merger_realloc_sindex.png", add_lm = TRUE)
+
+make_merger_fig("Reorganization", "log_gamma", "delta_price",
+                "Log Organization Cost (Gamma)", "Price Change",
+                "19_merger_reorg_price.png")
+make_merger_fig("Reorganization", "log_gamma", "delta_share",
+                "Log Organization Cost (Gamma)", "Market Share Change",
+                "19_merger_reorg_marketshare.png")
+make_merger_fig("Reorganization", "s_index", "delta_share",
+                "S-Index", "Market Share Change",
+                "19_merger_reorg_sindex.png", add_lm = TRUE)
