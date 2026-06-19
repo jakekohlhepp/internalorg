@@ -229,6 +229,11 @@ make_pie_slices <- function(data, x_col, y_col, fill_cols, radius = 0.22) {
 }
 
 geom_immigration_pies <- function(data, x_col, y_col, fill_cols, radius = 0.22) {
+  ## group = pie_id is what makes overlapping pies layer cleanly: geom_arc_bar
+  ## draws one group at a time, so grouping by pie draws each pie atomically.
+  ## Without it ggplot groups by the fill (slice), drawing every pie's slice-1,
+  ## then every pie's slice-2, ... -- so a wedge of one pie renders on top of a
+  ## different overlapping pie's wedge (the interleaving artifact).
   ggforce::geom_arc_bar(
     aes(
       x0 = x0,
@@ -237,7 +242,8 @@ geom_immigration_pies <- function(data, x_col, y_col, fill_cols, radius = 0.22) 
       r = r,
       start = start,
       end = end,
-      fill = slice
+      fill = slice,
+      group = pie_id
     ),
     data = make_pie_slices(data, x_col, y_col, fill_cols, radius),
     inherit.aes = FALSE
