@@ -292,8 +292,8 @@ for (cnty_ in CONFIG$counties) {
       with_b       = FALSE,
       config       = CONFIG
     )
-    set(working_data, i, "q_endog_model", out$q_endog)
-    set(working_data, i, "c_endog_model", out$c_endog)
+    data.table::set(working_data, i, "q_endog_model", out$q_endog)
+    data.table::set(working_data, i, "c_endog_model", out$c_endog)
   }
 }
 
@@ -313,8 +313,8 @@ for (cnty_ in CONFIG$counties) {
   s_vec <- working_data$s_index[rows]
   c_vec <- as.numeric(E_mat %*% wage_vec_data) +
     ifelse(is.finite(g_vec), g_vec * s_vec, 0)
-  set(working_data, rows, "q_endog_data", q_vec)
-  set(working_data, rows, "c_endog_data", c_vec)
+  data.table::set(working_data, rows, "q_endog_data", q_vec)
+  data.table::set(working_data, rows, "c_endog_data", c_vec)
 }
 
 adjust_rows <- working_data[, which(quarter_year == focus_qy &
