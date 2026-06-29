@@ -378,14 +378,18 @@ CONFIG <- list(
   # Default preserves the value the scripts hardcoded before they were wired
   # to CONFIG; tighten via JMP_COUNTERFACTUAL_INNERTOL once estimates are
   # validated against this baseline.
-  counterfactual_innertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_INNERTOL", unset = "1e-8")),
+  counterfactual_innertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_INNERTOL", unset = "1e-10")),
   # SQUAREM iteration cap for the counterfactual *assignment* fixed point only
   # (counterfactual_assignment). Decoupled from fixedpoint_max_iter so the
   # counterfactual reorg solve can run a high cap for near-corner firms WITHOUT
   # slowing the plain, unaccelerated get_demands setup loop in 13_ (which caps
   # at fixedpoint_max_iter either way and gains no accuracy from a higher cap).
-  # Default 1e5 preserves prior behavior; raise via env for hardened runs.
-  counterfactual_fixedpoint_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER", unset = "100000")),
+  # Hardened default 5e6: the anti-cap-artifact value. Near-corner LA firms
+  # (gamma~0.898) can need ~1.1M assignment SQUAREM iters; a lower cap hits the
+  # ceiling WITHOUT converging and produces false-clearing artifacts. Converging
+  # firms stop at innertol, so the generous cap is ~free. Lower via env only for
+  # fast smoke runs. See docs/counterfactual_tolerances.md.
+  counterfactual_fixedpoint_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER", unset = "5000000")),
   # Adaptive-cap cheap budget for counterfactual_assignment's SQUAREM. Each
   # firm first runs SQUAREM with this cap; if it converges (most firms do in
   # <1000 fpevals), accept. Else warm-restart at the full cap. Avoids paying
@@ -394,8 +398,8 @@ CONFIG <- list(
   counterfactual_fixedpoint_max_iter_cheap = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER_CHEAP", unset = "1000")),
   # Outer best-response price contraction tolerance passed to
   # counterfactual_best_response_prices and the inline figure helpers.
-  # Default preserves the previously hardcoded script-local value.
-  counterfactual_outertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_OUTERTOL", unset = "1e-4")),
+  # Hardened default 1e-8 (production value). Loosen via env for smoke runs.
+  counterfactual_outertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_OUTERTOL", unset = "1e-8")),
   counterfactual_nleqslv_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_NLEQSLV_MAXIT", unset = "400")),
   counterfactual_bbsolve_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BBSOLVE_MAXIT", unset = "10000")),
   counterfactual_broyden_maxit = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_BROYDEN_MAXITER", unset = "1000")),
@@ -432,11 +436,11 @@ CONFIG <- list(
     c("true", "t", "1", "yes", "y"),
 
   # Labor-clearing convergence metric for the counterfactual wage solver.
-  # "max" (default): a cell counts as cleared only if max_k |log(new_k/target_k)|
+  # "max": a cell counts as cleared only if max_k |log(new_k/target_k)|
   # <= counterfactual_wage_tol -- every worker type's market must clear. This is
   # tripped by structurally thin/inelastic types (LA worker-5 is 0.5% of labor
   # with wage-inelastic demand; a ~4.8k-labor-unit miss reads as a 9.7% relative
-  # residual). "labor_weighted": a cell counts as cleared when the labor-share-
+  # residual). "labor_weighted" (default): a cell counts as cleared when the labor-share-
   # weighted mean fractional miss, Σ_k (L_k/ΣL)·|log(new_k/target_k)|, <= tol --
   # i.e. the market clears in aggregate where labor actually is. The solver still
   # MINIMIZES max|r| (it never sacrifices a type); only the acceptance gate is
@@ -444,7 +448,7 @@ CONFIG <- list(
   # (0.0085/0.0039) but max|r| flags them on thin markets (LA worker-5 ~4.8k
   # labor units = 9.7% on a 0.5%-share type), while diffusion fails both (a
   # genuine ~2% imbalance on the 2.5M-worker markets). See la-immigration memory.
-  counterfactual_convergence_metric = tolower(Sys.getenv("JMP_COUNTERFACTUAL_CONVERGENCE_METRIC", unset = "max")),
+  counterfactual_convergence_metric = tolower(Sys.getenv("JMP_COUNTERFACTUAL_CONVERGENCE_METRIC", unset = "labor_weighted")),
 
   # ---------------------------------------------------------------------------
   # BBsolve warm-restart checkpoint (debugging only)

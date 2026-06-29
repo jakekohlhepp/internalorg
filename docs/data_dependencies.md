@@ -152,14 +152,17 @@ flowchart TD
 | 3 | `04_estimation_sample.R` | `mkdata/data/04_estimation_sample.rds`, `results/out/tables/04_summary_stats_structural.tex` |
 | 4 | `05_iv_spec_comparison.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex` |
 | 5 | `06_estimation.R` + `preamble.R` | `results/data/06_parameters.rds` |
+| 5b | `06b_estimation_monotone.R` + `utils/constrained_demand_iv.R` | `results/data/06b_parameters_monotone.rds`, `results/data/06b_perms.rds`, `results/data/06b_qp_diagnostics.rds`, `mkdata/data/06b_seeit_bb.rds` |
 | 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` |
 | 6 | `07_vcov.R` | `results/data/07_first_stage_vcov.rds` (analytical clustered 2SLS demand vcov), `results/data/07_murphy_topel_vcov.rds` (Murphy-Topel structural sandwich). Replaces the retired `legacy/07_bootstrap.R`. |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
 | 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
+| 9b | `compile_warm_start_wages.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_warm_start_wages.rds` |
 | 10 | `run_counterfactuals.R` | see counterfactual runner below |
 | 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` (wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`) |
 | 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` (productivity-substitution patterns at the cleared equilibrium wages) |
+| 13 | `22_skill_parameter_units.R` | `results/out/tables/22_skill_units.tex`, `results/data/22_skill_units.csv` |
 
 Wage-stage post-solve escalation for `06_estimation.R` lives in
 `utils/wage_fallbacks.R` (Layers 1-5: per-county polish, slice-Hessian probe,
