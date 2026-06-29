@@ -144,6 +144,14 @@ flowchart TD
 
 ### Main runner: `run_all.R`
 
+> **Where it runs:** steps `0`–`2c` (`00_mk_tasks_cosmo`, `01_build_data`,
+> `02_stylized_facts`, `03_spatial_corr`) and the `prep_*` build above run
+> **locally** — they need the confidential raw transaction pull and external
+> geo/Census files. Steps `3`–`13` (`04_estimation_sample` → `22_skill_parameter_units`)
+> run on the **Longleaf cluster** from committed/derived inputs. See
+> `slurm_longleaf.md` §8 for the full local/cluster map and the reproducible
+> cluster-run recipe.
+
 | Step | Script or component | Primary output |
 |------|---------------------|----------------|
 | 0 | `00_mk_tasks_cosmo.R` | `mkdata/data/00_tasks_cosmo.rds` |
