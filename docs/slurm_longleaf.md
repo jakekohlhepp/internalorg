@@ -71,5 +71,46 @@ Rscript <your_array_script>.R
 - **Immediate Failure:** Check `logs/` for "package not found" errors. Ensure you ran `renv::restore()` on a login node.
 - **Pending Forever:** Check if you violated GPU caps (requesting >16 CPUs for a single GPU job).
 
+## 8. Pipeline stages: where each runs (local vs cluster)
+
+The pipeline splits at the **raw-data boundary**. The front-half prep needs the
+confidential raw transaction pull plus external geo/Census files that live only
+on the author's local machine, so it runs **locally**. Everything downstream
+runs from committed/derived inputs and executes on the **cluster** (all heavy
+compute goes through Slurm — never the login node).
+
+**Local only — raw inputs, not reproducible on the cluster:**
+- `prep_00_compile_transactions.R` … `prep_07_nyc_rent.R` — raw → committed `mkdata/data/*`
+- `00_mk_tasks_cosmo.R` — raw `compiled_trxns.rds` + geocorr
+- `01_build_data.R` — needs `00_tasks_cosmo.rds`
+- `02_stylized_facts.R`, `03_spatial_corr.R` — raw pulls + Census/ZCTA shapefiles
+
+**Cluster — from committed/derived inputs (the Slurm workloads):**
+- Estimation block: `04_estimation_sample.R` → `08_display_estimates.R`
+  (`05`, `06`, `06b`, `06c`, `07`). The structural estimation `06` is the heavy job here.
+- Counterfactual back-half: `09_invert_gammas.R`, `12_validate.R`,
+  `compile_warm_start_wages.R`, `run_counterfactuals.R` (`13`–`19`),
+  `20_substitution.R`, `21_substitution_prod.R`, `22_skill_parameter_units.R`.
+  The counterfactual wage solves (`13`–`17`) are the heavy jobs; they use the
+  hardened tolerances now baked into `config.R` (see `counterfactual_tolerances.md`).
+
+### Running the cluster portion reproducibly
+
+To re-run the cluster portion from the committed estimation outputs, run the
+master script with the front-half disabled and determinism factors pinned:
+
+```bash
+# In run_all.R, set RUN_* for steps 00-08 to FALSE (06c has no RUN_ flag and
+# runs by default via RUN_WAGE_IDENTIFICATION being unset -- leave it on).
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+       VECLIB_MAXIMUM_THREADS=1 R_DATATABLE_NUM_THREADS=1 LC_ALL=C
+Rscript -e 'source("renv/activate.R"); source("run_all.R")'
+```
+
+Single-thread BLAS + a fixed locale are required for bit-identical outputs across
+runs and core counts (the solver RNG is already deterministic via
+`counterfactual_stable_seed`). Exclude figures (`*.png`) from bit-identity checks
+(device/timestamp noise).
+
 ---
-*Last Updated: April 2026 (Audited by Grouchy Programmer)*
+*Last Updated: 2026-06-29 — added §8 (local vs cluster execution map). Prior audit: April 2026.*
