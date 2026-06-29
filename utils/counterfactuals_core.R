@@ -1410,6 +1410,14 @@ counterfactual_solve_wage_market_pso <- function(fn, start, label = NULL,
     pso_label, n_particles, n_iter, halfwidth
   ))
 
+  ## Deterministic, parallel-safe seeding for the (currently latent) PSO wage
+  ## path: key the RNG to the cell label so any future caller is reproducible
+  ## across runs and core counts; restore the caller's stream on exit so this
+  ## never leaks. Mirrors the seed idiom in counterfactual_full_5d_retry.
+  restore_pso_rng <- counterfactual_preserve_rng()
+  on.exit(restore_pso_rng(), add = TRUE)
+  set.seed(counterfactual_stable_seed(pso_label, 43L))
+
   pso_res <- pso_solve(
     objective_ssq, lower, upper,
     seed_particle = NULL,

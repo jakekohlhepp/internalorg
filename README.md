@@ -21,6 +21,7 @@ source("run_prep_data.R")
 | 04 | `prep_04_consumerexpenditure.R` | `mkdata/data/cex_outside.rds` | Build outside-option inputs from CEX. |
 | 05 | `prep_05_ppi.R` | `mkdata/data/ppi.rds` | Build quarterly price-index inputs. |
 | 06 | `prep_06_qcew.R` | `mkdata/data/qcew_county.rds` | Build county wage inputs from QCEW. |
+| 07 | `prep_07_nyc_rent.R` | `mkdata/data/nyc_rent_zip_quarterly.rds` | NYC/Manhattan commercial storefront rent by ZIP-quarter. |
 
 ### Phase 2: Main Pipeline
 
@@ -50,6 +51,7 @@ source("run_all.R")
 | 10 | `run_counterfactuals.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_*.rds`–`17_*.rds`, `results/out/tables/18_tot_counterfactuals.tex`, `18_bytype_counterfactuals.tex`, `results/out/figures/19_*.png` | Run the `13_*`–`19_*` counterfactual scenarios using a shared setup/output layer. |
 | 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` | Wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`. |
 | 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` | Productivity-substitution patterns at the cleared equilibrium wages. |
+| 13 | `22_skill_parameter_units.R` | `results/out/tables/22_skill_units.tex`, `results/data/22_skill_units.csv` | Skill parameters in interpretable units. |
 
 ### 06b Monotone Comparison Diagnostic
 
@@ -86,6 +88,7 @@ refactor_estimation/
 |-- prep_04_consumerexpenditure.R
 |-- prep_05_ppi.R
 |-- prep_06_qcew.R
+|-- prep_07_nyc_rent.R
 |-- run_all.R
 |-- 00_mk_tasks_cosmo.R
 |-- 01_build_data.R

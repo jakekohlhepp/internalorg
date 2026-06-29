@@ -93,10 +93,9 @@ scenarios were retired during this consolidation (see
 - **Bootstrap SLURM spec** -- walltime bumped to 3 days (`%200` concurrency,
   `--mem=4g`), see `docs/bootstrap_slurm.md`. Job `52526344` is the current
   1100-rep array.
-- **`22_skill_parameter_units.R`** added (standalone) -- re-presents the
-  estimated skill matrix in willingness-to-pay (USD/customer at 1% reassign)
-  and percentage-point market-share units. Not in `run_all.R`; run manually
-  after estimation.
+- **`22_skill_parameter_units.R`** added (STEP 13 in `run_all.R`) -- re-presents
+  the estimated skill matrix in willingness-to-pay (USD/customer at 1% reassign)
+  and percentage-point market-share units. Wired as the final pipeline step.
 - **`compile_warm_start_wages.R`** -- compiles per-scenario warm-start wages
   from the most recent `14_*-17_*_wages_*.rds` outputs into
   `counterfactuals/13_warm_start_wages_<scenario>.rds`, consumed by 14-17.
@@ -184,9 +183,7 @@ scenarios were retired during this consolidation (see
     wages from `13_initial_wages.rds`)
 14. `21_substitution_prod.R` (productivity-substitution patterns at the
     cleared equilibrium wages)
-
-`22_skill_parameter_units.R` is run **standalone** after the main pipeline;
-it is not in `run_all.R`.
+15. `22_skill_parameter_units.R` (skill parameters in interpretable units)
 
 ### Counterfactual runner
 
@@ -219,8 +216,8 @@ The automated workflow writes:
 - `results/out/tables/08_org_price.tex`, `08_time_effects.tex`,
   `08_model_fit.tex`
 - `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png`
-- `results/out/tables/10_substitute.tex`
-- `results/out/tables/11_substitute_prod.tex`
+- `results/out/tables/20_substitute.tex`
+- `results/out/tables/21_substitute_prod.tex`
 - `results/data/12_data_for_counterfactuals.rds`,
   `results/out/tables/12_validate_corr.tex`
 - `results/data/counterfactuals/13_initial_wages.rds`,
@@ -235,6 +232,7 @@ The automated workflow writes:
 - `results/out/tables/18_tot_counterfactuals.tex`,
   `18_bytype_counterfactuals.tex`
 - `results/out/figures/19_immigration_*.png`, `19_merger_*.png`
+- `results/out/tables/22_skill_units.tex`, `results/data/22_skill_units.csv`
 
 ## Pipeline Integration Notes
 
@@ -248,6 +246,9 @@ Several formerly-standalone scripts are now wired into `run_all.R`:
 - `compile_warm_start_wages.R` (STEP 9b) persists the per-(county, quarter)
   cleared wage vectors to `counterfactuals/13_warm_start_wages.rds` before the
   counterfactual pipeline.
+- `22_skill_parameter_units.R` (STEP 13) renders the skill matrix in
+  interpretable units (`results/out/tables/22_skill_units.tex`,
+  `results/data/22_skill_units.csv`) as the final pipeline step.
 
 The following remain standalone on purpose:
 
@@ -261,8 +262,6 @@ The following remain standalone on purpose:
   the same pass.
 - `run_counterfactual_check.R` (single-call smoke through the counterfactual
   loop)
-- `22_skill_parameter_units.R` (skill matrix in interpretable units; produces
-  `results/out/tables/22_*.tex`)
 
 They stay outside `run_all.R` because they operate on the descriptive,
 full-sample branch or produce exploratory diagnostic output.

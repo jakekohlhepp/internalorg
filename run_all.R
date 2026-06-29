@@ -73,6 +73,7 @@ RUN_DISPLAY_ESTIMATES <- TRUE
 RUN_INVERT_GAMMAS <- TRUE
 RUN_SUBSTITUTION <- TRUE
 RUN_SUBSTITUTION_PROD <- TRUE
+RUN_SKILL_UNITS <- TRUE
 RUN_VALIDATE <- TRUE
 RUN_WARM_START_WAGES <- TRUE
 RUN_COUNTERFACTUALS <- TRUE
@@ -1017,6 +1018,27 @@ if (RUN_SUBSTITUTION_PROD) {
                         "results/data/counterfactuals/13_initial_wages.rds",
                         "results/data/counterfactuals/13_working_data.rds"),
     description = "productivity substitution patterns at equilibrium wages"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 13: Skill Parameters in Interpretable Units (22_skill_parameter_units.R)
+#' -----------------------------------------------------------------------------
+
+if (RUN_SKILL_UNITS) {
+  run_pipeline_step(
+    step_label = "STEP 13",
+    script_name = "22_skill_parameter_units.R",
+    deps = c("config.R",
+             "mkdata/data/01_keytask.rds",
+             "results/data/06_parameters.rds",
+             "mkdata/data/04_estimation_sample.rds"),
+    outputs = c("results/out/tables/22_skill_units.tex",
+                "results/data/22_skill_units.csv"),
+    required_inputs = c("mkdata/data/01_keytask.rds",
+                        "results/data/06_parameters.rds",
+                        "mkdata/data/04_estimation_sample.rds"),
+    description = "skill parameters in interpretable units"
   )
 }
 
