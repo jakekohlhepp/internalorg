@@ -80,7 +80,7 @@ runs from committed/derived inputs and executes on the **cluster** (all heavy
 compute goes through Slurm — never the login node).
 
 **Local only — raw inputs, not reproducible on the cluster:**
-- `prep_00_compile_transactions.R` … `prep_07_nyc_rent.R` — raw → committed `mkdata/data/*`
+- `prep_00_compile_transactions.R` … `prep_06_qcew.R` — raw → committed `mkdata/data/*`
 - `00_mk_tasks_cosmo.R` — raw `compiled_trxns.rds` + geocorr
 - `01_build_data.R` — needs `00_tasks_cosmo.rds`
 - `02_stylized_facts.R`, `03_spatial_corr.R` — raw pulls + Census/ZCTA shapefiles

@@ -161,7 +161,6 @@ scenarios were retired during this consolidation (see
 5. `prep_04_consumerexpenditure.R`
 6. `prep_05_ppi.R`
 7. `prep_06_qcew.R`
-8. `prep_07_nyc_rent.R`
 
 ### Main runner
 

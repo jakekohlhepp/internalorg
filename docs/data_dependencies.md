@@ -37,7 +37,6 @@ flowchart TD
         p04[prep_04_consumerexpenditure.R] --> cex[mkdata/data/cex_outside.rds]
         p05[prep_05_ppi.R] --> ppi[mkdata/data/ppi.rds]
         p06[prep_06_qcew.R] --> qcew[mkdata/data/qcew_county.rds]
-        p07[prep_07_nyc_rent.R] --> rent[mkdata/data/nyc_rent_zip_quarterly.rds]
     end
 
     reviewed[check2_truly_new_sorted_for_classification.csv] --> mk
@@ -140,7 +139,6 @@ flowchart TD
 | 04 | `prep_04_consumerexpenditure.R` | `mkdata/data/cex_outside.rds` |
 | 05 | `prep_05_ppi.R` | `mkdata/data/ppi.rds` |
 | 06 | `prep_06_qcew.R` | `mkdata/data/qcew_county.rds` |
-| 07 | `prep_07_nyc_rent.R` | `mkdata/data/nyc_rent_zip_quarterly.rds` |
 
 ### Main runner: `run_all.R`
 

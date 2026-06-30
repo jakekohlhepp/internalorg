@@ -34,7 +34,6 @@ CONFIG <- list(
   legacy_counterfactual_data_dir = file.path("analysis_final", "data"),
   legacy_counterfactual_table_dir = file.path("analysis_final", "out", "tables"),
   legacy_counterfactual_figure_dir = file.path("analysis_final", "out", "figures"),
-  nyc_rent_path = "mkdata/data/nyc_rent_zip_quarterly.rds",
   qcew_cache_path = "mkdata/raw/20220427_qcew_code/qcew_county_cache_2014_2021_812112.rds",
   qcew_force_refresh = FALSE,
   qcew_years = 2014:2021,
