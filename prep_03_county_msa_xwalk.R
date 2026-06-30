@@ -18,9 +18,10 @@ assert_required_files(c(cex_codebook_path, msa_xwalk_path))
 ensure_directory(dirname(output_path))
 
 cex_codebook <- fread(cex_codebook_path)
-assert_required_columns(cex_codebook, c('variable', 'codevalue', 'codedescription', 'survey'), 'cex_codebook')
+# Normalize column names (lowercase, strip spaces) BEFORE asserting: the raw CEX
+# codebook ships them as "Survey", "Variable ", "Code value", "Code description".
 colnames(cex_codebook) <- str_replace_all(str_to_lower(colnames(cex_codebook)), fixed(' '), '')
-assert_required_columns(cex_codebook, c('variable', 'codevalue', 'codedescription', 'survey'), 'cex_codebook_clean')
+assert_required_columns(cex_codebook, c('variable', 'codevalue', 'codedescription', 'survey'), 'cex_codebook')
 
 cex_codebook <- cex_codebook[
   variable == 'PSU' & str_detect(codevalue, 'S') > 0 & survey == 'INTERVIEW',
@@ -29,9 +30,10 @@ cex_codebook <- cex_codebook[
 stopifnot(uniqueN(cex_codebook) == nrow(cex_codebook))
 
 msa_xwalk <- fread(msa_xwalk_path)
-assert_required_columns(msa_xwalk, c('countycode', 'msatitle'), 'msa_xwalk')
+# Normalize column names BEFORE asserting: the raw QCEW crosswalk ships them as
+# "County Code", "MSA Title", etc.
 colnames(msa_xwalk) <- str_replace_all(str_to_lower(colnames(msa_xwalk)), fixed(' '), '')
-assert_required_columns(msa_xwalk, c('countycode', 'msatitle'), 'msa_xwalk_clean')
+assert_required_columns(msa_xwalk, c('countycode', 'msatitle'), 'msa_xwalk')
 
 msa_xwalk[, codedescription := str_trim(str_replace_all(msatitle, ' MSA', ''))]
 msa_xwalk <- msa_xwalk[, c('countycode', 'codedescription')]
