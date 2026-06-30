@@ -21,7 +21,6 @@ source("run_prep_data.R")
 | 04 | `prep_04_consumerexpenditure.R` | `mkdata/data/cex_outside.rds` | Build outside-option inputs from CEX. |
 | 05 | `prep_05_ppi.R` | `mkdata/data/ppi.rds` | Build quarterly price-index inputs. |
 | 06 | `prep_06_qcew.R` | `mkdata/data/qcew_county.rds` | Build county wage inputs from QCEW. |
-| 07 | `prep_07_nyc_rent.R` | `mkdata/data/nyc_rent_zip_quarterly.rds` | NYC/Manhattan commercial storefront rent by ZIP-quarter. |
 
 ### Phase 2: Main Pipeline
 
@@ -88,7 +87,6 @@ refactor_estimation/
 |-- prep_04_consumerexpenditure.R
 |-- prep_05_ppi.R
 |-- prep_06_qcew.R
-|-- prep_07_nyc_rent.R
 |-- run_all.R
 |-- 00_mk_tasks_cosmo.R
 |-- 01_build_data.R

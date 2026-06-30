@@ -30,7 +30,6 @@ source("run_prep_data.R")
 | PREP 04 | `prep_04_consumerexpenditure.R` | `mkdata/data/cex_outside.rds` |
 | PREP 05 | `prep_05_ppi.R` | `mkdata/data/ppi.rds` |
 | PREP 06 | `prep_06_qcew.R` | `mkdata/data/qcew_county.rds` |
-| PREP 07 | `prep_07_nyc_rent.R` | `mkdata/data/nyc_rent_zip_quarterly.rds` |
 
 ## Environment Inputs
 
@@ -54,5 +53,4 @@ A prep step reruns if any of the following is true:
 - `county_census_pop.rds` feeds `01_build_data.R`.
 - `cex_outside.rds`, `county_msa_xwalk.rds`, and `qcew_county.rds` feed `cluster.R` during `01_build_data.R`.
 - `ppi.rds` and `minwage.xlsx` feed `04_estimation_sample.R`, whose saved artifact is consumed by `05_iv_spec_comparison.R` and `06_estimation.R`.
-- `nyc_rent_zip_quarterly.rds` feeds downstream rent/market-structure analysis.
 - `00_tasks_cosmo.rds` and `01_staff_task_full.rds` also feed the standalone analysis scripts (`02_stylized_facts.R`, `03_spatial_corr.R`).
