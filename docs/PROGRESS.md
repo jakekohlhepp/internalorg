@@ -96,8 +96,9 @@ scenarios were retired during this consolidation (see
 - **`22_skill_parameter_units.R`** added (STEP 13 in `run_all.R`) -- re-presents
   the estimated skill matrix in willingness-to-pay (USD/customer at 1% reassign)
   and percentage-point market-share units. Wired as the final pipeline step.
-- **`compile_warm_start_wages.R`** -- compiles per-scenario warm-start wages
-  from the most recent `14_*-17_*_wages_*.rds` outputs into
+- **`compile_warm_start_wages.R`** -- standalone manual tool (not a `run_all.R`
+  step): compiles per-scenario warm-start wages from the most recent
+  `14_*-17_*_wages_*.rds` outputs into
   `counterfactuals/13_warm_start_wages_<scenario>.rds`, consumed by 14-17.
 - **Logging fix** (`ac08310`, 2026-05-27) -- `CONFIG$log_dir` resolved to an
   absolute path so subscripts that `setwd()` no longer create stray `logs/`
@@ -242,9 +243,6 @@ Several formerly-standalone scripts are now wired into `run_all.R`:
   are unavailable.
 - `06b_estimation_monotone.R` (STEP 5b) runs the workers-as-rows monotone
   estimation track.
-- `compile_warm_start_wages.R` (STEP 9b) persists the per-(county, quarter)
-  cleared wage vectors to `counterfactuals/13_warm_start_wages.rds` before the
-  counterfactual pipeline.
 - `22_skill_parameter_units.R` (STEP 13) renders the skill matrix in
   interpretable units (`results/out/tables/22_skill_units.tex`,
   `results/data/22_skill_units.csv`) as the final pipeline step.
@@ -261,6 +259,12 @@ The following remain standalone on purpose:
   the same pass.
 - `run_counterfactual_check.R` (single-call smoke through the counterfactual
   loop)
+- `compile_warm_start_wages.R` (baseline) and `build_la_warm_start_*.R`
+  (per-counterfactual) — manual tools, run by hand to refresh the committed
+  warm-start seeds (`counterfactuals/13_warm_start_wages.rds` and
+  `14_/15_/16_/17_warm_start_wages_*.rds`) when a better-clearing wage vector is
+  found. Those `.rds` seeds are committed inputs read directly by `13_`–`17_`;
+  the tools are not a `run_all.R` step.
 
 They stay outside `run_all.R` because they operate on the descriptive,
 full-sample branch or produce exploratory diagnostic output.

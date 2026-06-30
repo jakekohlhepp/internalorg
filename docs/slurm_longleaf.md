@@ -89,10 +89,16 @@ compute goes through Slurm — never the login node).
 - Estimation block: `04_estimation_sample.R` → `08_display_estimates.R`
   (`05`, `06`, `06b`, `06c`, `07`). The structural estimation `06` is the heavy job here.
 - Counterfactual back-half: `09_invert_gammas.R`, `12_validate.R`,
-  `compile_warm_start_wages.R`, `run_counterfactuals.R` (`13`–`19`),
+  `run_counterfactuals.R` (`13`–`19`),
   `20_substitution.R`, `21_substitution_prod.R`, `22_skill_parameter_units.R`.
   The counterfactual wage solves (`13`–`17`) are the heavy jobs; they use the
   hardened tolerances now baked into `config.R` (see `counterfactual_tolerances.md`).
+
+The warm-start seeds (`13_warm_start_wages.rds` and
+`14_/15_/16_/17_warm_start_wages_*.rds`) are committed inputs;
+`compile_warm_start_wages.R` (baseline) and `build_la_warm_start_*.R`
+(per-counterfactual) are manual refresh tools run by hand, not part of
+`run_all.R`.
 
 ### Running the cluster portion reproducibly
 
