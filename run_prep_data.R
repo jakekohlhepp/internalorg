@@ -155,7 +155,9 @@ for (y in 13:21) {
     file.path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('intrvw', y), paste0('fmli', y, '2.csv')),
     file.path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('intrvw', y), paste0('fmli', y, '3.csv')),
     file.path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('intrvw', y), paste0('fmli', y, '4.csv')),
-    file.path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y + 1), paste0('intrvw', y + 1), paste0('fmli', y + 1, '1.csv'))
+    # The next-year Q1 file lives in the CURRENT year's intrvw folder
+    # (e.g. fmli141.csv sits in intrvw13/intrvw13), matching prep_04's own paths.
+    file.path('mkdata', 'raw', '20220711_cex', paste0('intrvw', y), paste0('intrvw', y), paste0('fmli', y + 1, '1.csv'))
   )
 }
 
