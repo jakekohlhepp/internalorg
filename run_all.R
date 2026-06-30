@@ -26,7 +26,6 @@
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
 #'   9. Validate model (12_validate.R)
-#'   9b. Compile counterfactual warm-start wages (compile_warm_start_wages.R)
 #'  10. Counterfactual pipeline (run_counterfactuals.R)
 #'  11. Substitution patterns at equilibrium (20_substitution.R)
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
@@ -75,7 +74,6 @@ RUN_SUBSTITUTION <- TRUE
 RUN_SUBSTITUTION_PROD <- TRUE
 RUN_SKILL_UNITS <- TRUE
 RUN_VALIDATE <- TRUE
-RUN_WARM_START_WAGES <- TRUE
 RUN_COUNTERFACTUALS <- TRUE
 
 # Track whether downstream steps should be forced due to upstream changes
@@ -899,22 +897,15 @@ if (RUN_VALIDATE) {
 }
 
 #' -----------------------------------------------------------------------------
-#' STEP 9b: Compile counterfactual warm-start wages (compile_warm_start_wages.R)
+#' Counterfactual warm starts -- committed inputs, NOT a pipeline step
 #' -----------------------------------------------------------------------------
-#' Persists the best-known cleared wage vectors per (county, quarter_year) so the
-#' counterfactual labor-clearing solver in 13_counterfactual_prep.R warm-starts
-#' near a market-clearing equilibrium. Must run before STEP 10.
-
-if (RUN_WARM_START_WAGES) {
-  run_pipeline_step(
-    step_label = "STEP 9b",
-    script_name = "compile_warm_start_wages.R",
-    deps = c("config.R", "utils/counterfactuals_core.R",
-             "compile_warm_start_wages.R"),
-    outputs = c("results/data/counterfactuals/13_warm_start_wages.rds"),
-    description = "compile counterfactual warm-start wages"
-  )
-}
+#' The baseline warm start results/data/counterfactuals/13_warm_start_wages.rds
+#' (and the per-counterfactual 14_/15_/16_/17_warm_start_wages_*.rds) are
+#' committed to version control and read directly by 13_counterfactual_prep.R /
+#' 14_-17_. compile_warm_start_wages.R and build_la_warm_start_*.R are standalone
+#' tools you re-run BY HAND only to refresh those seeds when a better-clearing
+#' wage vector is found -- they are intentionally not part of run_all.R. See
+#' docs/data_dependencies.md and docs/counterfactual_tolerances.md.
 
 #' -----------------------------------------------------------------------------
 #' STEP 10: Counterfactual Pipeline (run_counterfactuals.R)

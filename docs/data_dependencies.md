@@ -164,11 +164,17 @@ flowchart TD
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
 | 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
-| 9b | `compile_warm_start_wages.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_warm_start_wages.rds` |
 | 10 | `run_counterfactuals.R` | see counterfactual runner below |
 | 11 | `20_substitution.R` | `results/out/tables/20_substitute.tex`, `results/out/figures/20_*.png` (wage-substitution patterns at the cleared equilibrium wages from `13_initial_wages.rds`) |
 | 12 | `21_substitution_prod.R` | `results/out/tables/21_substitute_prod.tex` (productivity-substitution patterns at the cleared equilibrium wages) |
 | 13 | `22_skill_parameter_units.R` | `results/out/tables/22_skill_units.tex`, `results/data/22_skill_units.csv` |
+
+> The warm-start seeds (`results/data/counterfactuals/13_warm_start_wages.rds`
+> and `14_/15_/16_/17_warm_start_wages_*.rds`) are **committed inputs**, read
+> directly by the counterfactual scripts. `compile_warm_start_wages.R` (baseline)
+> and `build_la_warm_start_*.R` (per-counterfactual) are **manual tools** that you
+> re-run by hand to refresh those committed seeds when a better-clearing wage
+> vector is found; they are intentionally **not** part of `run_all.R`.
 
 Wage-stage post-solve escalation for `06_estimation.R` lives in
 `utils/wage_fallbacks.R` (Layers 1-5: per-county polish, slice-Hessian probe,
