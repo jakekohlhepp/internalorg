@@ -64,7 +64,12 @@ flowchart TD
     esample_out --> ivspec[05_iv_spec_comparison.R]
     ivspec --> iv1[results/out/tables/05_standard_iv_comparison.tex]
     ivspec --> iv2[results/out/tables/05_standard_hausman_fe_comparison.tex]
+    ivspec --> iv2b[results/out/tables/05_standard_dye_fe_comparison.tex]
     ivspec --> iv3[results/out/tables/05_nested_fe_comparison.tex]
+    ivspec --> iv4[results/out/tables/05_nested_sigma_eq_one.tex]
+    ivspec --> iv1fs[results/out/tables/05_standard_iv_comparison_first_stage.tex]
+    ivspec --> iv2fs[results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex]
+    ivspec --> iv2bfs[results/out/tables/05_standard_dye_fe_comparison_first_stage.tex]
 
     esample_out --> est[06_estimation.R]
     starts[mkdata/data/seeit_bb.rds] --> est
@@ -156,7 +161,7 @@ flowchart TD
 | 1 | package restore/setup inside `run_all.R` | local `renv` library state |
 | 2 | `01_build_data.R` + `cluster.R` | `mkdata/data/01_staff_task_full.rds`, `mkdata/data/01_working.rds` |
 | 3 | `04_estimation_sample.R` | `mkdata/data/04_estimation_sample.rds`, `results/out/tables/04_summary_stats_structural.tex` |
-| 4 | `05_iv_spec_comparison.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex` |
+| 4 | `05_iv_spec_comparison.R` | `results/out/tables/05_standard_iv_comparison.tex`, `results/out/tables/05_standard_hausman_fe_comparison.tex`, `results/out/tables/05_standard_dye_fe_comparison.tex`, `results/out/tables/05_nested_fe_comparison.tex`, `results/out/tables/05_nested_sigma_eq_one.tex`, `results/out/tables/05_standard_iv_comparison_first_stage.tex`, `results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex`, `results/out/tables/05_standard_dye_fe_comparison_first_stage.tex` |
 | 5 | `06_estimation.R` + `preamble.R` | `results/data/06_parameters.rds` |
 | 5b | `06b_estimation_monotone.R` + `utils/constrained_demand_iv.R` | `results/data/06b_parameters_monotone.rds`, `results/data/06b_perms.rds`, `results/data/06b_qp_diagnostics.rds`, `mkdata/data/06b_seeit_bb.rds` |
 | 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` |
