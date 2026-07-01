@@ -72,6 +72,54 @@ moves) and the paired skill-matrix heatmaps
 It supersedes the former `compare_06_vs_06b.R`, `compare_06_vs_06b_figures.R`,
 and `display_06b_skills.R`.
 
+## Requirements
+
+- **R.** The cluster runs R 4.4.0, the version recorded in `renv.lock`;
+  `run_all.R` enforces R >= 4.3.0, and local runs on 4.3.0 reproduce the
+  tracked outputs bit-identically. Use 4.4.0 where possible.
+- **Packages.** Pinned in `renv.lock` (built against the Posit Package Manager
+  CRAN snapshot of 2024-01-15). The project `.Rprofile` activates renv
+  automatically, and `run_all.R` STEP 1 runs `renv::restore()`.
+
+## Data Availability
+
+### Confidential data (not included)
+
+The raw salon transaction data (appointment-level exports from the
+booking-software provider, including the chair-renter, tip, and product pulls)
+are confidential and are **not** part of this repository. They live outside the
+repo on the author's machine; `config.R` locates them through the
+`raw_data_base` entry in a project `.Renviron` file. The stages that need them
+— `prep_00_compile_transactions.R`, `00_mk_tasks_cosmo.R`, `01_build_data.R`
+(via `00_tasks_cosmo.rds`), and `02_stylized_facts.R` — run only on a machine
+with access and are skipped gracefully elsewhere; everything from
+`04_estimation_sample.R` onward runs from derived inputs (see
+`docs/slurm_longleaf.md` §8 for the local-vs-cluster execution map).
+
+### Public data (download sources)
+
+`mkdata/raw/` is gitignored (large external files). To rebuild the prep layer,
+populate it as follows; several folders carry a `readme.txt` recording the
+original retrieval details.
+
+| Folder / file | Contents | Source |
+|---|---|---|
+| `202403101_morecspops/` | County population estimates (`co-est2019-alldata.csv`, `co-est2022-alldata.csv`) | US Census Bureau county population totals: [2010s](https://www.census.gov/data/datasets/time-series/demo/popest/2010s-counties-total.html), [2020s](https://www.census.gov/data/tables/time-series/demo/popest/2020s-counties-total.html) |
+| `20220711_cex/` | Consumer Expenditure Survey interview PUMD, 2013–2021 (`intrvw13/`…`intrvw21/`) | [BLS CEX public-use microdata](https://www.bls.gov/cex/pumd_data.htm) |
+| `20220727_countypop/` | GEOCORR ZCTA-to-county crosswalks (`geocorr2022_*.csv`) | [Missouri Census Data Center GEOCORR](https://mcdc.missouri.edu/applications/geocorr.html) |
+| `20231023_county_msa_crosswalk/` | QCEW county–MSA–CSA crosswalk + CEX PSU codebook | [BLS crosswalk](https://www.bls.gov/cew/classifications/areas/county-msa-csa-crosswalk.htm) and [CEX PUMD documentation](https://www.bls.gov/cex/pumd_doc.htm); the folder `readme.txt` documents the matching methodology |
+| `20231227_ppi_cost/file.csv` | Producer Price Index series WPU06140282 | [BLS data viewer](https://beta.bls.gov/dataViewer/view/timeseries/WPU06140282) |
+| `20220427_qcew_code/` | QCEW county wages cache (NAICS 812112, 2014–2021) | [BLS QCEW](https://www.bls.gov/cew/) open-data API; `prep_06_qcew.R` refreshes the cache from the API when it is absent |
+| `20240415_census_zcta_shapefiles/` | ZCTA cartographic boundary shapefile (`cb_2018_us_zcta510_500k.*`) | [US Census cartographic boundary files](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html) |
+| `20220526_cosmo_classify/`, `20260310_manual_review/` | Cosmetologist task classification of service descriptions + follow-up manual review | Author-constructed (manual classification); the `20260310` folder `readme.txt` documents the workflow |
+| `mkdata/data/minwage.xlsx` | County-quarter minimum wage schedule | Author-compiled |
+| `mkdata/manual_rules/*.csv` | Manual price-unit and service-classification overrides | Author-constructed; **tracked in this repository** |
+
+## License
+
+The code in this repository is released under the MIT License (see
+[LICENSE](LICENSE)).
+
 ## Repository Layout
 
 ```text
