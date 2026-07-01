@@ -208,7 +208,12 @@ The automated workflow writes:
 - `results/out/tables/04_summary_stats_structural.tex`
 - `results/out/tables/05_standard_iv_comparison.tex`
 - `results/out/tables/05_standard_hausman_fe_comparison.tex`
+- `results/out/tables/05_standard_dye_fe_comparison.tex`
 - `results/out/tables/05_nested_fe_comparison.tex`
+- `results/out/tables/05_nested_sigma_eq_one.tex`
+- `results/out/tables/05_standard_iv_comparison_first_stage.tex`
+- `results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex`
+- `results/out/tables/05_standard_dye_fe_comparison_first_stage.tex`
 - `results/data/06_parameters.rds`
 - `results/data/06c_wage_identification.rds`
 - `results/out/tables/06c_wage_eigenvalues.tex`, `06c_wage_perturbation.tex`

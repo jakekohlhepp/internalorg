@@ -591,7 +591,12 @@ if (RUN_IV_SPEC_COMPARISON) {
     step4_outputs <- c(
       "results/out/tables/05_standard_iv_comparison.tex",
       "results/out/tables/05_standard_hausman_fe_comparison.tex",
-      "results/out/tables/05_nested_fe_comparison.tex"
+      "results/out/tables/05_standard_dye_fe_comparison.tex",
+      "results/out/tables/05_nested_fe_comparison.tex",
+      "results/out/tables/05_nested_sigma_eq_one.tex",
+      "results/out/tables/05_standard_iv_comparison_first_stage.tex",
+      "results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex",
+      "results/out/tables/05_standard_dye_fe_comparison_first_stage.tex"
     )
 
     log_init("05_iv_spec_comparison.R")

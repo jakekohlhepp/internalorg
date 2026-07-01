@@ -62,6 +62,10 @@
 #'     results are sensitive to the FE parameterization when the instrument
 #'     is held fixed.
 #'
+#'   Table 2b (05_standard_dye_fe_comparison.tex): standard logit with the
+#'     dye instrument, across all 5 FE configurations. Same structure as
+#'     Table 2 but with the dye cost shifter substituted for Hausman.
+#'
 #'   Table 3 (05_nested_fe_comparison.tex): nested logit using BOTH the Hausman
 #'     and Dye instruments, across the four non-saturated FE configurations
 #'     (the "County$\\times$quarter; full" column is omitted because it
@@ -86,10 +90,12 @@
 #' Outputs:
 #'   - results/out/tables/05_standard_iv_comparison.tex
 #'   - results/out/tables/05_standard_hausman_fe_comparison.tex
+#'   - results/out/tables/05_standard_dye_fe_comparison.tex
 #'   - results/out/tables/05_nested_fe_comparison.tex
 #'   - results/out/tables/05_nested_sigma_eq_one.tex
 #'   - results/out/tables/05_standard_iv_comparison_first_stage.tex
 #'   - results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex
+#'   - results/out/tables/05_standard_dye_fe_comparison_first_stage.tex
 #' =============================================================================
 
 library("data.table")
@@ -675,6 +681,43 @@ table2_output_path <- "results/out/tables/05_standard_hausman_fe_comparison.tex"
 writeLines(table2_lines, table2_output_path)
 
 # -----------------------------------------------------------------------------
+# Table 2b: standard logit with Dye, all 5 FE specifications
+# -----------------------------------------------------------------------------
+
+table2_dye_columns <- lapply(spec_order, function(spec_name) {
+  list(
+    label = spec_definitions[[spec_name]]$label,
+    fe_label = spec_definitions[[spec_name]]$fe_label,
+    result = fit_demand_spec(spec_name, "dye_instrument", "standard")
+  )
+})
+
+table2_dye_notes <- paste0(
+  "Notes: Standard-logit 2SLS price coefficients with location-level clustered ",
+  "standard errors in parentheses. All columns use the county-specific dye ",
+  "instrument (task\\_mix\\_2 $\\times$ PPI input-cost shifter) and ",
+  "county-specific $avg\\_labor \\times B\\_raw$ controls. Columns vary only in ",
+  "the fixed-effect parameterization. ``County$\\times$quarter; omit'' drops ",
+  "the county-specific ", ref_quarter, " quarter indicators; ``Quarter only; ",
+  "omit'' and ``County + quarter'' use an omitted common quarter reference; ",
+  "``Quarter only; all'' includes all quarter fixed effects. *, **, and *** ",
+  "denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows ",
+  "report the diagnostic statistics from ",
+  "\\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
+
+table2_dye_lines <- build_iv_table(
+  columns = table2_dye_columns,
+  caption = "Standard Logit with Dye Instrument: Fixed-Effect Comparison",
+  label = "tab:standard_dye_fe_comparison",
+  has_sigma = FALSE,
+  notes = table2_dye_notes
+)
+
+table2_dye_output_path <- "results/out/tables/05_standard_dye_fe_comparison.tex"
+writeLines(table2_dye_lines, table2_dye_output_path)
+
+# -----------------------------------------------------------------------------
 # Table 3: nested logit with Hausman + Dye, four non-saturated FE specs
 # -----------------------------------------------------------------------------
 ## The fully saturated "County x quarter; full" spec is dropped here because in
@@ -1115,10 +1158,34 @@ fs_table2_lines <- build_first_stage_table(
 fs_table2_output_path <- "results/out/tables/05_standard_hausman_fe_comparison_first_stage.tex"
 writeLines(fs_table2_lines, fs_table2_output_path)
 
+fs_table2_dye_notes <- paste0(
+  "Notes: First-stage OLS coefficients on the county-specific dye instrument ",
+  "(task\\_mix\\_2 $\\times$ PPI input-cost shifter), with location-level ",
+  "clustered standard errors in parentheses, for the same specifications ",
+  "reported in Table \\ref{tab:standard_dye_fe_comparison}. Each column ",
+  "regresses the endogenous county-specific \\texttt{cust\\_price} column ",
+  "on all exogenous controls plus the excluded dye instrument. *, **, and ",
+  "*** denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows reproduce ",
+  "the diagnostics from \\texttt{summary(ivreg, diagnostics = TRUE)}."
+)
+
+fs_table2_dye_lines <- build_first_stage_table(
+  columns = table2_dye_columns,
+  endog_specs = fs_price_endog,
+  instrument_labels = c(dye_instrument = "Dye"),
+  caption = "Standard Logit with Dye Instrument: First-Stage Fixed-Effect Comparison",
+  label = "tab:standard_dye_fe_comparison_first_stage",
+  notes = fs_table2_dye_notes
+)
+fs_table2_dye_output_path <- "results/out/tables/05_standard_dye_fe_comparison_first_stage.tex"
+writeLines(fs_table2_dye_lines, fs_table2_dye_output_path)
+
 cat("\nDemand IV specification comparison tables saved to:\n")
 cat("  ", table1_output_path, "\n", sep = "")
 cat("  ", table2_output_path, "\n", sep = "")
+cat("  ", table2_dye_output_path, "\n", sep = "")
 cat("  ", table3_output_path, "\n", sep = "")
 cat("  ", table4_output_path, "\n", sep = "")
 cat("  ", fs_table1_output_path, "\n", sep = "")
 cat("  ", fs_table2_output_path, "\n", sep = "")
+cat("  ", fs_table2_dye_output_path, "\n", sep = "")
