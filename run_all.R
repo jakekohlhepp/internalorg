@@ -49,9 +49,8 @@ source("config.R")
 # Load logging utilities
 source("utils/logging.R")
 
-# CRAN snapshot date - all packages will be from this date
-# Using Posit Public Package Manager (PPPM) for dated snapshots
-# Change this date to update all package versions consistently
+# CRAN snapshot date renv.lock was built against (Posit Public Package Manager).
+# Informational: shown in the run summary; package versions are pinned in renv.lock.
 SNAPSHOT_DATE <- "2024-01-15"
 
 # Minimum R version required
@@ -127,8 +126,20 @@ if (RUN_MAKE_TASKS) {
       error = NULL, skipped = TRUE
     )
   } else {
-    # Dependencies: config.R
-    step0_deps <- c("config.R")
+    # Dependencies: every input 00_mk_tasks_cosmo.R actually reads. needs_rerun()
+    # silently skips entries that don't exist on a given machine (e.g. the raw
+    # pull), so machine-specific paths are safe to list.
+    step0_deps <- c(
+      "config.R",
+      raw_data_file,
+      "mkdata/data/classified_descriptions.rds",
+      file.path(CONFIG$prep_output_dir, "county_census_pop.rds"),
+      "mkdata/manual_rules/price_unit_corrections.csv",
+      "mkdata/manual_rules/service_classification_overrides.csv",
+      file.path(CONFIG$raw_data_path, "20220727_countypop/geocorr2022_2220806816.csv"),
+      file.path(CONFIG$raw_data_path, "20220727_countypop/geocorr2022_2220801561.csv"),
+      file.path(CONFIG$raw_data_path, "20260310_manual_review/check2_truly_new_sorted_for_classification.csv")
+    )
 
     if (force_downstream || needs_rerun("00_mk_tasks_cosmo.R", step0_deps)) {
       step0_start <- Sys.time()
@@ -183,93 +194,23 @@ if (RUN_SETUP) {
   message("STEP 1: Setting up package environment")
   message(strrep("-", 70))
 
-  # Check if renv is already initialized with a lockfile
-  if (file.exists("renv.lock")) {
-    message("Found existing renv.lock - restoring packages...")
-
-    if (!requireNamespace("renv", quietly = TRUE)) {
-      install.packages("renv")
-    }
-
-    # Restore from lockfile
-    renv::restore(prompt = FALSE)
-    message("Packages restored from renv.lock")
-
-  } else {
-    message("No renv.lock found - initializing fresh environment...")
-    message("Using CRAN snapshot date: ", SNAPSHOT_DATE)
-
-    # Install renv if needed
-    if (!requireNamespace("renv", quietly = TRUE)) {
-      install.packages("renv")
-    }
-
-    # Set repository to Posit Package Manager snapshot
-    snapshot_repo <- paste0(
-      "https://packagemanager.posit.co/cran/", SNAPSHOT_DATE
-    )
-
-    # Initialize renv
-    renv::init(bare = TRUE, restart = FALSE)
-
-    # Configure to use snapshot repository
-    options(repos = c(CRAN = snapshot_repo))
-    renv::settings$snapshot.type("all")
-
-    # Define required packages
-    required_packages <- c(
-      # Core data manipulation
-      "data.table",
-
-      # Date/time and string handling
-      "lubridate",
-      "stringr",
-      "zoo",
-
-      # Statistics and optimization
-      "gmm",
-      "nloptr",
-      "SQUAREM",
-      "BB",
-
-      # Parallel computing
-      "parallel",
-
-      # Data I/O
-      "readxl",
-
-      # Utilities
-      "lessR",
-      "xtable",
-
-      # IV diagnostics and inference
-      "ivreg",
-      "sandwich",
-      "lmtest",
-
-      # For build_data.R
-      "binsreg",
-      "ggplot2",
-      "dendextend",
-      "qgraph",
-      "adespatial",
-
-      # Testing
-      "testthat",
-
-      # Fast I/O (optional, for large files)
-      "qs"
-    )
-
-    message("Installing packages from snapshot...")
-    renv::install(required_packages, prompt = FALSE)
-
-    # Create lockfile
-    message("Creating renv.lock with pinned versions...")
-    renv::snapshot(prompt = FALSE)
-
-    message("Package environment initialized successfully")
+  # renv.lock is the single source of truth for package versions. The lockfile
+  # is committed with the repository, so there is no fresh-init path: the old
+  # bootstrap package list had drifted out of sync with the scripts and could
+  # never run in a cloned repo (where renv.lock always exists).
+  if (!file.exists("renv.lock")) {
+    stop("renv.lock not found. This replication package pins all package ",
+         "versions in the committed renv.lock; restore it from the repository ",
+         "before running.")
   }
+
+  if (!requireNamespace("renv", quietly = TRUE)) {
+    install.packages("renv")
+  }
+
+  # Restore from lockfile
+  renv::restore(prompt = FALSE)
+  message("Packages restored from renv.lock")
 
   message("STEP 1 complete")
 }
@@ -293,8 +234,17 @@ if (RUN_BUILD_DATA) {
       error = "Input file missing", skipped = FALSE
     )
   } else {
-    # Dependencies: config.R, cluster.R (sourced internally)
-    step2_deps <- c("config.R", "cluster.R")
+    # Dependencies: config.R, cluster.R (sourced internally), and the data
+    # inputs 01_build_data.R reads directly (00 task data + the prep-stage
+    # aux files consumed by the cluster.R helpers).
+    step2_deps <- c(
+      "config.R",
+      "cluster.R",
+      "mkdata/data/00_tasks_cosmo.rds",
+      "mkdata/data/cex_outside.rds",
+      "mkdata/data/county_msa_xwalk.rds",
+      "mkdata/data/qcew_county.rds"
+    )
 
     if (force_downstream || needs_rerun("01_build_data.R", step2_deps)) {
       step2_start <- Sys.time()
