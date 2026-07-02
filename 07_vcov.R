@@ -188,7 +188,10 @@ stage2_moment_rows <- function(beta_mat, wage_vec) {
   wb_sum <- rowSums(
     matrix(wage_vec[wb_name_mat], nrow = nrow(wd)) * e_raw_mat
   ) * wd$avg_labor
-  p_adj <- wd$cust_price - wb_sum - solved$gamma * wd$s_index +
+  ## Org cost carries the same avg_labor scaling as the wage bill (draft
+  ## Eq. 16: a_j gamma_j I_j); must mirror add_price_adjustment exactly or
+  ## the faithfulness stopifnot below fires.
+  p_adj <- wd$cust_price - wb_sum - solved$gamma * wd$s_index * wd$avg_labor +
     wd$mk_piece / beta_mat[rho_lookup, 1]
   g3 <- as.numeric(p_adj - M %*% p_hat) * M
   list(g2 = g2, g3 = g3)
