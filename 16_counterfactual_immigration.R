@@ -140,9 +140,11 @@ orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_w
 
 ## immigration: increase total labor (summed across all worker types) by 5%,
 ## with the entire increase concentrated in the lowest-wage worker type per
-## county. Targets are the argmin of the 2021.2 initial-equilibrium wage vector
-## from 13_initial_wages.rds: LA->1, NYC->2, Cook->4. The shock to the target
-## type is therefore 5% * sum(tot_k), not 5% of the target alone.
+## county. The target type is DERIVED per county as the argmin of the
+## focus-quarter baseline-equilibrium wage vector (13_initial_wages.rds via
+## counterfactual_lowest_wage_types), so it tracks the current baseline solve
+## instead of a hardcoded mapping. The shock to the target type is
+## 5% * sum(tot_k), not 5% of the target alone.
 tot_field_names <- counterfactual_tot_labor_field_names(CONFIG)
 add_immigrants_to_target <- function(cnty, target_idx, qy = 2021.2) {
   base <- as.numeric(as.matrix(total_labor[
@@ -154,9 +156,13 @@ add_immigrants_to_target <- function(cnty, target_idx, qy = 2021.2) {
   total_labor[county == cnty & quarter_year == qy,
               (target_col) := get(target_col) + delta]
 }
-add_immigrants_to_target('6037',  1)
-add_immigrants_to_target('36061', 2)
-add_immigrants_to_target('17031', 4)
+imm_target_types <- counterfactual_lowest_wage_types(initial_wages)
+message("[16] immigration target types (lowest baseline wage per county): ",
+        paste(names(imm_target_types), imm_target_types, sep = "->",
+              collapse = ", "))
+for (cnty in names(imm_target_types)) {
+  add_immigrants_to_target(cnty, imm_target_types[[cnty]])
+}
 
 res_wages <- new_counterfactual_wages_grid(unique(total_labor_orig$quarter_year))
 

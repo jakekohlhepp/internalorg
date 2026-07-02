@@ -152,16 +152,24 @@ reorg_struct <- build_counterfactual_structure_snapshot(
 
 
 
-## Focus on Los Angeles County. In this county the lowest-wage worker is type 1,
-## and the immigration counterfactual increases that supply by 10%.
+## Focus on Los Angeles County. The immigration counterfactual increases the
+## supply of the county's lowest-wage worker type by 5% of total county labor;
+## the type is derived from the 13_ baseline solve exactly as in
+## 16_counterfactual_immigration.R (currently type 4 for LA). The immigrant
+## time share at a firm is the sum of the B_<task>_<worker> columns for that
+## worker type.
 cf_log("Preparing Los Angeles immigration figure panel")
+
+la_imm_type <- counterfactual_lowest_wage_types(initial_wages)[["6037"]]
+la_imm_b_cols <- paste0("B_", seq_len(CONFIG$n_task_types), "_", la_imm_type)
+cf_log(paste0("LA immigration target type (lowest baseline wage): ", la_imm_type))
 
 reorg_struct[['6037']][, sol_type:="Reorganization"]
 realloc_struct[['6037']][, sol_type:="Reallocation"]
-orig_struct[['6037']][, initial_share:=B_1_1+B_2_1+B_3_1+B_4_1+B_5_1][, initial_price:=newprice][, initial_s_index:=s_index][, initial_newshare:=new_share]
+orig_struct[['6037']][, initial_share:=rowSums(.SD), .SDcols=la_imm_b_cols][, initial_price:=newprice][, initial_s_index:=s_index][, initial_newshare:=new_share]
 
 imm_la<-rbind(reorg_struct[['6037']],realloc_struct[['6037']] )
-imm_la[, share_impact:=B_1_1+B_2_1+B_3_1+B_4_1+B_5_1]
+imm_la[, share_impact:=rowSums(.SD), .SDcols=la_imm_b_cols]
 imm_la<-merge(imm_la,orig_struct[['6037']][, c("location_id", "initial_price", "initial_s_index","initial_newshare","initial_share")], by="location_id" )
 
 
