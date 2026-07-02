@@ -96,6 +96,29 @@ with access and are skipped gracefully elsewhere; everything from
 `04_estimation_sample.R` onward runs from derived inputs (see
 `docs/slurm_longleaf.md` §8 for the local-vs-cluster execution map).
 
+### Derived intermediate data (not included; available on request)
+
+Several intermediate files are pseudonymized firm/staff-level records derived
+from the confidential transactions, so they are also not distributed in this
+public repository even though downstream pipeline stages consume them:
+`mkdata/data/00_tasks_cosmo.rds`, `01_working.rds`, `01_staff_task.rds`,
+`01_staff_task_full.rds`, `01_staff_task_full_smoothed.rds`,
+`01_worker_type_lookup.rds`, `01_xwalk.rds`, `04_estimation_sample.rds`,
+`classified_descriptions.rds`, plus `results/data/02_stylized_facts_data.rds`,
+`09_withgammas.rds`, and `12_data_for_counterfactuals.rds`. The estimation and
+counterfactual stages (`04_estimation_sample.R` → `22_skill_parameter_units.R`)
+require a subset of these; they are transferred to the compute cluster
+out-of-band (see `docs/slurm_longleaf.md` §8 for the exact list and transfer
+recipe) and are available from the author on request, subject to the data
+provider's agreement.
+
+Everything else the pipeline needs **is** committed: `seeit_bb.rds` (the
+estimation starting vector), `minwage.xlsx`, `01_keytask.rds`, the
+public-source prep outputs (`cex_outside`, `county_census_pop`,
+`county_msa_xwalk`, `ppi`, `qcew_county`), the estimated parameters
+(`results/data/06_parameters.rds`), the counterfactual warm-start seeds, and
+the paper's tables and figures under `results/out/`.
+
 ### Public data (download sources)
 
 `mkdata/raw/` is gitignored (large external files). To rebuild the prep layer,
