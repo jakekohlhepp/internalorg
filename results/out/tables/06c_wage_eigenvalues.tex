@@ -1,0 +1,14 @@
+\begin{table}[ht]
+\centering
+\caption{Per-county Hessian spectrum at the wage solution. The condition number is reported only when all eigenvalues are strictly positive. ``Verdict'' classifies the solution as a strict local minimum (all $\lambda > 10^{-9}$), a flat ridge (smallest eigenvalue near zero), or a saddle (some $\lambda < -10^{-9}$).} 
+\label{tab:wage_hessian_spectrum}
+\begin{tabular}{lrrrrrrl}
+  \toprule
+County & $f(x^*)$ & $\lambda_1$ (max) & $\lambda_2$ & $\lambda_3$ & $\lambda_4$ (min) & Cond. \# & Verdict \\ 
+  \midrule
+17031 & 2.442e-10 & 0.000223 & 9.75e-05 & 3.82e-05 & 1.18e-06 & 189 & strict local min \\ 
+  36061 & 3.622e-08 & 0.000548 & 0.000142 & 1.13e-05 & -1.6e-05 & -- & saddle (eigenvalue $<0$) (perturbation does not confirm) \\ 
+  6037 & 6.269e-09 & 0.0156 & 0.00586 & 0.00364 & 5.91e-05 & 264 & strict local min \\ 
+   \bottomrule
+\end{tabular}
+\end{table}

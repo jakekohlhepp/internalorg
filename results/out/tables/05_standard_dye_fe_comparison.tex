@@ -1,0 +1,26 @@
+\begin{table}[!htbp] \centering
+  \caption{Standard Logit with Dye Instrument: Fixed-Effect Comparison}
+  \label{tab:standard_dye_fe_comparison}
+  \begin{tabular}{lccccc}
+\\[-1.8ex]\hline
+\hline \\[-1.8ex]
+ & County$\times$quarter; full & County$\times$quarter; omit & Quarter only; omit & Quarter only; all & County + quarter \\
+\hline \\[-1.8ex]
+Fixed effects & County$\times$quarter; full & County$\times$quarter; omit & Quarter FE & All quarter FE & County + quarter \\
+Price (Cook) & 0.0072 & -0.0289** & -0.0656 & -0.0105 & 0.0092 \\
+ & (0.0420) & (0.0111) & (0.0404) & (0.0210) & (0.0106) \\
+Price (New York) & -0.0157 & -0.0454 & -0.0265 & -0.0056 & -0.0161 \\
+ & (0.0387) & (0.0438) & (0.0163) & (0.0066) & (0.0149) \\
+Price (Los Angeles) & -0.0033 & -0.0197** & -0.0171* & -0.0035 & -0.0028 \\
+ & (0.0048) & (0.0073) & (0.0067) & (0.0046) & (0.0048) \\
+Weak-IV F price (Cook) & 0.07 & 9.91 & 9.23 & 6.08 & 3.42 \\
+Weak-IV F price (New York) & 0.27 & 2.67 & 7.18 & 6.49 & 1.15 \\
+Weak-IV F price (Los Angeles) & 3.43 & 21.53 & 22.86 & 11.43 & 3.62 \\
+Wu-Hausman $p$-value & 0.4386 & $<$0.0001 & $<$0.0001 & 0.5927 & 0.1778 \\
+Scaled $X'P_ZX$ cond. & 1,859,027 & 10,504 & 9,107 & 49,636 & 45,674 \\
+Adj. $R^2$ & 0.9785 & 0.8390 & 0.8893 & 0.9880 & 0.9784 \\
+Observations & 468 & 468 & 468 & 468 & 468 \\
+\hline \\[-1.8ex]
+\multicolumn{6}{p{0.92\linewidth}}{\footnotesize Notes: Standard-logit 2SLS price coefficients with location-level clustered standard errors in parentheses. All columns use the county-specific dye instrument (task\_mix\_2 $\times$ PPI input-cost shifter) and county-specific $avg\_labor \times B\_raw$ controls. Columns vary only in the fixed-effect parameterization. ``County$\times$quarter; omit'' drops the county-specific 2018.1 quarter indicators; ``Quarter only; omit'' and ``County + quarter'' use an omitted common quarter reference; ``Quarter only; all'' includes all quarter fixed effects. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows report the diagnostic statistics from \texttt{summary(ivreg, diagnostics = TRUE)}.}\\
+\end{tabular}
+\end{table}

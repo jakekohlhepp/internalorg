@@ -1,0 +1,38 @@
+\begin{table}[!htbp] \centering
+  \caption{Nested Logit Demand IV: Instrument-Set Comparison (FE held at County$\times$quarter; omit)}
+  \label{tab:nested_sigma_eq_one}
+  \begin{tabular}{lcccccc}
+\\[-1.8ex]\hline
+\hline \\[-1.8ex]
+ & Dye + Hausman & Cost + Thickness & Cost quartet & Cost + rivals & Rivals + Hausman & All six \\
+\hline \\[-1.8ex]
+Instruments & dye + hausman & dye + labor + n\_rivals & dye + hausman + labor + minwage & dye + labor + rival\_task2 & rival\_task2 + n\_rivals + hausman & all six candidates \\
+$\hat\alpha$ (county 17031) & 0.0005 & -0.0009 & -0.0001 & -0.0019 & 0.0002 & 0.0000 \\
+ & (0.0026) & (0.0019) & (0.0002) & (0.0159) & (0.0001) & (0.0001) \\
+$\hat\sigma$ (county 17031) & 0.9260 & 0.8845 & 0.9091 & 0.8466 & 0.9164 & 0.9121 \\
+ & (0.0736) & (0.0583) & (0.0066) & (0.5174) & (0.0051) & (0.0051) \\
+$t=(\hat\sigma-1)/SE$ (17031) & -1.006 & -1.982* & -13.866*** & -0.296 & -16.499*** & -17.402*** \\
+$p$-value ($H_0: \sigma=1$) (17031) & 0.3144 & 0.0475 & $<$0.0001 & 0.7669 & $<$0.0001 & $<$0.0001 \\
+$\hat\alpha$ (county 36061) & -0.0017 & -0.0007 & 0.0002 & -0.0006 & 0.0025 & 0.0002 \\
+ & (0.0056) & (0.0010) & (0.0003) & (0.0009) & (0.0164) & (0.0003) \\
+$\hat\sigma$ (county 36061) & 0.8944 & 0.9122 & 0.9289 & 0.9129 & 0.9686 & 0.9288 \\
+ & (0.0988) & (0.0198) & (0.0058) & (0.0181) & (0.2979) & (0.0057) \\
+$t=(\hat\sigma-1)/SE$ (36061) & -1.068 & -4.426*** & -12.157*** & -4.804*** & -0.106 & -12.388*** \\
+$p$-value ($H_0: \sigma=1$) (36061) & 0.2854 & $<$0.0001 & $<$0.0001 & $<$0.0001 & 0.9159 & $<$0.0001 \\
+$\hat\alpha$ (county 6037) & -0.0002 & -0.0002 & -0.0002 & -0.0002 & -0.0002 & -0.0002 \\
+ & (0.0004) & (0.0003) & (0.0003) & (0.0003) & (0.0004) & (0.0003) \\
+$\hat\sigma$ (county 6037) & 0.9333 & 0.9351 & 0.9347 & 0.9351 & 0.9332 & 0.9349 \\
+ & (0.0130) & (0.0122) & (0.0118) & (0.0121) & (0.0137) & (0.0117) \\
+$t=(\hat\sigma-1)/SE$ (6037) & -5.152*** & -5.327*** & -5.531*** & -5.359*** & -4.871*** & -5.569*** \\
+$p$-value ($H_0: \sigma=1$) (6037) & $<$0.0001 & $<$0.0001 & $<$0.0001 & $<$0.0001 & $<$0.0001 & $<$0.0001 \\
+Weak-IV F $\hat\alpha$ (17031) & 19.79 & 13.66 & 13.43 & 17.84 & 12.06 & 6.91 \\
+Weak-IV F $\hat\alpha$ (36061) & 1.45 & 1.12 & 0.88 & 1.12 & 0.01 & 0.23 \\
+Weak-IV F $\hat\alpha$ (6037) & 13.28 & 8.78 & 6.84 & 8.77 & 2.03 & 1.10 \\
+Weak-IV F $\hat\sigma$ (17031) & 919.78 & 631.78 & 469.86 & 373.84 & 2.60 & 1.36 \\
+Weak-IV F $\hat\sigma$ (36061) & 164.11 & 108.91 & 86.01 & 97.79 & 1.54 & 2.08 \\
+Weak-IV F $\hat\sigma$ (6037) & 168.51 & 113.26 & 84.44 & 113.24 & 0.43 & 0.60 \\
+Observations & 468 & 468 & 468 & 468 & 468 & 468 \\
+\hline \\[-1.8ex]
+\multicolumn{7}{p{0.92\linewidth}}{\footnotesize Notes: Nested-logit 2SLS estimates holding the fixed-effect specification fixed at ``County$\times$quarter; omit'' (the preferred FE from Table \ref{tab:nested_fe_comparison}) and varying the instrument set across columns. $\hat\alpha$ is the coefficient on \texttt{cust\_price}; $\hat\sigma$ is the coefficient on \texttt{log\_within\_share}; standard errors in parentheses are location-clustered Eicker-White HC1. The $t = (\hat\sigma - 1)/SE$ row compares $\hat\sigma$ to 1 under a standard normal asymptotic. *, **, and *** on $\hat\alpha$ denote standard significance vs.\ 0 ($p<0.05, p<0.01, p<0.001$); on the $t$ row they denote rejection of $\sigma=1$. Candidate instruments: \texttt{dye\_instrument} = $\text{task\_mix}_2 \times \text{PPI}$; \texttt{hausman\_other\_price} = leave-own-county-out same-quarter mean price; \texttt{labor\_instrument} = county hourly wage $\times$ own \texttt{avg\_labor}; \texttt{minwage\_inst} = county min wage $\times$ own \texttt{avg\_labor}; \texttt{rival\_task2\_inst} = leave-self-out mean \texttt{task\_mix\_2} in the same county-quarter; \texttt{n\_county\_rivals} = number of other salons in the county-quarter. Weak-IV $F$ rows are the diagnostics from \texttt{summary(ivreg, diagnostics = TRUE)} for each endogenous regressor; values well below the Stock-Yogo rule-of-thumb of 10 indicate weak identification of that coefficient. All columns include county-specific $\text{avg\_labor} \times B\_raw_j$ controls and the County$\times$quarter; omit FE; the instrument set is the only source of variation.}\\
+\end{tabular}
+\end{table}
