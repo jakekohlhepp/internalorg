@@ -224,13 +224,15 @@ if (identical(CONFIG$structural_se_source, "murphy_topel")) {
 if (!is.null(all_se)) {
   all_results <- merge(all_results, all_se, by = c("parm_name", "demand"))
   stopifnot(nrow(all_results) == nrow(all_se))
-  all_results[, se_formatted := as.character(0.001)]
+  ## Parameters without an SE (e.g. bound-binding price coordinates under the
+  ## Murphy-Topel source) print "-" rather than a fabricated number.
+  all_results[, se_formatted := "-"]
   all_results[!is.na(se),
               se_formatted := str_replace(as.character(paste0("(", format(round(se, 3), nsmall = 3), ")")), " 0.", ".")]
   all_results[, se := NULL]
   setnames(all_results, "se_formatted", "se")
 } else {
-  all_results[, se := as.character(0.001), ]
+  all_results[, se := "-", ]
 }
 ## blanks are county-quarter fixed effects in the cost and quality equations.
 
@@ -350,7 +352,7 @@ working_data[, wb_5 := beta_2_subset[paste0("factor(county)", county, ":avg_labo
 working_data[, gamma_invert := get_gammas(beta_2_subset, estim_matrix,
                                            beta = beta, beta_2_subset = beta_2_subset,
                                            config = CONFIG, clust = clust)]
-working_data[, p_adj := cust_price - wb_2 - wb_3 - wb_4 - wb_5 - gamma_invert * s_index + mk_piece / beta[paste0("factor(county)", county, ":cust_price"), ]]
+working_data[, p_adj := cust_price - wb_2 - wb_3 - wb_4 - wb_5 - gamma_invert * s_index * avg_labor + mk_piece / beta[paste0("factor(county)", county, ":cust_price"), ]]
 xnam <- as.formula("~avg_labor:factor(county):factor(quarter_year)+factor(quarter_year):factor(county)+factor(quarter_year):(task_mix_2+task_mix_3+task_mix_4+task_mix_5)-1")
 mod_mm_2 <- model.matrix(xnam, data = working_data)
 

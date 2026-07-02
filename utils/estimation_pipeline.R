@@ -568,7 +568,7 @@ add_price_adjustment <- function(working_data, estim_matrix, beta, wage_coefs,
 
   wb_cols <- paste0("wb_", 2:config$n_worker_types)
   wb_sum <- Reduce("+", lapply(wb_cols, function(col) data[[col]]))
-  data[, p_adj := cust_price - wb_sum - gamma_invert * s_index +
+  data[, p_adj := cust_price - wb_sum - gamma_invert * s_index * avg_labor +
          mk_piece / beta[paste0("factor(county)", county, ":cust_price"), ]]
 
   data
@@ -659,18 +659,58 @@ fit_price_parameters <- function(working_data, estim_matrix, beta, wage_coefs,
     sum(weighted_col_means(residual_moments, weights)^2)
   }
 
-  final_reg <- stats::optim(
-    starting_final_reg,
-    obj_final_reg,
-    lower = lower_bound,
-    upper = rep(Inf, length(starting_final_reg)),
-    method = "L-BFGS-B",
-    control = list(
-      maxit = solver_value(config, "price_optimizer_maxit", 1000000L),
-      trace = solver_value(config, "price_optimizer_trace", 3L),
-      factr = config$obj_tol / .Machine$double.eps
-    )
+  ## Exact-solution fast path: when every lower bound is slack, the moment
+  ## system weighted_col_means((p_adj - M x) * M) = 0 is exactly the
+  ## (weighted) OLS normal equations, so solve it in closed form and keep it
+  ## if it is feasible. Only a genuinely bound-constrained problem falls
+  ## through to the bounded L-BFGS-B search below. (On the current sample the
+  ## unconstrained OLS violates ~19 of the 36 min-wage bounds, so the solver
+  ## path still runs there; the fast path covers reweighted/bootstrap samples
+  ## and future data where the bounds turn out slack.)
+  w_sqrt <- if (is.null(weights)) NULL else sqrt(weights)
+  ols_x <- if (is.null(w_sqrt)) mod_mm_2 else mod_mm_2 * w_sqrt
+  ols_y <- if (is.null(w_sqrt)) data$p_adj else data$p_adj * w_sqrt
+  ols_coef <- tryCatch(
+    as.numeric(rank_aware_ols(ols_x, ols_y, context = "price stage OLS fast path")),
+    error = function(e) {
+      warning("price stage OLS fast path failed (", conditionMessage(e),
+              "); using bounded L-BFGS-B.", call. = FALSE)
+      NULL
+    }
   )
+  ols_feasible <- !is.null(ols_coef) && all(is.finite(ols_coef)) &&
+    all(ols_coef >= lower_bound)
+
+  if (ols_feasible) {
+    final_reg <- list(
+      par = ols_coef,
+      value = obj_final_reg(ols_coef),
+      counts = c(`function` = 1L, gradient = NA_integer_),
+      convergence = 0L,
+      message = "exact OLS solution (all lower bounds slack)"
+    )
+    message("fit_price_parameters: unconstrained OLS satisfies every lower ",
+            "bound; using the exact solution (moment objective ",
+            signif(final_reg$value, 3), ").")
+  } else {
+    if (!is.null(ols_coef)) {
+      n_violated <- sum(is.finite(lower_bound) & ols_coef < lower_bound)
+      message("fit_price_parameters: unconstrained OLS violates ", n_violated,
+              " lower bound(s); falling back to bounded L-BFGS-B.")
+    }
+    final_reg <- stats::optim(
+      starting_final_reg,
+      obj_final_reg,
+      lower = lower_bound,
+      upper = rep(Inf, length(starting_final_reg)),
+      method = "L-BFGS-B",
+      control = list(
+        maxit = solver_value(config, "price_optimizer_maxit", 1000000L),
+        trace = solver_value(config, "price_optimizer_trace", 3L),
+        factr = config$obj_tol / .Machine$double.eps
+      )
+    )
+  }
   coef_vect2 <- final_reg$par
   names(coef_vect2) <- names(first_try)
 
