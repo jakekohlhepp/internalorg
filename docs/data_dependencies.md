@@ -129,6 +129,14 @@ flowchart TD
     cfdata --> sub21
     params --> sub21
     sub21 --> sub21out[results/out/tables/21_substitute_prod.tex]
+
+    params --> sk22[22_skill_parameter_units.R]
+    esample_out --> sk22
+    keytask[mkdata/data/01_keytask.rds] --> sk22
+    sk22 --> sk22tex[results/out/tables/22_skill_units.tex]
+    sk22 --> sk22csv[results/data/22_skill_units.csv]
+
+    val --> valfigs[results/out/figures/12_*.png]
 ```
 
 ## Current Managed Workflow

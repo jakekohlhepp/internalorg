@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-13
+Last updated: 2026-07-01
 
 ## Current State
 
@@ -72,6 +72,31 @@ scenarios were retired during this consolidation (see
 `45b23aa Remove obsolete counterfactual scripts`).
 
 ## Recent Pipeline Changes (since 2026-04-23)
+
+### 2026-06-29 – 2026-07-01: replication-package pass
+
+- **Prep reproducibility restored** — `prep_00/02/04` reverted to their
+  pre-refactor (Mar-9) versions and `prep_03`'s premature column assertion
+  fixed; every prep output now regenerates **bit-identically** via
+  `run_prep_data.R`, as do `00_mk_tasks_cosmo` → `01_build_data` →
+  `02_stylized_facts` via `run_all.R` (22/22 hash check). `prep_07_nyc_rent.R`
+  removed (its output had no consumer).
+- **Licensing + data availability** — MIT `LICENSE` added; README gains
+  Requirements and Data Availability sections (confidential vs derived vs
+  public inputs, with download sources for everything under `mkdata/raw/`).
+- **Data shipping model** — `.gitignore` restructured as default-deny with an
+  explicit allowlist; non-confidential replication data committed (public-source
+  prep outputs, `seeit_bb.rds`, `minwage.xlsx`, `01_keytask.rds`,
+  `06_parameters.rds`, warm-start seeds, all paper tables/figures). Derived
+  firm/staff-level microdata stays untracked and transfers to the cluster
+  out-of-band (`slurm_longleaf.md` §8).
+- **`06_estimation.R` no longer overwrites `seeit_bb.rds`** — the committed
+  starting vector is a stable replication anchor; the post-run vector goes to
+  `06_seeit_bb_next.rds` (untracked).
+- **Environment hardening** — `maps` and `minpack.lm` recorded in `renv.lock`
+  (both were silently missing); `run_all.R` STEP 1 now treats `renv.lock` as
+  authoritative (the drifted fresh-install list is gone); STEP 0/2 dependency
+  lists completed so upstream input edits trigger downstream re-runs.
 
 ### 2026-05-25/26 updates
 
@@ -168,22 +193,25 @@ scenarios were retired during this consolidation (see
 `run_all.R` manages:
 
 1. `00_mk_tasks_cosmo.R`
-2. package restore/setup through `renv`
+2. package restore through `renv` (renv.lock is authoritative)
 3. `01_build_data.R`
-4. `04_estimation_sample.R`
-5. `05_iv_spec_comparison.R`
-6. `06_estimation.R`
-7. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
-8. `07_vcov.R` (first-stage 2SLS + Murphy-Topel structural SEs)
-9. `08_display_estimates.R`
-10. `09_invert_gammas.R`
-11. `12_validate.R`
-12. `run_counterfactuals.R`
-13. `20_substitution.R` (wage-substitution patterns at the cleared equilibrium
+4. `02_stylized_facts.R` (STEP 2b; needs the confidential raw pulls, skipped elsewhere)
+5. `03_spatial_corr.R` (STEP 2c; needs the Census/ZCTA geo files, skipped elsewhere)
+6. `04_estimation_sample.R`
+7. `05_iv_spec_comparison.R`
+8. `06_estimation.R`
+9. `06b_estimation_monotone.R` (STEP 5b; monotone-restricted robustness variant)
+10. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
+11. `07_vcov.R` (first-stage 2SLS + Murphy-Topel structural SEs)
+12. `08_display_estimates.R`
+13. `09_invert_gammas.R`
+14. `12_validate.R`
+15. `run_counterfactuals.R`
+16. `20_substitution.R` (wage-substitution patterns at the cleared equilibrium
     wages from `13_initial_wages.rds`)
-14. `21_substitution_prod.R` (productivity-substitution patterns at the
+17. `21_substitution_prod.R` (productivity-substitution patterns at the
     cleared equilibrium wages)
-15. `22_skill_parameter_units.R` (skill parameters in interpretable units)
+18. `22_skill_parameter_units.R` (skill parameters in interpretable units)
 
 ### Counterfactual runner
 
