@@ -1,0 +1,19 @@
+\begin{table}[ht]
+\centering
+\caption{Perturbation tests along the smallest-eigenvalue direction $v$ at each county whose Hessian is not strictly positive definite. If polishing from $x^* + s v$ for any $s$ produces a materially lower ssq than at $x^*$, the original point is a saddle and a downhill direction was missed by local solvers; otherwise the negative or near-zero eigenvalue reflects a flat ridge below numerical detection.} 
+\label{tab:wage_perturbation}
+\begin{tabular}{lrrrr}
+  \toprule
+County & Step & $f(x^* + s v)$ & Polish ssq & Polish conv. \\ 
+  \midrule
+36061 & -100.00 & 0.01039 & 0.007863 &   0 \\ 
+  36061 & -50.00 & 0.00855 & 0.002763 &   0 \\ 
+  36061 & -10.00 & 0.002745 & 0.0001128 &   0 \\ 
+  36061 & -1.00 & 0.0001081 & 5.87e-05 &   0 \\ 
+  36061 & 1.00 & 0.0001599 & 1.149e-05 &   0 \\ 
+  36061 & 10.00 & 0.01454 & 0.001139 &   0 \\ 
+  36061 & 50.00 & 0.044 & 0.006447 &   0 \\ 
+  36061 & 100.00 & 0.04774 & 0.009678 &   0 \\ 
+   \bottomrule
+\end{tabular}
+\end{table}

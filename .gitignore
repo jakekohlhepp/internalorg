@@ -1,15 +1,21 @@
+# =============================================================================
+# Default-deny for data files (large, generated, or confidential), with an
+# explicit allowlist at the END of this file for the non-confidential
+# replication inputs/outputs. Keep all deny rules ABOVE the allowlist:
+# gitignore is last-match-wins, so a negation must come after every rule
+# that would exclude the same path.
+# =============================================================================
+
 # Data files (large, generated, or confidential)
 *.rds
 *.csv
-!mkdata/manual_rules/price_unit_corrections.csv
-!mkdata/manual_rules/service_classification_overrides.csv
 *.xlsx
 *.fst
 *.qs
 *.parquet
 mkdata/raw/
 
-# R package management (renv lockfile IS tracked; library is not)
+# R package management (renv lockfile and activate stub ARE tracked; library is not)
 renv/library/
 renv/staging/
 renv/cellar/
@@ -25,8 +31,9 @@ renv/sandbox/
 # Logs (generated at runtime)
 logs/
 
-# Results (generated at runtime)
-results/
+# Results (generated at runtime). Contents are denied here; canonical
+# aggregate anchors are re-included in the allowlist below.
+results/**
 
 # PDFs (paper drafts, slides)
 *.pdf
@@ -55,13 +62,55 @@ nul
 .DS_Store
 Thumbs.db
 
-# Machine-specific environment (contains local data paths)
+# Machine-specific environment (contains local data paths).
+# .Rprofile IS tracked: it is the generic renv activation stub.
 .Renviron
 .Renviron.R
-.Rprofile
 
 # Local-only scratch / notes (not for public repo)
 portable_skills/
 
 # Local archive of superseded scripts (not for public repo)
 archive/
+
+# =============================================================================
+# ALLOWLIST — non-confidential replication data only. Per the data-sensitivity
+# audit (2026-07-01): mkdata/data 01_* staff/firm panels, 04_estimation_sample,
+# classified_descriptions, and the firm-quarter result panels (02_stylized,
+# 09_withgammas, 12_data_for_counterfactuals) are derived confidential
+# microdata and MUST stay untracked; everything re-included below is either
+# public-source-derived or aggregate parameters/outputs.
+# =============================================================================
+
+# Manual rules (author-constructed correction tables; no confidential content)
+!mkdata/manual_rules/price_unit_corrections.csv
+!mkdata/manual_rules/service_classification_overrides.csv
+
+# Public-source-derived prep outputs + aggregate estimation inputs
+!mkdata/data/seeit_bb.rds
+!mkdata/data/01_keytask.rds
+!mkdata/data/cex_outside.rds
+!mkdata/data/county_census_pop.rds
+!mkdata/data/county_msa_xwalk.rds
+!mkdata/data/ppi.rds
+!mkdata/data/qcew_county.rds
+!mkdata/data/minwage.xlsx
+
+# Canonical estimation anchors (aggregate parameters/diagnostics only)
+!results/data/
+!results/data/06_parameters.rds
+!results/data/06_structural_bound_diagnostics.rds
+!results/data/counterfactuals/
+!results/data/counterfactuals/13_warm_start_wages.rds
+!results/data/counterfactuals/14_warm_start_wages_diffusion.rds
+!results/data/counterfactuals/15_warm_start_wages_salestax.rds
+!results/data/counterfactuals/16_warm_start_wages_immigration.rds
+!results/data/counterfactuals/17_warm_start_wages_merger.rds
+
+# Paper outputs (aggregate tables and figures)
+!results/out/
+!results/out/tables/
+!results/out/tables/*.tex
+!results/out/figures/
+!results/out/figures/*.png
+!results/out/figures/*.pdf

@@ -1,0 +1,37 @@
+\begin{threeparttable}
+
+\centering
+\begin{tabular}[t]{ccccccccccc}
+\toprule
+\multicolumn{1}{c}{ } & \multicolumn{5}{c}{Willingness-to-pay (USD)} & \multicolumn{5}{c}{Pct. Share (pooled)} \\
+\cmidrule(l{3pt}r{3pt}){2-6} \cmidrule(l{3pt}r{3pt}){7-11}
+Worker Skill Set & Haircut & Color & Style & Admin & Nail & Haircut & Color & Style & Admin & Nail\\
+\midrule
+\addlinespace[0.3em]
+\multicolumn{11}{l}{\textbf{Cook}}\\
+\hspace{1em}1 & 1.11 & 0.96 & 19.65 & 10.28 & 4.65 & 1.04 & 1.07 & 5.03 & 4.74 & 0.60\\
+\hspace{1em}2 & 1.34 & 0.00 & 38.34 & 0.00 & 25.31 & 1.25 & 0.00 & 9.82 & 0.00 & 3.29\\
+\hspace{1em}3 & 2.58 & 1.20 & 19.74 & 12.73 & 8.85 & 2.41 & 1.34 & 5.06 & 5.87 & 1.15\\
+\hspace{1em}4 & 0.00 & 1.90 & 13.58 & 6.52 & 0.00 & 0.00 & 2.11 & 3.48 & 3.01 & 0.00\\
+\hspace{1em}5 & 3.76 & 1.28 & 0.00 & 1.14 & 7.53 & 3.52 & 1.42 & 0.00 & 0.53 & 0.98\\
+\addlinespace[0.3em]
+\multicolumn{11}{l}{\textbf{New York}}\\
+\hspace{1em}1 & 0.00 & 4.70 & 0.00 & 83.59 & 8.94 & 0.00 & 10.23 & 0.00 & 7.36 & 1.82\\
+\hspace{1em}2 & 0.19 & 4.07 & 3.54 & 100.20 & 0.00 & 0.30 & 8.86 & 1.67 & 8.82 & 0.00\\
+\hspace{1em}3 & 4.20 & 1.46 & 9.11 & 77.55 & 0.89 & 6.72 & 3.18 & 4.29 & 6.83 & 0.18\\
+\hspace{1em}4 & 2.25 & 5.02 & 2.03 & 0.00 & 9.77 & 3.60 & 10.94 & 0.96 & 0.00 & 1.99\\
+\hspace{1em}5 & 3.37 & 0.00 & 4.34 & 109.27 & 3.08 & 5.38 & 0.00 & 2.04 & 9.62 & 0.63\\
+\addlinespace[0.3em]
+\multicolumn{11}{l}{\textbf{Los Angeles}}\\
+\hspace{1em}1 & 0.74 & 6.95 & 1.78 & 4.05 & 21.17 & 0.44 & 6.85 & 0.46 & 0.37 & 0.98\\
+\hspace{1em}2 & 0.00 & 7.38 & 2.61 & 0.00 & 33.80 & 0.00 & 7.27 & 0.67 & 0.00 & 1.57\\
+\hspace{1em}3 & 2.54 & 6.78 & 0.00 & 4.59 & 0.00 & 1.50 & 6.69 & 0.00 & 0.42 & 0.00\\
+\hspace{1em}4 & 0.61 & 6.73 & 1.33 & 1.72 & 36.77 & 0.36 & 6.63 & 0.34 & 0.16 & 1.71\\
+\hspace{1em}5 & 8.58 & 0.00 & 1.48 & 1.86 & 36.58 & 5.05 & 0.00 & 0.38 & 0.17 & 1.70\\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[para,flushleft]
+\footnotesize
+\item[] \textit{Notes:} Each cell is the parameter for worker $w$ at task $t$ minus the parameter for the worst worker at that same task \emph{within the county}, so the worst worker reads 0 and all others are gains relative to that county-specific baseline. \textit{Willingness-to-pay (USD)}: cell $= (\theta[w,t] - \theta_{\min,t})\,/\,|\rho_c| \cdot \bar L_c \cdot 0.01$, where $\theta[w,t]$ is the estimated skill parameter, $\theta_{\min,t}$ is the worst worker's value in column $t$, $|\rho_c|$ is the negative-utility coefficient on price, and $\bar L_c$ is the unweighted mean of hours of labor per customer over firm-quarters in county $c$. Reads as the consumer WTP per customer (USD) at a mean-labor firm in county $c$ from reassigning 1\% of task $t$ from the worst worker to worker $w$. \textit{Pct.\ Share (pooled)}: the same recentered $\theta$ gain multiplied by $\bar L_c\,(1-\bar s_c)\,\bar\alpha_{c,t}$, where each $\bar{\cdot}$ is the unweighted mean over firm-quarters in county $c$ ($\bar L_c$ in hours/customer, $\bar s_c$ the within-subdivision market share, $\bar\alpha_{c,t}$ the share of task $t$ in the firm's appointment mix). A cell value $\approx$ the percent change in the mean firm's market share from reassigning 1\% of task $t$ from the worst worker to worker $w$ (i.e., $\Delta s_j / s_j \cdot 100$, not $\Delta s_j \cdot 100$).
+\end{tablenotes}
+\end{threeparttable}

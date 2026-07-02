@@ -1,0 +1,23 @@
+\begin{table}[!htbp] \centering
+  \caption{Standard Logit with Hausman Instrument: First-Stage Fixed-Effect Comparison}
+  \label{tab:standard_hausman_fe_comparison_first_stage}
+  \begin{tabular}{lccccc}
+\\[-1.8ex]\hline
+\hline \\[-1.8ex]
+ & County$\times$quarter; full & County$\times$quarter; omit & Quarter only; omit & Quarter only; all & County + quarter \\
+\hline \\[-1.8ex]
+Fixed effects & County$\times$quarter; full & County$\times$quarter; omit & Quarter FE & All quarter FE & County + quarter \\
+Price on Hausman (Cook) & -- & 0.7932*** & 0.4547*** & 0.3313** & -0.4931* \\
+ & (--) & (0.1763) & (0.0881) & (0.1268) & (0.2035) \\
+Price on Hausman (New York) & -- & 0.4271 & 0.5844 & 0.2329 & -0.0676 \\
+ & (--) & (0.3736) & (0.3373) & (0.3499) & (0.5066) \\
+Price on Hausman (Los Angeles) & -- & 0.8608** & 0.7981** & -0.3419 & -0.3717 \\
+ & (--) & (0.2720) & (0.2561) & (0.3247) & (0.3127) \\
+Weak-IV F Price (Cook) & -- & 39.81 & 38.65 & 31.69 & 2.11 \\
+Weak-IV F Price (New York) & -- & 2.65 & 7.67 & 7.90 & 0.98 \\
+Weak-IV F Price (Los Angeles) & -- & 22.67 & 23.06 & 12.62 & 0.95 \\
+Observations & 468 & 468 & 468 & 468 & 468 \\
+\hline \\[-1.8ex]
+\multicolumn{6}{p{0.92\linewidth}}{\footnotesize Notes: First-stage OLS coefficients on the county-specific Hausman instrument (leave-own-county-out same-quarter average customer price), with location-level clustered standard errors in parentheses, for the same specifications reported in Table \ref{tab:standard_hausman_fe_comparison}. Each column regresses the endogenous county-specific \texttt{cust\_price} column on all exogenous controls plus the excluded Hausman instrument. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows reproduce the diagnostics from \texttt{summary(ivreg, diagnostics = TRUE)}.}\\
+\end{tabular}
+\end{table}
