@@ -29,8 +29,9 @@
 #'  10. Counterfactual pipeline (run_counterfactuals.R)
 #'  11. Substitution patterns at equilibrium (20_substitution.R)
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
+#'  13. Skill parameters in interpretable units (22_skill_parameter_units.R)
 #'
-#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/out/tables/05_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/data/12_data_for_counterfactuals.rds; results/data/counterfactuals/13_warm_start_wages.rds; results/data/counterfactuals/*; results/out/tables/20_substitute.tex; results/out/tables/21_substitute_prod.tex
+#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
 #' =============================================================================
 
 # Clear environment
@@ -799,7 +800,10 @@ if (RUN_DISPLAY_ESTIMATES) {
              "results/data/06_parameters.rds"),
     outputs = c("results/out/tables/08_org_price.tex",
                 "results/out/tables/08_time_effects.tex",
-                "results/out/tables/08_model_fit.tex"),
+                "results/out/tables/08_model_fit.tex",
+                "results/out/tables/08_wages_skills_Cook.tex",
+                "results/out/tables/08_wages_skills_NewYork.tex",
+                "results/out/tables/08_wages_skills_LosAngeles.tex"),
     required_inputs = c("mkdata/data/01_keytask.rds",
                         "mkdata/data/04_estimation_sample.rds",
                         "results/data/06_parameters.rds"),
