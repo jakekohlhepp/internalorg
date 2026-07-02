@@ -379,6 +379,53 @@ get_counterfactual_focus_quarter <- function(config = CONFIG) {
   max(config$estimation_quarters)
 }
 
+#' Lowest-wage worker type per county from the 13_ baseline equilibrium.
+#'
+#' Returns the argmin wage type per county at the focus quarter as a named
+#' integer vector keyed by county FIPS, read from the cleared baseline wages
+#' (results/data/counterfactuals/13_initial_wages.rds) unless a wage table is
+#' supplied. 16/18/19 derive the immigration target type from this so the
+#' shock always hits the lowest-wage type implied by the CURRENT baseline
+#' solve; a hardcoded mapping goes stale whenever 13_ is re-solved into a
+#' different wage basin (which is exactly what happened to the original
+#' LA->1 / Cook->4 mapping).
+counterfactual_lowest_wage_types <- function(initial_wages = NULL,
+                                             focus_quarter = NULL,
+                                             config = CONFIG) {
+  if (is.null(initial_wages)) {
+    initial_wages <- read_counterfactual_rds(
+      "13_initial_wages.rds",
+      legacy_filenames = "13_initial_wages.rds",
+      description = "baseline counterfactual wages",
+      config = config
+    )
+  }
+  if (is.null(focus_quarter)) {
+    focus_quarter <- get_counterfactual_focus_quarter(config)
+  }
+  wage_cols <- paste0("w", seq_len(config$n_worker_types))
+  iw <- data.table::as.data.table(initial_wages)
+  slice <- iw[quarter_year == focus_quarter]
+
+  out <- integer(0)
+  for (cnty in as.character(config$counties)) {
+    row <- slice[as.character(county) == cnty]
+    if (nrow(row) != 1L) {
+      stop("counterfactual_lowest_wage_types: expected exactly one baseline ",
+           "wage row for county ", cnty, " at ", focus_quarter, "; got ",
+           nrow(row), ".")
+    }
+    wages <- as.numeric(row[1L, wage_cols, with = FALSE])
+    if (any(!is.finite(wages)) || any(wages <= 0)) {
+      stop("counterfactual_lowest_wage_types: baseline wages for county ",
+           cnty, " at ", focus_quarter, " are not finite positive; re-run ",
+           "13_counterfactual_prep.R before deriving the target type.")
+    }
+    out[cnty] <- which.min(wages)
+  }
+  out
+}
+
 ## Warm-start wage table written by compile_warm_start_wages.R. Returns NULL
 ## when the RDS hasn't been compiled yet (cold start before any smoke run);
 ## 13_counterfactual_prep.R falls back to the parm-decomposition initial guess.

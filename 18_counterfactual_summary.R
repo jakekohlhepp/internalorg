@@ -116,14 +116,18 @@ cf_names <- c("salestax", "diffusion", "immigration", "merger")
 ## Mirrors the add_immigrants_to_target() shock in 16_counterfactual_immigration.R:
 ##   delta_c = 0.05 × Σ_k baseline_total_labor_c[k]
 ##   native_fraction_c[k*] = baseline[k*] / (baseline[k*] + delta_c); 1 elsewhere
-## Target type mapping: LA→1, NYC→2, Cook→4.
+## The target type k* per county is DERIVED as the lowest-wage type of the
+## 13_ baseline solve (counterfactual_lowest_wage_types), exactly as 16 does.
 build_immigration_native_fraction <- function() {
   tl <- as.data.table(readRDS(counterfactual_data_path("13_total_labor.rds")))
   tot_cols <- counterfactual_tot_labor_field_names(CONFIG)
   fq <- get_counterfactual_focus_quarter()
   stopifnot(length(fq) == 1L)
   tl <- tl[quarter_year == fq, ]
-  county_target <- list("6037" = 1L, "36061" = 2L, "17031" = 4L)
+  county_target <- as.list(counterfactual_lowest_wage_types())
+  message("[18] immigration native-fraction target types: ",
+          paste(names(county_target), unlist(county_target), sep = "->",
+                collapse = ", "))
   rows <- list()
   for (cnty in names(county_target)) {
     row <- tl[county == cnty, ]

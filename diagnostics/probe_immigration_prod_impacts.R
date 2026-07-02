@@ -59,7 +59,7 @@ build_immigration_native_fraction <- function() {
   tot_cols <- counterfactual_tot_labor_field_names(CONFIG)
   fq <- get_counterfactual_focus_quarter(); stopifnot(length(fq) == 1L)
   tl <- tl[quarter_year == fq, ]
-  county_target <- list("6037" = 1L, "36061" = 2L, "17031" = 4L)
+  county_target <- as.list(counterfactual_lowest_wage_types())
   rows <- list()
   for (cnty in names(county_target)) {
     row <- tl[county == cnty, ]; stopifnot(nrow(row) == 1L)
@@ -83,7 +83,8 @@ nf      <- build_immigration_native_fraction()
 
 cat("################ HOW IMMIGRANTS ARE COUNTED ################\n")
 cat("Shock: delta_c = 0.05 * sum_k(total_labor_c[k]), added entirely to the\n")
-cat("lowest-wage worker type (LA->1, NYC->2, Cook->4). Units = effective labor.\n\n")
+cat("lowest-wage worker type per the 13_ baseline solve\n")
+cat("(counterfactual_lowest_wage_types). Units = effective labor.\n\n")
 tgt <- nf[target == TRUE]
 tgt[, immigrant_share_of_type := delta_c / (base_k + delta_c)]
 tgt[, prop_shock_to_type := delta_c / base_k]
