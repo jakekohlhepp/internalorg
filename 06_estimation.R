@@ -135,17 +135,15 @@ if (!isTRUE(CONFIG$skip_structural_optimizer) &&
 }
 
 coef_vect <- estimation_result$wage_coefficients
-seeit_bb_path <- file.path(CONFIG$prep_output_dir, "seeit_bb.rds")
-if (file.exists(seeit_bb_path)) {
-  backup_path <- file.path(
-    CONFIG$prep_output_dir,
-    paste0("seeit_bb_backup_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds")
-  )
-  file.copy(seeit_bb_path, backup_path, overwrite = FALSE)
-  message("Backed up previous seeit_bb.rds to ", backup_path)
-}
-saveRDS(unname(coef_vect), seeit_bb_path)
-message("Wrote new seeit_bb.rds starting vector (length ", length(coef_vect), ").")
+## seeit_bb.rds is a committed replication input: never overwrite it. The
+## post-run wage-coefficient vector is written to 06_seeit_bb_next.rds
+## instead; promote it manually (copy over seeit_bb.rds) if a future run
+## should warm-start from this estimate. The same coefficients are also
+## recoverable from results/data/06_parameters.rds via extract_wage_start().
+seeit_bb_next_path <- file.path(CONFIG$prep_output_dir, "06_seeit_bb_next.rds")
+saveRDS(unname(coef_vect), seeit_bb_next_path)
+message("Wrote post-run starting vector (length ", length(coef_vect), ") to ",
+        seeit_bb_next_path, "; committed seeit_bb.rds left untouched.")
 
 print(estimation_result$price_result$result)
 if (estimation_result$price_result$result$convergence != 0) {
