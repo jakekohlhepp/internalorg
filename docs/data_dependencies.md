@@ -151,9 +151,12 @@ flowchart TD
 > `02_stylized_facts`, `03_spatial_corr`) and the `prep_*` build above run
 > **locally** — they need the confidential raw transaction pull and external
 > geo/Census files. Steps `3`–`13` (`04_estimation_sample` → `22_skill_parameter_units`)
-> run on the **Longleaf cluster** from committed/derived inputs. See
-> `slurm_longleaf.md` §8 for the full local/cluster map and the reproducible
-> cluster-run recipe.
+> run on the **Longleaf cluster** from committed inputs (parameters, warm
+> starts, public-source prep outputs) plus derived firm/staff-level inputs
+> transferred out-of-band — those are pseudonymized microdata and are not
+> committed to the public repo (see the root README's Data Availability
+> section). See `slurm_longleaf.md` §8 for the full local/cluster map, the
+> out-of-band transfer list, and the reproducible cluster-run recipe.
 
 | Step | Script or component | Primary output |
 |------|---------------------|----------------|

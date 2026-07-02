@@ -76,16 +76,20 @@ Rscript <your_array_script>.R
 The pipeline splits at the **raw-data boundary**. The front-half prep needs the
 confidential raw transaction pull plus external geo/Census files that live only
 on the author's local machine, so it runs **locally**. Everything downstream
-runs from committed/derived inputs and executes on the **cluster** (all heavy
-compute goes through Slurm — never the login node).
+executes on the **cluster** (all heavy compute goes through Slurm — never the
+login node) from two kinds of inputs: **committed** files (aggregate parameters,
+warm starts, and public-source-derived prep outputs tracked in the repo) and
+**derived microdata transferred out-of-band** (see "Getting the derived inputs
+onto the cluster" below).
 
 **Local only — raw inputs, not reproducible on the cluster:**
-- `prep_00_compile_transactions.R` … `prep_06_qcew.R` — raw → committed `mkdata/data/*`
+- `prep_00_compile_transactions.R` … `prep_06_qcew.R` — raw → `mkdata/data/*`
+  (the public-source-derived outputs are committed; the rest stay local)
 - `00_mk_tasks_cosmo.R` — raw `compiled_trxns.rds` + geocorr
 - `01_build_data.R` — needs `00_tasks_cosmo.rds`
 - `02_stylized_facts.R`, `03_spatial_corr.R` — raw pulls + Census/ZCTA shapefiles
 
-**Cluster — from committed/derived inputs (the Slurm workloads):**
+**Cluster — the Slurm workloads:**
 - Estimation block: `04_estimation_sample.R` → `08_display_estimates.R`
   (`05`, `06`, `06b`, `06c`, `07`). The structural estimation `06` is the heavy job here.
 - Counterfactual back-half: `09_invert_gammas.R`, `12_validate.R`,
@@ -99,6 +103,26 @@ The warm-start seeds (`13_warm_start_wages.rds` and
 `compile_warm_start_wages.R` (baseline) and `build_la_warm_start_*.R`
 (per-counterfactual) are manual refresh tools run by hand, not part of
 `run_all.R`.
+
+### Getting the derived inputs onto the cluster
+
+The firm/staff-level derived files the cluster half reads are pseudonymized
+microdata from the confidential source, so they are **not committed** to the
+public repo (see the data-availability section of the root README). Copy them
+into the cluster clone out-of-band:
+
+```bash
+scp mkdata/data/{01_working.rds,01_staff_task.rds,01_staff_task_full.rds,01_worker_type_lookup.rds,04_estimation_sample.rds} \
+    <user>@longleaf.its.unc.edu:<project>/mkdata/data/
+# Only needed when skipping straight to the counterfactual back-half
+# (a full cluster run regenerates these from 04_estimation_sample.rds):
+scp results/data/{09_withgammas.rds,12_data_for_counterfactuals.rds} \
+    <user>@longleaf.its.unc.edu:<project>/results/data/
+```
+
+Everything else the cluster half needs is committed: `seeit_bb.rds`,
+`minwage.xlsx`, `ppi.rds`, `cex_outside.rds`, `county_msa_xwalk.rds`,
+`01_keytask.rds`, `results/data/06_parameters.rds`, and the warm-start seeds.
 
 ### Running the cluster portion reproducibly
 
