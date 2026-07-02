@@ -412,7 +412,9 @@ bisection <- function(f, a, b, n, xtol, ftol, config = CONFIG, start = NULL) {
   if (!is.null(start) && is.finite(start) && start > 0) {
     width <- max(xtol * 4, 0.25 * max(abs(start), 1))
     a_warm <- max(a, start - width)
-    b_warm <- min(max(b, start + width), start + width)
+    ## deliberately NOT capped at b: the expansion loop below also grows the
+    ## bracket past b when needed (was written min(max(b, .), .) == identity)
+    b_warm <- start + width
     fa_warm <- eval_f(a_warm)
     fb_warm <- eval_f(b_warm)
     expand <- 0L

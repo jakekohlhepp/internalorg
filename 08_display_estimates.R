@@ -168,7 +168,8 @@ if (file.exists(first_stage_path)) {
   all_se[, analytic_se := NULL]
   message("08: demand SEs = analytical clustered 2SLS (cluster = ",
           first_stage$cluster_variable, ", G = ", first_stage$n_clusters,
-          "); structural SEs = SD across first-stage-draw replications.")
+          "); structural SEs from source '", CONFIG$structural_se_source,
+          "' (see the structural-SE message below).")
 } else if (!is.null(all_se)) {
   message("08: results/data/07_first_stage_vcov.rds not found; demand SEs fall ",
           "back to the across-rep SD. Re-run 07_vcov.R to generate the ",
@@ -315,12 +316,15 @@ beta <- estimation_objects$beta
 mm_1 <- estimation_objects$mm_1
 z_mm_1 <- estimation_objects$z_mm_1
 
-beta_2_subset <- point_estimates[(nrow(beta) + 1):(nrow(beta) + 12)]
-names(beta_2_subset) <- names(point_estimates)[(nrow(beta) + 1):(nrow(beta) + 12)]
+## Wage block sits immediately after the demand block; its width is
+## (n_worker_types - 1) x n_counties rather than a hardcoded 12.
+n_wage_coefs <- (CONFIG$n_worker_types - 1L) * length(CONFIG$counties)
+wage_pos <- nrow(beta) + seq_len(n_wage_coefs)
+beta_2_subset <- point_estimates[wage_pos]
+stopifnot(all(grepl(":avg_labor:E_raw_[0-9]+$", names(beta_2_subset))))
 
 ## coefficients for last step
-final_coefs <- point_estimates[(nrow(beta) + 13):length(point_estimates)]
-names(final_coefs) <- names(point_estimates)[(nrow(beta) + 13):length(point_estimates)]
+final_coefs <- point_estimates[(nrow(beta) + n_wage_coefs + 1L):length(point_estimates)]
 
 
 if (get_os() == "windows") {
