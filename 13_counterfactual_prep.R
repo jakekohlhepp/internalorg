@@ -92,19 +92,8 @@ addition_info<-unique(addition_info[,.SD, .SDcols=c("location_id", "quarter_year
 working_data<-merge(working_data, addition_info, by=c("location_id", "quarter_year"), all.x=TRUE)
 working_data<-merge(working_data,cex[,c("county", "quarter_year", "outside_share") ], by=c("county", "quarter_year"),all.x=TRUE )
 working_data[, salon_share_subdiv:=cust_count/CSPOP]
-# weight is balanced by qcew firm size distributions for 2021Q2
-size_classes<-c(50398,14240,6663,2270+29+44+1+1)
-working_data[emps<5, size_class:=1]
-working_data[emps>=5 & emps<=9, size_class:=2]
-working_data[emps>9 & emps<=19, size_class:=3]
-working_data[emps>19, size_class:=4]
-stopifnot(nrow(working_data[emps>99,])==0)
-
-working_data[, tot_inclass:= uniqueN(location_id) , by=c("quarter_year", "county", "size_class") ]
-working_data[, size_mult:=size_classes[size_class]/tot_inclass]
-
-
-#working_data[, weight:=size_mult*(1-outside_share)/(sum(size_mult*salon_share_subdiv)), by=c("county","quarter_year")]
+## (a QCEW size-class reweighting of `weight` was prototyped here and removed;
+## see git history if the size_mult variant is ever revisited)
 working_data[, weight:=(1-outside_share)/(sum(salon_share_subdiv)), by=c("county","quarter_year")]
 stopifnot(nrow(working_data[is.na(weight) | is.infinite(weight)])==0)
 

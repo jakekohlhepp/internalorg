@@ -140,12 +140,15 @@ get_demands <- function(a1, a2, a3, a4, a5, county, quarter_year, gamma,
       if (all(abs(E - E_old) < innertol)) break
     }
     B <- t(t(A) * alpha / colSums(A * E)) * E
-  } else if (is.na(gamma) | gamma == 0) {
+  } else if (!is.na(gamma) && gamma == 0) {
+    ## no frictions: cheapest worker takes each task
     B <- matrix(0, ncol = n_task_types, nrow = n_worker_types)
     for (col in seq_len(n_task_types)) {
       B[which.min(tild_mat[, col]), col] <- alpha[col]
     }
   } else {
+    ## gamma Inf or NA: max frictions (matches 13_counterfactual_prep's
+    ## get_demands; NA previously fell into the no-frictions corner here)
     B <- matrix(0, ncol = n_task_types, nrow = n_worker_types)
     B[which.min(rowSums(t(t(tild_mat) * alpha))), ] <- alpha
   }

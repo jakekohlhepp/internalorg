@@ -223,7 +223,7 @@ for (cnty in names(results)) {
 }
 eig_tab <- rbindlist(eig_rows)
 eig_xt <- xtable(eig_tab,
-                 caption = "Per-county Hessian spectrum at the wage solution. The condition number is reported only when all eigenvalues are strictly positive. ``Verdict'' classifies the solution as a strict local minimum (all $\\lambda > 10^{-9}$), a flat ridge (smallest eigenvalue near zero), or a saddle (some $\\lambda < -10^{-9}$).",
+                 caption = "Per-county Hessian spectrum at the wage solution. The condition number is reported only when all eigenvalues are strictly positive. ``Verdict'' classifies the solution as a strict local minimum (all $\\lambda > 10^{-9}$), a flat ridge (smallest eigenvalue near zero), or a saddle (some $\\lambda < -10^{-9}$). A saddle that the perturbation test does not confirm should be read as a numerically flat local minimum: the negative eigenvalue is finite-difference noise, since no perturbed-and-polished point improves on $x^*$.",
                  label = "tab:wage_hessian_spectrum",
                  align = c("l", "l", rep("r", 6), "l"))
 print(eig_xt, file = file.path("results", "out", "tables", "06c_wage_eigenvalues.tex"),
