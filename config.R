@@ -157,7 +157,7 @@ CONFIG <- list(
   wage_convergence_gate = tolower(Sys.getenv("JMP_WAGE_CONVERGENCE_GATE", unset = "obj_tol")),
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
-  # full wage solver (per `wage_optimizer_mode`, default nleqslv) by default;
+  # full wage solver (per `wage_optimizer_mode`, default pso) by default;
   # set JMP_SKIP_STRUCTURAL_OPTIMIZER=true only for refactor smoke tests that
   # need to validate downstream assembly quickly.
   skip_structural_optimizer = tolower(Sys.getenv("JMP_SKIP_STRUCTURAL_OPTIMIZER", unset = "false")) %in%
@@ -186,7 +186,12 @@ CONFIG <- list(
   staged_tolerance_switch_norm = as.numeric(Sys.getenv("JMP_STAGED_TOLERANCE_SWITCH_NORM", unset = "1e-3")),
   use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
-  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "nleqslv"),
+  ## Default "pso" since 2026-07-02: pso is the established full-run pattern
+  ## (Jun 12 + Jul 1 pipeline runs both overrode to pso via env), and the
+  ## wage interior penalty (default-on, see wage_interior_penalty_enabled)
+  ## only applies in the minimizer modes -- the nleqslv root-finding mode
+  ## ignores it. Set JMP_WAGE_OPTIMIZER_MODE=nleqslv to restore root-finding.
+  wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "pso"),
   ## Skill-matrix monotonicity restriction. "none" leaves the demand-IV step
   ## unconstrained (matches 06_estimation.R). "workers_rows" imposes that each
   ## county's productivity matrix is consistent with some total ordering of
@@ -314,8 +319,8 @@ CONFIG <- list(
   wage_fallback_verbose = tolower(Sys.getenv("JMP_WAGE_FB_VERBOSE", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
 
-  ## Interior-share penalty for the wage stage (PROPOSAL, off by default; see
-  ## docs/wage_interior_penalty_proposal.md). Adds to the wage minimizers'
+  ## Interior-share penalty for the wage stage (ON by default since 2026-07-02;
+  ## see docs/wage_interior_penalty_proposal.md). Adds to the wage minimizers'
   ## objective a smooth hinge penalty
   ##   weight * sum_{county c, type k>=2} max(0, log(min_share) - log(model_ck))^2
   ## on the county-mean model worker shares, which is exactly zero whenever
@@ -328,8 +333,10 @@ CONFIG <- list(
   ## the wage coefficient becomes locally unidentified, and warm-started
   ## re-runs walk it outward arbitrarily. Applies to the minimizer modes
   ## (min_optim / min_optim_warm / pso) and the accept/revert gates; the
-  ## nleqslv root-finding mode ignores it.
-  wage_interior_penalty_enabled = tolower(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY", unset = "false")) %in%
+  ## nleqslv root-finding mode ignores it. 07_vcov's MT wage FOC reads this
+  ## same flag and must match the 06 estimation run. Set
+  ## JMP_WAGE_INTERIOR_PENALTY=false to disable.
+  wage_interior_penalty_enabled = tolower(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_interior_penalty_weight = as.numeric(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY_WEIGHT", unset = "1")),
   wage_interior_penalty_min_share = as.numeric(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY_MIN_SHARE", unset = "1e-3")),
