@@ -758,7 +758,7 @@ p_dumb <- ggplot(dumb, aes(y = county_name)) +
   scen_fill + prod_theme +
   theme(strip.text.y = element_text(angle = 0, hjust = 0)) +
   labs(x = "Labor productivity change from the baseline equilibrium", y = NULL,
-       title = "Reorganization Reverses or Amplifies the Impact",
+       title = "Labor Productivity Change by Counterfactual and County",
        subtitle = dumb_sub)
 save_immigration_figure("19_prod_reversal_dumbbell.png",
                         width = 12, height = 10, plot = p_dumb)
@@ -799,15 +799,6 @@ between_fig <- function(f, ttl, sub_shock, filename) {
           contrib = 100 * (wrg - w0) * (tot_prod_b - P0) / P0)])
   sums <- cb[, .(tot = sum(contrib)), by = scenario]
   sums[, lab := sprintf("between-firm total: %+.1f pp", tot)]
-  star_i <- f[, which.max(tot_prod_b)]
-  star <- cb[scenario == "Reallocation"][star_i]
-  loo <- f[-star_i]
-  loo_rl <- loo[, sum(tot_prod_rl * wrl) / sum(wrl)] /
-            loo[, sum(tot_prod_b * w0) / sum(w0)] - 1
-  note_df <- data.table(
-    scenario = "Reallocation", x = star$p_dollar * 0.93, y = star$contrib,
-    lab = sprintf("one salon - drop it and reallocation is %+.1f%%",
-                  100 * loo_rl))
   p <- ggplot(cb, aes(x = p_dollar, y = contrib)) +
     geom_hline(yintercept = 0, linewidth = 0.6, color = "grey30") +
     geom_point(aes(size = w0, fill = scenario), shape = 21,
@@ -815,8 +806,6 @@ between_fig <- function(f, ttl, sub_shock, filename) {
                show.legend = FALSE) +
     geom_text(data = sums, aes(label = lab), x = -Inf, y = Inf,
               hjust = -0.05, vjust = 1.6, size = 6.5, fontface = "bold") +
-    geom_text(data = note_df, aes(x = x, y = y, label = lab),
-              hjust = 1, size = 5.5, inherit.aes = FALSE) +
     facet_wrap(~scenario) +
     scale_x_log10(breaks = c(100, 200, 300, 500, 750),
                   labels = scales::dollar_format(accuracy = 1)) +
@@ -843,11 +832,11 @@ imm_shock_line <- sprintf(
 mrg_shock_line <- "Increased concentration (Los Angeles): half of salons are removed; survivors absorb the same labor"
 
 between_fig(f_imm,
-  ttl = "Low-Wage Immigration: Who Gains Market Share?",
+  ttl = "Low-Wage Immigration: Between-Firm Contribution to Productivity",
   sub_shock = imm_shock_line,
   filename = "19_immigration_between_contrib.png")
 between_fig(f_mrg,
-  ttl = "Incr. Concentration: The Reallocation Gain Is One Salon",
+  ttl = "Increased Concentration: Between-Firm Contribution to Productivity",
   sub_shock = mrg_shock_line,
   filename = "19_merger_between_contrib.png")
 
@@ -885,13 +874,13 @@ within_fig <- function(f, e_from, e_to, x_lab, ttl, sub_shock, sub_enc,
 imm_e <- paste0("E_", imm_targets[["6037"]])
 within_fig(f_imm, e_from = paste0(imm_e, "_rl"), e_to = paste0(imm_e, "_rg"),
   x_lab = "Change in the immigrant skill set's share of salon labor (pp)",
-  ttl = "Low-Wage Immigration: Specialized Jobs Lost",
+  ttl = "Low-Wage Immigration: Within-Firm Productivity Change",
   sub_shock = imm_shock_line,
   sub_enc = "Point area = share of market labor; purple = de-specialization (lower S-Index)",
   filename = "19_immigration_within_firm.png")
 within_fig(f_mrg, e_from = "E_1_rl", e_to = "E_1_rg",
   x_lab = "Change in the generalist (Skill Set 1) share of salon labor (pp)",
-  ttl = "Incr. Concentration: Specialized Jobs Created",
+  ttl = "Increased Concentration: Within-Firm Productivity Change",
   sub_shock = mrg_shock_line,
   sub_enc = "Point area = share of market labor; green = deeper specialization (higher S-Index)",
   filename = "19_merger_within_firm.png")
@@ -936,12 +925,12 @@ wage_fig <- function(wage_table, f, ttl, shock_line, filename,
 }
 
 wage_fig(wage_vect_immigration, f_imm,
-  ttl = "Wages Bear the Shock When Reorganization Is Shut Down",
+  ttl = "Low-Wage Immigration: Equilibrium Wage Change by Skill Set",
   shock_line = imm_shock_line,
   filename = "19_immigration_wage_response.png",
   shock_type = imm_targets[["6037"]])
 wage_fig(wage_vect_merger, f_mrg,
-  ttl = "Specialist Wages Crash When Reorganization Is Shut Down",
+  ttl = "Increased Concentration: Equilibrium Wage Change by Skill Set",
   shock_line = mrg_shock_line,
   filename = "19_merger_wage_response.png")
 
