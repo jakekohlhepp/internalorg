@@ -298,7 +298,14 @@ counterfactual_steps <- list(
       counterfactual_output_path("19_merger_realloc_sindex.png", "figures"),
       counterfactual_output_path("19_merger_reorg_price.png", "figures"),
       counterfactual_output_path("19_merger_reorg_marketshare.png", "figures"),
-      counterfactual_output_path("19_merger_reorg_sindex.png", "figures")
+      counterfactual_output_path("19_merger_reorg_sindex.png", "figures"),
+      counterfactual_output_path("19_prod_reversal_dumbbell.png", "figures"),
+      counterfactual_output_path("19_immigration_between_contrib.png", "figures"),
+      counterfactual_output_path("19_immigration_within_firm.png", "figures"),
+      counterfactual_output_path("19_immigration_wage_response.png", "figures"),
+      counterfactual_output_path("19_merger_between_contrib.png", "figures"),
+      counterfactual_output_path("19_merger_within_firm.png", "figures"),
+      counterfactual_output_path("19_merger_wage_response.png", "figures")
     ),
     skip_if_inputs_missing = TRUE
   )
