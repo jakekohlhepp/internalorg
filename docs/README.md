@@ -16,6 +16,8 @@ Source-of-truth references kept aligned with the runners and current code.
 - `worker_type_clustering.md` -- `cluster.R` cut-height rule and the
   `cutlevel_quantile` config knob
 - `mk_tasks_cosmo_summary.md` -- stage-0 task construction note
+- `manuscript_terminology.md` -- the manuscript's canonical terms (glossary
+  from `draft_jmp_context.pdf`) that figure/table text must match
 - `legacy_import_data_issue.md` -- post-mortem on the legacy-duration drop
   (kept as a permanent reference)
 - `murphy_topel_proposal.md` -- the analytical two-step (Murphy-Topel) standard
