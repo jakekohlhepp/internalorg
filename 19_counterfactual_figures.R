@@ -658,7 +658,9 @@ COL_REALLOC <- "#377EB8"
 COL_REORG   <- "#E69F00"
 scen_fill <- scale_fill_manual(values = c(Reallocation = COL_REALLOC,
                                           Reorganization = COL_REORG))
-prod_theme <- theme_bw(base_size = 24) +
+## All text below is ASCII-only: pipeline jobs run with LC_ALL=C, under which
+## the png device drops non-ASCII glyphs (Delta, en/em dashes, arrows).
+prod_theme <- theme_bw(base_size = 22) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         legend.position = "bottom", legend.title = element_blank(),
         strip.background = element_blank(),
@@ -733,7 +735,7 @@ dumb[, variant := "main"]
 
 ## Optional robustness row: the LA immigration cell under the pre-91c48dd
 ## type-1 target, if the diagnostic probe output is present.
-dumb_sub <- "Labor-weighted mean quality output per hour; arrow: reallocation-only → full reorganization"
+dumb_sub <- "Labor productivity: labor-weighted mean quality output per hour\nArrow: reallocation-only -> full reorganization equilibrium"
 probe_path <- "diagnostics/imm_la_target_probe_results.rds"
 if (file.exists(probe_path)) {
   pb <- as.data.table(readRDS(probe_path))[scenario == "B_t1_5pctTotal"]
@@ -774,7 +776,7 @@ p_dumb <- ggplot(dumb, aes(y = county_name)) +
   scen_fill + prod_theme +
   theme(strip.text.y = element_text(angle = 0, hjust = 0)) +
   labs(x = "Labor productivity change vs. baseline", y = NULL,
-       title = "Reorganization reverses or amplifies the productivity impact",
+       title = "Reorganization reverses or amplifies the impact",
        subtitle = dumb_sub)
 save_immigration_figure("19_prod_reversal_dumbbell.png",
                         width = 12, height = 10, plot = p_dumb)
@@ -822,7 +824,7 @@ between_fig <- function(f, ttl, sub_shock, filename) {
             loo[, sum(tot_prod_b * w0) / sum(w0)] - 1
   note_df <- data.table(
     scenario = "Reallocation", x = star$p_dollar * 0.93, y = star$contrib,
-    lab = sprintf("one salon — drop it and reallocation is %+.1f%%",
+    lab = sprintf("one salon - drop it and reallocation is %+.1f%%",
                   100 * loo_rl))
   p <- ggplot(cb, aes(x = p_dollar, y = contrib)) +
     geom_hline(yintercept = 0, linewidth = 0.6, color = "grey30") +
@@ -851,16 +853,17 @@ f_imm <- la_shock_frame("16_prod_immigration.rds", use_nf = TRUE, e_col = "E_4")
 f_mrg <- la_shock_frame("17_prod_merger.rds", use_nf = FALSE, e_col = "E_1")
 
 between_fig(f_imm,
-  ttl = "Immigration (Los Angeles): who gains market weight?",
-  sub_shock = "+5% of county labor supply added to the lowest-wage skill set (type 4, nail/spa)",
+  ttl = "Immigration (LA): who gains market weight?",
+  sub_shock = "+5% of LA county labor added to the lowest-wage type (4, nail/spa)",
   filename = "19_immigration_between_contrib.png")
 between_fig(f_mrg,
-  ttl = "Merger (Los Angeles): the reallocation gain is one salon",
-  sub_shock = "Half of salons exit; survivors absorb the county labor force",
+  ttl = "Merger (LA): the reallocation gain is one salon",
+  sub_shock = "Half of LA salons exit; survivors absorb the county labor force",
   filename = "19_merger_between_contrib.png")
 
 ## ---- (c) within-firm panels ------------------------------------------------
-within_fig <- function(f, e_from, e_to, x_lab, ttl, sub_shock, filename) {
+within_fig <- function(f, e_from, e_to, x_lab, ttl, sub_shock, sub_enc,
+                       filename) {
   wn <- f[, .(dE = 100 * (get(e_to) - get(e_from)),
               dP = 100 * (tot_prod_rg - tot_prod_rl) /
                    sum(tot_prod_b * w0),
@@ -874,7 +877,7 @@ within_fig <- function(f, e_from, e_to, x_lab, ttl, sub_shock, filename) {
     geom_point(aes(size = wbar, fill = dS), shape = 21, color = "grey35",
                stroke = 0.5) +
     scale_fill_gradient2(low = "#762A83", mid = "grey92", high = "#1B7837",
-                         midpoint = 0, name = "Δ s-index") +
+                         midpoint = 0, name = "change in\ns-index") +
     scale_size_area(max_size = 15, guide = "none") +
     annotate("text", x = -Inf, y = Inf, hjust = -0.05, vjust = 1.6,
              size = 6.5, fontface = "bold",
@@ -883,22 +886,23 @@ within_fig <- function(f, e_from, e_to, x_lab, ttl, sub_shock, filename) {
     prod_theme + theme(legend.position = "right",
                        legend.title = element_text(size = 18)) +
     labs(x = x_lab,
-         y = "Within-firm productivity change\n(reorg − realloc, % of baseline)",
+         y = "Within-firm productivity change\n(reorg - realloc, % of baseline)",
          title = ttl,
-         subtitle = paste0(sub_shock,
-           "\nPoint area = market weight; green = deeper specialization, purple = de-specialization"))
-  save_immigration_figure(filename, width = 11.5, height = 7.5, plot = p)
+         subtitle = paste0(sub_shock, "\n", sub_enc))
+  save_immigration_figure(filename, width = 12, height = 7.5, plot = p)
 }
 
 within_fig(f_imm, e_from = "E_4_rl", e_to = "E_4_rg",
-  x_lab = "Change in the low-wage (nail/spa) type's time share within the firm (pp)",
-  ttl = "Immigration (Los Angeles): absorb the low-wage type, de-specialize",
-  sub_shock = "+5% of county labor supply added to the lowest-wage skill set (type 4, nail/spa)",
+  x_lab = "Change in the low-wage (nail/spa) type's time share in the firm (pp)",
+  ttl = "Immigration: absorb the low-wage type, de-specialize",
+  sub_shock = "+5% of LA county labor added to the lowest-wage type (4, nail/spa)",
+  sub_enc = "Point area = market weight; purple = de-specialization",
   filename = "19_immigration_within_firm.png")
 within_fig(f_mrg, e_from = "E_1_rl", e_to = "E_1_rg",
-  x_lab = "Change in the type-1 (generalist) time share within the firm (pp)",
-  ttl = "Merger (Los Angeles): shed the generalist type, re-specialize",
-  sub_shock = "Half of salons exit; survivors absorb the county labor force",
+  x_lab = "Change in the type-1 (generalist) time share in the firm (pp)",
+  ttl = "Merger: shed the generalist type, re-specialize",
+  sub_shock = "Half of LA salons exit; survivors absorb the county labor force",
+  sub_enc = "Point area = market weight; green = deeper specialization",
   filename = "19_merger_within_firm.png")
 
 ## ---- (d) wage-response panels ----------------------------------------------
@@ -934,20 +938,20 @@ wage_fig <- function(wage_table, f, ttl, shock_line, filename,
            shock_line, 100 * dp_rl, 100 * dp_rg))
   if (!is.null(shock_type)) {
     p <- p + annotate("text", x = shock_type, y = min(wd$pct) - 0.022,
-                      label = "↑ shocked type (lowest wage)",
+                      label = "shocked type (lowest wage)",
                       size = 6.5, fontface = "bold")
   }
   save_immigration_figure(filename, width = 12, height = 7.5, plot = p)
 }
 
 wage_fig(wage_vect_immigration, f_imm,
-  ttl = "Immigration (Los Angeles): frozen organizations force the wage adjustment",
-  shock_line = "+5% of county labor supply added to the lowest-wage skill set (type 4, nail/spa)",
+  ttl = "Frozen organizations force the wage adjustment",
+  shock_line = "LA immigration: +5% of county labor to lowest-wage type 4 (nail/spa)",
   filename = "19_immigration_wage_response.png",
   shock_type = imm_targets[["6037"]])
 wage_fig(wage_vect_merger, f_mrg,
-  ttl = "Merger (Los Angeles): frozen organizations crash the specialist wages",
-  shock_line = "Half of salons exit; survivors absorb the county labor force",
+  ttl = "Frozen organizations crash the specialist wages",
+  shock_line = "LA merger: half of salons exit; survivors absorb the same labor",
   filename = "19_merger_wage_response.png")
 
 cf_log("Productivity-decomposition figures complete")
