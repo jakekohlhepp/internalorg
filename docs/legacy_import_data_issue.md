@@ -18,8 +18,8 @@ revenue-per-minute (`rev_labor`) and distorting downstream regressions.
 
 `00_mk_tasks_cosmo.R` drops every row dated *before* each salon's transition
 month, using a hard-coded list of `(location_id, transition_start)` pairs. The
-list and the transition dates come from the monthly short-duration / the platform-
-feature-onset analysis in `docs/historical/duration_reliability_2026-04-08.md`.
+list and the transition dates come from the monthly short-duration /
+platform-feature-onset analysis in `docs/historical/duration_reliability_2026-04-08.md`.
 
 This is a more aggressive trim than an earlier quarter-level detection rule
 considered (and described in a previous version of this note): the transition
@@ -32,7 +32,7 @@ quarters that individually trip a placeholder-duration mode test.
 
 The productivity-specialization regressions in the stylized-facts script showed a
 bivariate S-Index coefficient of roughly 0.22 — about twice the manuscript value
-of 0.11. The change traced to a single Manhattan salon (`8310d870`) with
+of 0.11. The change traced to a single salon (`8310d870`) with
 `rev_labor` of 43--55 (vs. a dataset P99 of ~8). All 10 of the top
 Cook's-distance observations in the bivariate regression belonged to this one
 salon.
@@ -45,7 +45,7 @@ normal durations (~60 min median) and normal `rev_labor` (~250).
 A dataset-wide investigation in `docs/historical/duration_reliability_2026-04-08.md`
 found 9 additional salons with the same "switch from a placeholder duration to
 real durations at a single transition month, accompanied by the first appearance
-of the platform-native booking features" pattern. Across those 10 salons, the
+of platform-native booking features" pattern. Across those 10 salons, the
 pre-transition history accounts for 81.6% of all `duration <= 5` appointments
 and 95.2% of `duration <= 5 & revenue >= $100` appointments.
 
@@ -62,7 +62,7 @@ For each affected salon, monthly short-duration share drops sharply from very
 high to near-zero at a single month, and the share stays low for the remainder
 of the salon's history.
 
-### 2. the platform-native features turn on at the transition
+### 2. Platform-native features turn on at the transition
 
 `prebooked` and `was_staff_requested` are essentially absent before the
 transition month and switch on at or just after it. Both fields are native to
@@ -118,7 +118,7 @@ and Los Angeles County CA (06037), quarters 2018Q1–2021Q2 excluding 2020Q2–Q
 Two of the affected locations sit in estimation counties and overlap the
 estimation window:
 
-- `8310d870` (Manhattan, NY): pre-transition runs 2016Q1–2018Q2; the
+- `8310d870` (New York County): pre-transition runs 2016Q1–2018Q2; the
   overlap with the estimation window is 2018Q1–Q2, two quarters that the trim
   now removes.
 - `191172d5` (Chicago, IL = Cook County): pre-transition runs 2017Q2–2019Q2;
@@ -143,7 +143,7 @@ The offline transition analysis flagged a salon as legacy-like when:
 1. The salon had a very high share of `duration <= 5` appointments at the start
    of its observed history.
 2. That share dropped sharply at a single month and stayed near zero afterward.
-3. the platform-native features (`prebooked`, `was_staff_requested`) turned on at
+3. Platform-native features (`prebooked`, `was_staff_requested`) turned on at
    or just after that month.
 
 The 10 salons that met all three conditions account for 81.6% of all
@@ -163,7 +163,7 @@ just the bad quarters.
 
 ## Relationship to Salon `8310d870`
 
-Salon `8310d870-fb13-414b-ba6c-2902eaf0276f` (Manhattan, Upper East Side) was
+Salon `8310d870-fb13-414b-ba6c-2902eaf0276f` was
 the outlier that originally triggered this investigation. Its pre-2018Q3 data
 has `duration = 5` for most appointments, producing `rev_labor` of 43--55.
 

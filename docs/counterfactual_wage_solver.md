@@ -14,12 +14,12 @@ proposes a concrete replacement built on tools already present in the repo.
   on which the outer wage problem depends.
 - The decision about whether and when to adopt anything proposed here.
 
-**Code‑review notes (not user‑authored).** Everything below: the diagnosis of why
-the ladder exists, the recommended `nleqslv` replacement, the rescaling and
+**Code‑review notes (not user‑authored).** Everything below: the diagnosis of
+why the ladder exists, the recommended `nleqslv` replacement, the rescaling and
 log‑wage suggestions, the homotopy fallback, and the multiple‑equilibria
 caveat.
 
-User direction in this thread: "14_*.R uses a certain combo of solvers
+Motivating request: "14_*.R uses a certain combo of solvers
 because it is often hard to find the solution. do you have suggestions for a
 better way?", followed by "write as a .md in docs/".
 

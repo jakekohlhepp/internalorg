@@ -10,18 +10,18 @@ A follow-up transition-based test provides an important refinement to the conclu
 
 The earlier version of this note used a coarse first-6-versus-after-6 comparison across all salons. That statistic turns out to be poorly suited to long imported histories, because a salon can have years of legacy-import data after its first 6 months and still transition cleanly later.
 
-Using a stronger test based on monthly short-duration shares and the first appearance of the platform-native booking features (`prebooked` and `was_staff_requested`), a small set of salons does look strongly consistent with legacy imports.
+Using a stronger test based on monthly short-duration shares and the first appearance of platform-native booking features (`prebooked` and `was_staff_requested`), a small set of salons does look strongly consistent with legacy imports.
 
 Key refinement:
 
-- `10` salons show a clear legacy-like pattern: extremely high short-duration shares at the start, a clean transition to normal durations, and the onset of the platform-native booking features at or just after the transition.
+- `10` salons show a clear legacy-like pattern: extremely high short-duration shares at the start, a clean transition to normal durations, and the onset of platform-native booking features at or just after the transition.
 - These `10` salons account for `280,331` of `343,605` appointments with `duration <= 5` minutes, or about `81.6%` of the entire short-duration left tail.
 - They account for `46,533` of `48,887` appointments with `duration <= 5` and revenue at least `$100`, or about `95.2%` of the most suspicious cases.
 
 So the corrected interpretation is:
 
 - my earlier aggregate statement was too broad
-- the reviewer's legacy-import explanation is substantially right for the severe offenders
+- the legacy-import explanation is substantially right for the severe offenders
 - the bad left tail is mostly driven by a relatively small set of legacy-like salon histories, not by a broad cross-salon persistence problem
 
 The remaining sections below are still useful background, but they should now be read with this refinement in mind.

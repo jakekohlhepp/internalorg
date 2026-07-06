@@ -284,7 +284,7 @@ too high; the ~181 here is correct, and the script's own progress message prints
    it linearizes $\theta(\beta)$ at $\hat\beta$. The draw-based reps show
    $\theta(\beta)$ is violently nonlinear over the $\pm2$ SE range of NYC's weakly
    identified $\rho$ (sign flips ~1 draw in 6, basin switching --- see the NYC weak-ID
-   memory). MT will be smooth and likely *smaller* than the draw-based SD exactly where
+   notes). MT will be smooth and likely *smaller* than the draw-based SD exactly where
    the draws blow up. That is not a bug in either number: MT = all variation under the
    local asymptotic approximation; draws = global first-stage propagation without the
    conditional term. **Report both.** Where they agree (Cook, most LA params), MT's

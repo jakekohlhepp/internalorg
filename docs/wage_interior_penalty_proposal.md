@@ -4,8 +4,8 @@ Status: MOCKED UP, OFF BY DEFAULT (2026-06-10). Code is in place behind
 `JMP_WAGE_INTERIOR_PENALTY` (config `wage_interior_penalty_*`); enabling it is
 a re-estimation decision (full 06 re-run + downstream refresh). Companion to
 the priced-out-coordinate findings in
-[murphy_topel_proposal.md](murphy_topel_proposal.md) and the project memory
-"priced-out wage coords".
+[murphy_topel_proposal.md](murphy_topel_proposal.md) and the "priced-out wage
+coords" analysis notes.
 
 ## Why
 

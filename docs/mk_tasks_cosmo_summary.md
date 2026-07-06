@@ -36,7 +36,7 @@
 
 ### 4b. Legacy Import Drop (after allocation)
 - Applies a hard-coded list of 10 `(location_id, transition_start)` pairs that
-  identify salons whose pre-the platform transaction history was imported from a
+  identify salons whose pre-platform transaction history was imported from a
   prior POS system with placeholder durations
 - Drops every row dated before each salon's transition month
 - Total dropped: 388,569 rows (2.82% of post-melt rows, 310,668 appointments)

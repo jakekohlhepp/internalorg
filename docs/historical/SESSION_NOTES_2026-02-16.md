@@ -113,8 +113,8 @@ qs::qsave(data, "compiled_trxns.qs", preset = "fast")
 
 ## 6. Company Name Purge
 
-Removed all references to "the platform" and "jmp" from all files.
-Updated path from `jmp_dont_backup` to `jmp_dont_backup`.
+Removed all references to the data provider from all files.
+Updated machine-specific raw-data paths to `jmp_dont_backup`.
 
 ---
 

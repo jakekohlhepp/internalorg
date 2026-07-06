@@ -165,7 +165,7 @@ perturbation columns with `mclapply` if wanted. No array needed.
    is a delta method: it linearizes theta(beta) at beta_hat. The draw-based
    reps show theta(beta) is violently nonlinear over the ±2 SE range of NYC's
    weakly identified rho (sign flips ~1 draw in 6, basin switching — see the
-   NYC weak-ID memory). MT will be smooth and likely *smaller* than the
+   NYC weak-ID notes). MT will be smooth and likely *smaller* than the
    draw-based SD exactly where the draws blow up. That is not a bug in either
    number: MT = all variation under the local asymptotic approximation;
    draws = global first-stage propagation without the conditional term.

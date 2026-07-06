@@ -87,16 +87,16 @@ and `display_06b_skills.R`.
 
 The raw salon transaction data (appointment-level exports from the
 booking-software provider, including the chair-renter, tip, and product pulls)
-are confidential and are **not** part of this repository. They live outside the
-repo on the author's machine; `config.R` locates them through the
-`raw_data_base` entry in a project `.Renviron` file. The stages that need them
+are confidential and are **not** part of this repository. `config.R` locates
+them through the `raw_data_base` entry in a project `.Renviron` file. The
+stages that need them
 — `prep_00_compile_transactions.R`, `00_mk_tasks_cosmo.R`, `01_build_data.R`
 (via `00_tasks_cosmo.rds`), and `02_stylized_facts.R` — run only on a machine
 with access and are skipped gracefully elsewhere; everything from
 `04_estimation_sample.R` onward runs from derived inputs (see
 `docs/slurm_longleaf.md` §8 for the local-vs-cluster execution map).
 
-### Derived intermediate data (not included; available on request)
+### Derived intermediate data (not included)
 
 Several intermediate files are pseudonymized firm/staff-level records derived
 from the confidential transactions, so they are also not distributed in this
@@ -107,10 +107,9 @@ public repository even though downstream pipeline stages consume them:
 `classified_descriptions.rds`, plus `results/data/02_stylized_facts_data.rds`,
 `09_withgammas.rds`, and `12_data_for_counterfactuals.rds`. The estimation and
 counterfactual stages (`04_estimation_sample.R` → `22_skill_parameter_units.R`)
-require a subset of these; they are transferred to the compute cluster
-out-of-band (see `docs/slurm_longleaf.md` §8 for the exact list and transfer
-recipe) and are available from the author on request, subject to the data
-provider's agreement.
+require a subset of these. None of these files carries information beyond the
+confidential raw data: each is fully reproducible by running the committed code
+(`run_prep_data.R`, then pipeline steps 00–12) against the raw inputs.
 
 Everything else the pipeline needs **is** committed: `seeit_bb.rds` (the
 estimation starting vector), `minwage.xlsx`, `01_keytask.rds`, the

@@ -278,7 +278,7 @@ tasks <- tasks[, -c("new_duration", "value1", "value2", "variable", "helper_id")
 #'
 #' Transition-based rule: drop rows before the identified transition month for the
 #' 10 salons that show a clear switch from legacy-import placeholder durations to
-#' the platform-native booking data. These location-month cutoffs come from the
+#' platform-native booking data. These location-month cutoffs come from the
 #' monthly short-duration transition analysis documented in
 #' docs/duration_reliability_2026-04-08.md.
 

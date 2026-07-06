@@ -1,7 +1,7 @@
 # Data Cleaning Review Report
 
 **Date**: 2026-02-17
-**Reviewer**: the code-review tool
+**Reviewer**: internal code review
 **Scope**: Raw transaction data structure and cleaning pipeline
 
 ---
@@ -265,9 +265,9 @@ message("Staff at 3+ locations: ", nrow(staff_loc_count[V1 >= 3]))
 
 ---
 
-## Appendix: Data Skill Created
+## Appendix: Data Reference Note Created
 
-A companion skill file was created at `an internal data note` documenting:
+A companion reference note (kept outside the repository) was created documenting:
 - Complete data schema
 - Task category definitions
 - Known data quality issues
