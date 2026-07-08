@@ -93,17 +93,9 @@ for (y in 13:21) {
   )
 }
 
-# Add final year's aggregation (from last iteration)
-outside_option <- rbind(
-  outside_option,
-  together[, .(
-    nohc_count = sum(nohc),
-    max_expend = max(SALONX, na.rm = TRUE),
-    min_spend = min(SALONX, na.rm = TRUE),
-    count_sample = .N
-  ), by = c("PSU", "QYEAR")],
-  fill = TRUE
-)
+# NB: the 13:21 loop above already rbinds every year's PSU-quarter aggregation,
+# including the final y=21. The former post-loop rbind of the last iteration's
+# `together` re-added all 2021 PSU-quarter rows, duplicating them in cex_outside.rds.
 
 #' -----------------------------------------------------------------------------
 #' CREATE QUARTER-YEAR VARIABLE
