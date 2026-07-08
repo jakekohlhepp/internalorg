@@ -22,8 +22,11 @@
 #'                                customer) over firm-quarters in county c.
 #'                                Reads as consumer WTP per customer (USD)
 #'                                at a mean-labor firm in county c from
-#'                                reassigning 1% of task t mass from the
-#'                                worst worker to worker w.
+#'                                reassigning 1 percentage point of total
+#'                                task mass, at task t, from the worst worker
+#'                                to worker w (absolute task-mass units; the
+#'                                % Share block instead uses 1% of task t's
+#'                                own mass).
 #'   2. % market share (pooled).  theta[w,t] * (1 - sbar_c) * Lbar_c *
 #'                                alphabar_{c,t}, recentered. Reads as the
 #'                                percent change (Delta s / s, not Delta s)
@@ -254,7 +257,8 @@ build_stacked_notes <- function() {
     "utility coefficient on price, and $\\bar L_c$ is the unweighted mean of ",
     "hours of labor per customer over firm-quarters in county $c$. Reads as ",
     "the consumer WTP per customer (USD) at a mean-labor firm in county $c$ ",
-    "from reassigning 1\\% of task $t$ from the worst worker to worker $w$. ",
+    "from reassigning 1 percentage point of total task mass at task $t$ ",
+    "(absolute task-mass units) from the worst worker to worker $w$. ",
     "\\textit{Pct.\\ Share (pooled)}: the same recentered $\\theta$ gain ",
     "multiplied by $\\bar L_c\\,(1-\\bar s_c)\\,\\bar\\alpha_{c,t}$, where each ",
     "$\\bar{\\cdot}$ is the unweighted mean over firm-quarters in county $c$ ",
