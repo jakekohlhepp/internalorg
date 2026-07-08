@@ -26,12 +26,13 @@
 #'   7. Display estimates (08_display_estimates.R)
 #'   8. Invert gammas (09_invert_gammas.R)
 #'   9. Validate model (12_validate.R)
+#'   9b. Validate monotone-restricted model (12b_validate_monotone.R)
 #'  10. Counterfactual pipeline (run_counterfactuals.R)
 #'  11. Substitution patterns at equilibrium (20_substitution.R)
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'  13. Skill parameters in interpretable units (22_skill_parameter_units.R)
 #'
-#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
+#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/12b_withgammas_monotone.rds; results/data/12b_data_for_counterfactuals_monotone.rds; results/out/tables/12b_validate_corr_monotone.tex; results/out/figures/12b_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
 #' =============================================================================
 
 # Clear environment
@@ -74,6 +75,7 @@ RUN_SUBSTITUTION <- TRUE
 RUN_SUBSTITUTION_PROD <- TRUE
 RUN_SKILL_UNITS <- TRUE
 RUN_VALIDATE <- TRUE
+RUN_VALIDATE_MONOTONE <- TRUE
 RUN_COUNTERFACTUALS <- TRUE
 
 # Track whether downstream steps should be forced due to upstream changes
@@ -852,6 +854,42 @@ if (RUN_VALIDATE) {
                         "results/data/09_withgammas.rds",
                         "mkdata/data/01_staff_task_full.rds"),
     description = "model validation"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 9b: Validate Monotone-Restricted Model (12b_validate_monotone.R)
+#' -----------------------------------------------------------------------------
+#' Robustness variant of STEP 9: repeats the gamma inversion (STEP 8) and the
+#' model-vs-data validation (STEP 9) using the workers-as-rows monotone
+#' estimates from STEP 5b in place of the main estimates.
+
+if (RUN_VALIDATE_MONOTONE) {
+  run_pipeline_step(
+    step_label = "STEP 9b",
+    script_name = "12b_validate_monotone.R",
+    deps = c("config.R", "preamble.R", "utils/structural_solver.R",
+             "mkdata/data/01_staff_task.rds",
+             "mkdata/data/01_staff_task_full.rds",
+             "mkdata/data/01_worker_type_lookup.rds",
+             "mkdata/data/04_estimation_sample.rds",
+             "results/data/06b_parameters_monotone.rds"),
+    outputs = c("results/data/12b_withgammas_monotone.rds",
+                "results/data/12b_data_for_counterfactuals_monotone.rds",
+                "results/out/tables/12b_validate_corr_monotone.tex",
+                "results/out/figures/12b_gamma_dist_monotone.png",
+                "results/out/figures/12b_marginal_cut_monotone.png",
+                "results/out/figures/12b_marginal_color_monotone.png",
+                "results/out/figures/12b_marginal_other3_monotone.png",
+                "results/out/figures/12b_bivariate_cut_color_monotone.png",
+                "results/out/figures/12b_bivariate_cut_other3_monotone.png",
+                "results/out/figures/12b_bivariate_color_other3_monotone.png"),
+    required_inputs = c("mkdata/data/01_staff_task.rds",
+                        "mkdata/data/01_staff_task_full.rds",
+                        "mkdata/data/01_worker_type_lookup.rds",
+                        "mkdata/data/04_estimation_sample.rds",
+                        "results/data/06b_parameters_monotone.rds"),
+    description = "monotone-restricted model validation"
   )
 }
 
