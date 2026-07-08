@@ -379,8 +379,12 @@ moment_mat[, other_part := str_replace(moment_name, other_part, "")]
 moment_mat[is.na(other_part), other_part := ""]
 
 
-# drop so not collinear
-moment_mat <- moment_mat[!str_detect(other_part, "E_raw_1")]
+# drop worker-type-1 labor-demand moments (collinear reference type). Those moments
+# are named "county<fips>:E_1" (build_worker_moment_matrix), and by this point
+# other_part has been stripped to "" for the whole Labor Demand block -- so filter on
+# moment_name, matching the real ":E_1" name (the old "E_raw_1" grep never matched, so
+# all 5 worker types leaked into the model-fit table instead of the intended 4).
+moment_mat <- moment_mat[!(model_interact == "Labor Demand" & str_detect(moment_name, ":E_1$"))]
 
 moment_mat[, other_part := str_replace(other_part, "E_raw_[0-9]", "E_raw")]
 moment_mat[, other_part := str_replace(other_part, "B_raw_[0-9]_[0-9]", "B_raw")]
