@@ -1,6 +1,6 @@
 ## 06b_compare.R
 ## -----------------------------------------------------------------------------
-## Unified comparison of the unconstrained (06) vs workers-as-rows-monotone (06b)
+## Unified comparison of the unconstrained (06) vs monotone (06b)
 ## structural estimates. Supersedes the three former diagnostic scripts
 ##   - compare_06_vs_06b.R          (parameter comparison tables, console)
 ##   - compare_06_vs_06b_figures.R  (paired skill-matrix heatmaps, figures)
@@ -236,6 +236,19 @@ main <- function() {
   county_order <- as.character(CONFIG$counties)
   county_order <- county_order[county_order %in% names(county_label)]
 
+  ## task display labels ("representative text" from the keytask lookup, the same
+  ## source 08_display_estimates.R / 22_skill_parameter_units.R use). Falls back
+  ## to a generic label if the lookup is unavailable so the figures still render.
+  kt_path <- file.path(CONFIG$prep_output_dir, "01_keytask.rds")
+  task_labels <- paste0("Task ", seq_len(n_t))
+  if (file.exists(kt_path)) {
+    kt <- as.data.table(readRDS(kt_path))
+    task_labels <- vapply(seq_len(n_t), function(t) {
+      lbl <- kt[task == t, rep_text_cluster]
+      if (length(lbl) == 0L) paste0("Task ", t) else lbl[[1]]
+    }, character(1))
+  }
+
   ## wide table: one row per (county, task, rank) with unc, con, diff
   wide <- rbindlist(lapply(county_order, function(cnty) {
     pi_c  <- as.integer(perms[[cnty]])
@@ -253,7 +266,7 @@ main <- function() {
   wide[, rank_lab := factor(rank, levels = seq_len(n_w),
         labels = paste0(seq_len(n_w), ifelse(seq_len(n_w) == 1, "\n(worst)",
                                       ifelse(seq_len(n_w) == n_w, "\n(best)", ""))))]
-  wide[, task_lab := factor(task, levels = rev(seq_len(n_t)), labels = paste0("task ", rev(seq_len(n_t))))]
+  wide[, task_lab := factor(task, levels = rev(seq_len(n_t)), labels = task_labels[rev(seq_len(n_t))])]
 
   raw_breaks <- c(-190, -50, -10, 0, 10, 50, 190)   # signed-log legend ticks (real B units)
   heat_theme <- theme_bw(base_size = 11) +
@@ -290,8 +303,7 @@ main <- function() {
                          labels = c("-1 (county max)", "0", "+1 (county max)"),
                          name = "B, scaled\nwithin county") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(title = "Skill matrix B[task, worker]: unconstrained (06) vs workers-as-rows monotone (06b)",
-         subtitle = "Columns ordered by QP worker rank (worst -> best). Constrained rows ramp left-to-right = monotone ladder. Cell = true B; colour capped at each county's 90th pctile |B|.",
+    labs(subtitle = "Columns ordered by QP worker rank (worst -> best). Constrained rows ramp left-to-right = monotone ladder. Cell = true B; colour capped at each county's 90th pctile |B|.",
          x = "worker rank (within county)", y = NULL) + heat_theme
   write_fig(p_pc, "06b_skillmatrix_percounty", 12, 6.2)
 
@@ -306,8 +318,7 @@ main <- function() {
                          limits = c(-lim1, lim1), breaks = slog(raw_breaks), labels = raw_breaks,
                          name = "B\n(signed-log,\nshared scale)") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(title = "Skill matrix B: unconstrained (06) vs monotone (06b) -- shared signed-log scale",
-         subtitle = "One colour scale across all six panels: magnitudes comparable across counties. NYC's unconstrained spike (task 4 = -190) dominates, as it should.",
+    labs(subtitle = "One colour scale across all six panels: magnitudes comparable across counties. NYC's unconstrained spike (Administrative = -190) dominates, as it should.",
          x = "worker rank (within county)", y = NULL) + heat_theme
   write_fig(p_sl, "06b_skillmatrix_sharedlog", 12, 6.2)
 
@@ -327,8 +338,7 @@ main <- function() {
                          limits = c(-lim2, lim2), breaks = slog(raw_breaks), labels = raw_breaks,
                          name = "con - unc\n(signed-log)") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(title = "Where monotonicity moves the skill matrix: constrained - unconstrained",
-         subtitle = "Red = constraint raised B for that (task, worker rank); blue = lowered it. NYC task 4 is the noisy spike being flattened; LA barely moves.",
+    labs(subtitle = "Red = constraint raised B for that (task, worker rank); blue = lowered it. NYC Administrative is the noisy spike being flattened; LA barely moves.",
          x = "worker rank (within county)", y = NULL) + heat_theme
   write_fig(p_df, "06b_skillmatrix_diff", 12, 3.9)
 
