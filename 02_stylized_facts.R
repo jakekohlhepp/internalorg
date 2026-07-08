@@ -226,7 +226,11 @@ tip_data2[, tot_amount:=sum(amount), by="app_id"]
 setkey(tip_data2, "app_id", "staff_id")
 tip_data2[, num_staff:=1:.N, by="app_id"]
 wide_tip_data2<-dcast(tip_data2, app_id+tot_amount~num_staff, value.var=c("amount", "staff_id"))
-tip_merged<-merge(tip_data3, tip_data2, all=TRUE, by="app_id")
+# merge on the one-row-per-appointment cast (wide_tip_data2); merging on the long
+# per-staff tip_data2 duplicates each appointment's app-level tot_amount across its
+# staff rows, and the sum(tip_amount) by app_id below then multiplies the tip by the
+# number of staff tip lines.
+tip_merged<-merge(tip_data3, wide_tip_data2, all=TRUE, by="app_id")
 
 # tips are in cents in one and dollars in the other
 tip_merged[, tot_amount.x:=tot_amount.x*100]
@@ -244,9 +248,9 @@ tip_merged[, tip_amount:=tot_amount.x]
 tip_merged[is.na(tip_amount), tip_amount:=tot_amount.y]
 tip_merged[tip_discrep==TRUE, tip_amount:=tot_amount.y]
 stopifnot(nrow(tip_merged[is.na(tip_amount)])==0)
-# make date separate tip date var for merge with all transactions.
-setnames(tip_merged,"time", "tip_datetime")
-
+# tip_date is derived from the transaction `date` below; the raw per-staff tip
+# timestamp is not carried through (the wide cast keeps one row per appointment and
+# the by-app collapse dropped tip_datetime anyway).
 tip_merged<-tip_merged[,.( tip=sum(tip_amount,na.rm=TRUE)), by="app_id"]
 
 working<-merge(working, tip_merged, by="app_id", all.x=TRUE)

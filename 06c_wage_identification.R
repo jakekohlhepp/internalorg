@@ -90,14 +90,21 @@ for (cnty in CONFIG$counties) {
   } else {
     CONFIG$min_optim_parscale_wage
   }
-  step <- max(parscale_w * 0.05, 1)
+  ## numDeriv's `d` is a RELATIVE finite-difference fraction: genD forms the base
+  ## step as h = |d*x| + eps*(|x| < zero.tol). Passing the intended ABSOLUTE step
+  ## max(parscale_w*0.05, 1) (>= 1) as `d` perturbed each coordinate by 100%-1000%
+  ## of its own magnitude, sampling curvature far from x* (NYC's ~1826 coord out to
+  ## ~+/-18000, into the 1e6 penalty region). Use a small relative fraction so the
+  ## Hessian is local; at wages O(10-1000) a 1% step is ~0.1-10 absolute units,
+  ## matching the originally intended magnitude while staying properly scale-free.
+  fd_rel <- 1e-2
 
   f_at_x_star <- ob$fn(ob$x_star)
   message(sprintf("  x* = (%s)", paste(round(ob$x_star, 3), collapse = ", ")))
-  message(sprintf("  f(x*) = %.6g, Hessian step = %g", f_at_x_star, step))
+  message(sprintf("  f(x*) = %.6g, rel FD step (numDeriv d) = %g", f_at_x_star, fd_rel))
 
   H <- numDeriv::hessian(ob$fn, ob$x_star,
-                         method.args = list(d = step, eps = 1e-4,
+                         method.args = list(d = fd_rel, eps = 1e-4,
                                             zero.tol = 1e-12, r = 4, v = 2))
   eig <- eigen(H, symmetric = TRUE)
   npos <- sum(eig$values >  NEG_EIG_TOLERANCE)
@@ -117,7 +124,7 @@ for (cnty in CONFIG$counties) {
 
   county_record <- list(
     cnty = cnty, x_star = ob$x_star, f_at_x_star = f_at_x_star,
-    parscale = parscale_w, step = step,
+    parscale = parscale_w, step = fd_rel,
     hessian = H, eigenvalues = eig$values, eigenvectors = eig$vectors,
     npos = npos, nneg = nneg, nzero = nzer, verdict = verdict,
     perturbation = NULL

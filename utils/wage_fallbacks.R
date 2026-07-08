@@ -249,11 +249,14 @@ wage_fallback_layer2_hessian_one <- function(cnty, full_par, x_county, beta,
                                            beta, beta_2_subset, config,
                                            clust, county_weights)
   x_cur <- as.numeric(full_par[par_idx])
-  parscale_w <- wage_fallback_parscale_for(cnty, config)
-  step <- max(parscale_w * 0.05, 1)
+  ## numDeriv's `d` is a RELATIVE finite-difference fraction (h = |d*x| +
+  ## eps*(|x| < zero.tol)); the old max(parscale_w*0.05, 1) was an ABSOLUTE step
+  ## (>= 1) and, passed as `d`, perturbed each wage coordinate by 100%-1000% of
+  ## its own magnitude. Use a small relative fraction for a local slice-Hessian.
+  fd_rel <- 1e-2
   H <- tryCatch(
     numDeriv::hessian(fn, x_cur,
-                      method.args = list(d = step, eps = 1e-4,
+                      method.args = list(d = fd_rel, eps = 1e-4,
                                          zero.tol = 1e-12, r = 4, v = 2)),
     error = function(e) NULL
   )

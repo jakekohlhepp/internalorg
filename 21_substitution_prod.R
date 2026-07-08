@@ -38,12 +38,18 @@ n_worker_types <- CONFIG$n_worker_types
 n_task_types   <- CONFIG$n_task_types
 focus_qy       <- get_counterfactual_focus_quarter()
 
-## Per-county skill matrix (sweep so it lines up with productivity weights
-## used in get_prod()).
+## Per-county productivity-weight matrix. get_prod() below uses this as the weight
+## in rowSums(B * new_theta) / rowSums(B), which must match the canonical
+## productivity panel the pipeline writes elsewhere: counterfactual_org_outputs(
+## with_swept_b = TRUE) forms B * sweep(new_theta, 2, apply(new_theta, 2, min)) and
+## 13_counterfactual_prep.R feeds it exactly that. The previous `skills - min(skills)`
+## subtracted a single GLOBAL scalar instead of each task-column's minimum, so the
+## productivity levels (and the (E_shock - E_base)/E_base ratios in
+## 21_substitute_prod.tex) diverged from the 13_ convention.
 new_theta <- lapply(CONFIG$counties, function(cnty) {
   skills <- matrix(market_parms[grep(paste0(cnty, ':avg_labor:B'), names(market_parms))],
                    ncol = n_task_types, nrow = n_worker_types, byrow = FALSE)
-  skills - min(skills)
+  sweep(skills, 2, apply(skills, 2, min))
 })
 names(new_theta) <- CONFIG$counties
 

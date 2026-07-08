@@ -470,7 +470,11 @@ counterfactual_warm_start_by_sol_type <- function(warm_table, cnty, qy, sol_type
                                                    n_worker_types = CONFIG$n_worker_types) {
   if (is.null(warm_table) || nrow(warm_table) == 0L) return(NULL)
   if ("sol_type" %in% names(warm_table)) {
-    matching <- warm_table[warm_table$sol_type == sol_type]
+    ## Compute the row mask OUTSIDE the data.table `[` i-expression: inside it a
+    ## bare `sol_type` would bind to the sol_type COLUMN (masking this argument),
+    ## making the filter `column == column` (always TRUE) and a silent no-op.
+    keep <- warm_table[["sol_type"]] == sol_type
+    matching <- warm_table[which(keep)]
   } else {
     matching <- warm_table
   }
