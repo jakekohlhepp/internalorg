@@ -178,6 +178,7 @@ flowchart TD
 | 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` |
 | 6 | `07_vcov.R` | `results/data/07_first_stage_vcov.rds` (analytical clustered 2SLS demand vcov), `results/data/07_murphy_topel_vcov.rds` (Murphy-Topel structural sandwich). Replaces the retired `legacy/07_bootstrap.R`. |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` |
+| 7b | `08b_model_fit_monotone.R` | `results/out/tables/08b_model_fit_monotone.tex`, `results/out/tables/08b_qp_objective_monotone.tex`, `results/data/08b_model_fit_monotone.rds` (08 moment-fit R2 recomputed under the main and monotone estimates, side by side, plus the constrained-2SLS QP objectives) |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` |
 | 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_*.png` |
 | 10 | `run_counterfactuals.R` | see counterfactual runner below |

@@ -44,6 +44,7 @@ source("run_all.R")
 | 5c | `06c_wage_identification.R` | `results/data/06c_wage_identification.rds`, `results/out/tables/06c_wage_eigenvalues.tex`, `results/out/tables/06c_wage_perturbation.tex` | Wage-stage Hessian eigenvalues and perturbation diagnostic. |
 | 6 | `07_vcov.R` | `results/data/07_first_stage_vcov.rds`, `results/data/07_murphy_topel_vcov.rds` | Standard errors: analytical clustered 2SLS demand vcov + Murphy-Topel two-step sandwich for the structural (wage/price) SEs (see `docs/murphy_topel_proposal.md`). Replaces the retired Petrin-Train bootstrap (`legacy/07_bootstrap.R`). Murphy-Topel is the default structural SE source. |
 | 7 | `08_display_estimates.R` | `results/out/tables/08_org_price.tex`, `results/out/tables/08_time_effects.tex`, `results/out/tables/08_model_fit.tex`, `results/out/tables/08_wages_skills_<county>.tex` | Render the estimation tables for the JMP draft. |
+| 7b | `08b_model_fit_monotone.R` | `results/out/tables/08b_model_fit_monotone.tex`, `results/out/tables/08b_qp_objective_monotone.tex`, `results/data/08b_model_fit_monotone.rds` | Robustness companion to step 7: the 08 moment-fit R2 summary recomputed under both the main (06) and monotone (06b) estimates, side by side, plus the per-county constrained-2SLS QP objectives at the chosen permutation. |
 | 8 | `09_invert_gammas.R` | `results/data/09_withgammas.rds`, `results/out/figures/09_gamma_dist.png` | Invert gammas back onto the full panel. |
 | 9 | `12_validate.R` | `results/data/12_data_for_counterfactuals.rds`, `results/out/tables/12_validate_corr.tex`, `results/out/figures/12_marginal_{cut,color,other3}.png`, `results/out/figures/12_bivariate_{cut_color,cut_other3,color_other3}.png` | Model validation; produces the counterfactual-pipeline hand-off file plus marginal/bivariate fit figures. |
 | 10 | `run_counterfactuals.R` + `utils/counterfactuals_core.R` | `results/data/counterfactuals/13_*.rds`–`17_*.rds`, `results/out/tables/18_tot_counterfactuals.tex`, `18_bytype_counterfactuals.tex`, `results/out/figures/19_*.png` | Run the `13_*`–`19_*` counterfactual scenarios using a shared setup/output layer. |
@@ -168,8 +169,10 @@ refactor_estimation/
 |-- 06c_wage_identification.R
 |-- 07_vcov.R
 |-- 08_display_estimates.R
+|-- 08b_model_fit_monotone.R
 |-- 09_invert_gammas.R
 |-- 12_validate.R
+|-- 12b_validate_monotone.R
 |-- 13_counterfactual_prep.R
 |-- 14_counterfactual_diffusion.R
 |-- 15_counterfactual_sales_tax.R

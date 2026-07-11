@@ -44,6 +44,8 @@ manifest <- list(
   "08"  = tab(c("08_org_price.tex", "08_time_effects.tex", "08_model_fit.tex",
                 "08_wages_skills_Cook.tex", "08_wages_skills_LosAngeles.tex",
                 "08_wages_skills_NewYork.tex")),
+  "08b" = c(tab(c("08b_model_fit_monotone.tex", "08b_qp_objective_monotone.tex")),
+            dat("08b_model_fit_monotone.rds")),
   "09"  = c(dat("09_withgammas.rds"), fig("09_gamma_dist.png")),
   "12"  = c(dat("12_data_for_counterfactuals.rds"), tab("12_validate_corr.tex"),
             fig(c("12_marginal_cut.png", "12_marginal_color.png",

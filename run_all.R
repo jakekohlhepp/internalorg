@@ -24,6 +24,7 @@
 #'   5c. Wage identification diagnostic (06c_wage_identification.R)
 #'   6. Standard errors: first-stage 2SLS + Murphy-Topel (07_vcov.R)
 #'   7. Display estimates (08_display_estimates.R)
+#'   7b. Moment fit for monotone-restricted estimates (08b_model_fit_monotone.R)
 #'   8. Invert gammas (09_invert_gammas.R)
 #'   9. Validate model (12_validate.R)
 #'   9b. Validate monotone-restricted model (12b_validate_monotone.R)
@@ -32,7 +33,7 @@
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'  13. Skill parameters in interpretable units (22_skill_parameter_units.R)
 #'
-#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/12b_withgammas_monotone.rds; results/data/12b_data_for_counterfactuals_monotone.rds; results/out/tables/12b_validate_corr_monotone.tex; results/out/figures/12b_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
+#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/out/tables/08b_model_fit_monotone.tex; results/out/tables/08b_qp_objective_monotone.tex; results/data/08b_model_fit_monotone.rds; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/12b_withgammas_monotone.rds; results/data/12b_data_for_counterfactuals_monotone.rds; results/out/tables/12b_validate_corr_monotone.tex; results/out/figures/12b_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
 #' =============================================================================
 
 # Clear environment
@@ -70,6 +71,7 @@ RUN_ESTIMATION_MONOTONE <- TRUE
 RUN_IV_SPEC_COMPARISON <- TRUE
 RUN_VCOV <- TRUE
 RUN_DISPLAY_ESTIMATES <- TRUE
+RUN_MODEL_FIT_MONOTONE <- TRUE
 RUN_INVERT_GAMMAS <- TRUE
 RUN_SUBSTITUTION <- TRUE
 RUN_SUBSTITUTION_PROD <- TRUE
@@ -810,6 +812,34 @@ if (RUN_DISPLAY_ESTIMATES) {
                         "mkdata/data/04_estimation_sample.rds",
                         "results/data/06_parameters.rds"),
     description = "display estimates"
+  )
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 7b: Moment Fit for Monotone-Restricted Estimates (08b_model_fit_monotone.R)
+#' -----------------------------------------------------------------------------
+#' Robustness companion to STEP 7: recomputes the 08 moment-fit R2 summary
+#' under both the main (06) and workers-as-rows monotone (06b) estimates and
+#' writes the side-by-side comparison table, plus the per-county
+#' constrained-2SLS QP objectives from 06b_qp_diagnostics.rds.
+
+if (RUN_MODEL_FIT_MONOTONE) {
+  run_pipeline_step(
+    step_label = "STEP 7b",
+    script_name = "08b_model_fit_monotone.R",
+    deps = c("config.R", "preamble.R",
+             "mkdata/data/04_estimation_sample.rds",
+             "results/data/06_parameters.rds",
+             "results/data/06b_parameters_monotone.rds",
+             "results/data/06b_qp_diagnostics.rds"),
+    outputs = c("results/out/tables/08b_model_fit_monotone.tex",
+                "results/out/tables/08b_qp_objective_monotone.tex",
+                "results/data/08b_model_fit_monotone.rds"),
+    required_inputs = c("mkdata/data/04_estimation_sample.rds",
+                        "results/data/06_parameters.rds",
+                        "results/data/06b_parameters_monotone.rds",
+                        "results/data/06b_qp_diagnostics.rds"),
+    description = "main-vs-monotone moment-fit comparison"
   )
 }
 
