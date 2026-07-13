@@ -610,7 +610,7 @@ assign_worker_types_baseline <- function(staff_task, staffnum_xwalk, config) {
     cur_county <- unique(staff_comparable[year_loc == cur_loc_quarter]$county)
     mat <- as.matrix(staff_comparable[year_loc == cur_loc_quarter, ..comparable_btilde_cols])
     mat_comp <- as.matrix(staff_comparable_fivers[county == cur_county, ..reference_btilde_cols])
-    allcombos <- combn(seq_len(config$n_worker_types), nrow(mat), simplify = FALSE)
+    allcombos <- asplit(gtools::permutations(config$n_worker_types, nrow(mat)), 1)
     allpairs <- combn(seq_len(nrow(mat)), 2, simplify = FALSE)
 
     res <- c()
