@@ -16,6 +16,7 @@
 #' Outputs:
 #'   - results/data/09_withgammas.rds
 #'   - results/out/figures/09_gamma_dist.png
+#'   - results/out/figures/09_total_orgcost_dist.png
 #' =============================================================================
 
 library('data.table')
@@ -69,6 +70,10 @@ stopifnot(uniqueN(firm_groups[, c("quarter_year", "location_id")]) == nrow(firm_
 
 ### restore the unsmoothed data just to get task_mix and s_index, and set group numbers.
 full_unsmoothed <- readRDS(staff_task_full_path)
+## keep customer counts aside for the total-org-cost figure below; they stay out of
+## full_unsmoothed so the saved 09_withgammas.rds schema is unchanged for step 13.
+cust_counts <- unique(full_unsmoothed[, .(location_id, quarter_year, cust_count)])
+stopifnot(nrow(cust_counts) == uniqueN(cust_counts[, .(location_id, quarter_year)]))
 full_unsmoothed <- unique(full_unsmoothed[, .SD, .SDcols = c(colnames(full_unsmoothed)[grep("^task_mix", colnames(full_unsmoothed))],
                                                               "s_index", "location_id", "quarter_year", "county", "tot_duration")])
 full_unsmoothed <- merge(full_unsmoothed, firm_groups[, c("location_id", "quarter_year", "types_observed_firm", "service_mix_id")],
@@ -249,3 +254,33 @@ ggplot(full_unsmoothed, aes(x = gamma_invert)) +
         panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
 ggsave("results/out/figures/09_gamma_dist.png", width = 8, height = 4, units = "in")
+
+### plot estimated total organization cost: gamma x observed s-index x observed
+### average required labor. avg_labor is hours per customer, and firms with an
+### infinite gamma have s_index = 0 and hence zero organization cost — both
+### conventions match 13_counterfactual_prep.R.
+orgcost_data <- merge(full_unsmoothed, cust_counts, by = c("location_id", "quarter_year"), all.x = TRUE)
+stopifnot(nrow(orgcost_data[is.na(cust_count)]) == 0)
+orgcost_data[, avg_labor := tot_duration / cust_count / 60]
+orgcost_data[, total_org_cost := ifelse(is.finite(gamma_invert), gamma_invert * s_index * avg_labor, 0)]
+
+ggplot(orgcost_data, aes(x = total_org_cost)) +
+  geom_histogram(color = "black", fill = "lightblue", linewidth = 0.5, bins = 40) +
+  ylab("Salon-Quarter Count") + xlab("Total Org. Cost") +
+  theme(legend.position = "none") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 18)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+ggsave("results/out/figures/09_total_orgcost_dist.png", width = 8, height = 4, units = "in")
+
+### interquartile ranges of the two plotted objects. The gamma IQR is over
+### finite gammas only (the histogram above drops the non-finite values);
+### total org cost includes the zero-cost firms.
+gamma_q <- quantile(orgcost_data[is.finite(gamma_invert)]$gamma_invert, c(0.25, 0.75))
+cost_q <- quantile(orgcost_data$total_org_cost, c(0.25, 0.75))
+print(paste0("Org. cost parameter (finite): p25 = ", round(gamma_q[1], 4),
+             ", p75 = ", round(gamma_q[2], 4), ", IQR = ", round(gamma_q[2] - gamma_q[1], 4)))
+print(paste0("Total org. cost: p25 = ", round(cost_q[1], 4),
+             ", p75 = ", round(cost_q[2], 4), ", IQR = ", round(cost_q[2] - cost_q[1], 4)))

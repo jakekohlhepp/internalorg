@@ -103,9 +103,14 @@ for (cnty in CONFIG$counties) {
   message(sprintf("  x* = (%s)", paste(round(ob$x_star, 3), collapse = ", ")))
   message(sprintf("  f(x*) = %.6g, rel FD step (numDeriv d) = %g", f_at_x_star, fd_rel))
 
+  ## Richardson depth r = 2 (not the numDeriv default 4): each objective eval is a
+  ## structural solve, and at NYC's weakly-identified solution the perturbed-point
+  ## solves are slow enough that r = 4 (~130 evals) does not finish in hours. r = 2
+  ## (~65 evals) halves the cost; the extrapolation is lower order but the eigenvalue
+  ## SIGNS -- which set the saddle/ridge/local_min verdict -- are preserved.
   H <- numDeriv::hessian(ob$fn, ob$x_star,
                          method.args = list(d = fd_rel, eps = 1e-4,
-                                            zero.tol = 1e-12, r = 4, v = 2))
+                                            zero.tol = 1e-12, r = 2, v = 2))
   eig <- eigen(H, symmetric = TRUE)
   npos <- sum(eig$values >  NEG_EIG_TOLERANCE)
   nneg <- sum(eig$values < -NEG_EIG_TOLERANCE)
