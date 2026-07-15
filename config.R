@@ -307,6 +307,14 @@ CONFIG <- list(
   wage_fallback_joint_multistart_k = as.integer(Sys.getenv("JMP_WAGE_FB_L5_K", unset = "0")),
   wage_fallback_joint_multistart_jitter = as.numeric(Sys.getenv("JMP_WAGE_FB_L5_JITTER", unset = "0.1")),
 
+  ## Checkpoint path for the L1/L3/L4 joint wage vector. Defaults (when unset)
+  ## to <prep_output_dir>/06_wage_fb_checkpoint.rds inside
+  ## wage_fallback_checkpoint_write(). 06 and 06b both run the wage solver, so
+  ## they both write this file: give them distinct paths (or "none") whenever
+  ## they run CONCURRENTLY, or they race on it. Unset => NA => solver_value()
+  ## falls through to that default, so normal runs are unchanged.
+  wage_fallback_checkpoint_path = Sys.getenv("JMP_WAGE_FB_CHECKPOINT_PATH", unset = NA_character_),
+
   ## Global gates.
   ## Default changed 2026-05-26 from "true" to "false" so bootstrap reps run
   ## the same L1-L4 fallback ladder 06 uses by default. Production array

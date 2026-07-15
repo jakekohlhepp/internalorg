@@ -833,8 +833,18 @@ structural_bound_moments <- function(theta, x, beta, beta_2_subset,
 #' observed shares enter solely to recover the model share from the moment
 #' means. Exactly zero when all types are interior; grows like log(share)^2
 #' as a type goes numerically extinct.
+#'
+#' Type 1 is the omitted reference type: it has no moment and no coefficient, so
+#' `moment_means`/`obs_means` cover only types 2..n_w. Its model share is still
+#' pinned by adding-up (shares sum to 1), so recover it as `1 - sum(shares_2..n)`
+#' and hold it to the same floor. Without this the penalty is blind to the base
+#' type going extinct -- the failure mode that priced New York's type 1 out
+#' entirely (model share 0.000 vs 0.235 observed) while the penalty read exactly
+#' zero, because types 2..5 had simply absorbed its mass and all looked healthy.
 wage_interior_penalty_county <- function(moment_means, obs_means, config = CONFIG) {
-  share <- pmax(as.numeric(moment_means) + as.numeric(obs_means), config$numeric_floor)
+  raw <- as.numeric(moment_means) + as.numeric(obs_means)
+  raw_1 <- 1 - sum(raw)
+  share <- pmax(c(raw_1, raw), config$numeric_floor)
   floor_k <- max(
     solver_value(config, "wage_interior_penalty_min_share", 1e-3),
     config$numeric_floor
