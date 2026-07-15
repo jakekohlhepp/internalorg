@@ -5,8 +5,11 @@
 #' from the Consumer Expenditure Survey (CEX) interview data.
 #'
 #' The CEX tracks household expenditures including salon services (SALONX).
-#' We compute the share of respondents with zero salon spending by PSU/quarter,
+#' We compute the share of respondents without a salon transaction. These are captured by NA values in SALONX.
 #' which represents the "outside option" share in the demand model.
+#' This is different than zero salon spending by PSU/quarter: in rare cases some people go to a salon but end up spending net 0.
+#' These can be due to refunds or other things.
+#' 
 #'
 #' Input:  mkdata/raw/20220711_cex/intrvw{YY}/ (for years 2013-2021)
 #'         - expn{YY}/xpb{YY}.csv (expenditure data)
