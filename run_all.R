@@ -16,6 +16,7 @@
 #'   1. Setup environment (packages from fixed snapshot date)
 #'   2. Build data (01_build_data.R)
 #'   2b. Stylized facts (02_stylized_facts.R) - only if raw pulls available
+#'   2b2. S-index measurement error (02b_sindex_measurement_error.R) - build outputs only
 #'   2c. Spatial correlation maps (03_spatial_corr.R) - only if geo files available
 #'   3. Assemble estimation sample (04_estimation_sample.R)
 #'   4. Demand IV spec comparison (05_iv_spec_comparison.R)
@@ -33,7 +34,7 @@
 #'  12. Productivity substitution patterns at equilibrium (21_substitution_prod.R)
 #'  13. Skill parameters in interpretable units (22_skill_parameter_units.R)
 #'
-#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/out/tables/08b_model_fit_monotone.tex; results/out/tables/08b_qp_objective_monotone.tex; results/data/08b_model_fit_monotone.rds; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/12b_withgammas_monotone.rds; results/data/12b_data_for_counterfactuals_monotone.rds; results/out/tables/12b_validate_corr_monotone.tex; results/out/figures/12b_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
+#' Outputs: results/data/02_stylized_facts_data.rds; results/out/tables/02_*.tex; results/out/figures/02_*.png; results/out/tables/02b_sindex_month_corr.tex; results/data/02b_sindex_measurement_error.rds; results/out/figures/03_*.png; mkdata/data/04_estimation_sample.rds; results/out/tables/04_summary_stats_structural.tex; results/out/tables/05_*.tex; results/data/06_parameters.rds; results/data/06b_parameters_monotone.rds; results/data/06b_perms.rds; results/data/06b_qp_diagnostics.rds; results/data/06c_wage_identification.rds; results/out/tables/06c_*.tex; results/data/07_first_stage_vcov.rds; results/data/07_murphy_topel_vcov.rds; results/out/tables/08_*.tex; results/out/tables/08b_model_fit_monotone.tex; results/out/tables/08b_qp_objective_monotone.tex; results/data/08b_model_fit_monotone.rds; results/data/09_withgammas.rds; results/out/figures/09_gamma_dist.png; results/data/12_data_for_counterfactuals.rds; results/out/tables/12_validate_corr.tex; results/out/figures/12_*.png; results/data/12b_withgammas_monotone.rds; results/data/12b_data_for_counterfactuals_monotone.rds; results/out/tables/12b_validate_corr_monotone.tex; results/out/figures/12b_*.png; results/data/counterfactuals/13_*-17_* scenario artifacts (the warm-start seeds there are committed INPUTS, not outputs); results/out/tables/18_*.tex; results/out/figures/19_*.png; results/out/tables/20_substitute.tex; results/out/figures/20_*.png; results/out/tables/21_substitute_prod.tex; results/out/tables/22_skill_units.tex; results/data/22_skill_units.csv
 #' =============================================================================
 
 # Clear environment
@@ -64,6 +65,7 @@ RUN_MAKE_TASKS <- TRUE
 RUN_SETUP <- TRUE
 RUN_BUILD_DATA <- TRUE
 RUN_STYLIZED_FACTS <- TRUE
+RUN_SINDEX_MEASUREMENT_ERROR <- TRUE
 RUN_SPATIAL_CORR <- TRUE
 RUN_ESTIMATION_SAMPLE <- TRUE
 RUN_ESTIMATION <- TRUE
@@ -362,6 +364,76 @@ if (RUN_STYLIZED_FACTS) {
     } else {
       message("STEP 2b skipped (no changes detected)")
       pipeline_results[["02_stylized_facts.R"]] <- list(
+        ran = FALSE, success = TRUE, duration = 0,
+        error = NULL, skipped = TRUE
+      )
+    }
+  }
+}
+
+#' -----------------------------------------------------------------------------
+#' STEP 2b2: S-index Measurement Error (02b_sindex_measurement_error.R)
+#' -----------------------------------------------------------------------------
+#' Appendix measurement-error check: recomputes the s-index month-by-month
+#' within each quarter and reports the within-quarter correlations. Depends only
+#' on the build-stage outputs (00_tasks_cosmo, 01_staff_task_full), not on the
+#' confidential raw pulls STEP 2b needs, so it runs whenever those exist.
+
+if (RUN_SINDEX_MEASUREMENT_ERROR) {
+  message("\n", strrep("-", 70))
+  message("STEP 2b2: Checking 02b_sindex_measurement_error.R")
+  message(strrep("-", 70))
+
+  step2b2_inputs <- c(
+    "mkdata/data/00_tasks_cosmo.rds",
+    "mkdata/data/01_staff_task_full.rds"
+  )
+
+  if (any(!file.exists(step2b2_inputs))) {
+    message("STEP 2b2 skipped (build-data inputs not available on this machine)")
+    pipeline_results[["02b_sindex_measurement_error.R"]] <- list(
+      ran = FALSE, success = TRUE, duration = 0,
+      error = NULL, skipped = TRUE
+    )
+  } else {
+    step2b2_deps <- c("config.R", "cluster.R", step2b2_inputs)
+    step2b2_outputs <- c(
+      "results/out/tables/02b_sindex_month_corr.tex",
+      "results/data/02b_sindex_measurement_error.rds"
+    )
+
+    if (force_downstream || any(!file.exists(step2b2_outputs)) ||
+        needs_rerun("02b_sindex_measurement_error.R", step2b2_deps)) {
+      step2b2_start <- Sys.time()
+
+      log_init("02b_sindex_measurement_error.R")
+      log_message("Starting s-index measurement-error check")
+
+      tryCatch({
+        source("02b_sindex_measurement_error.R", local = new.env(parent = globalenv()))
+        assert_required_files(step2b2_outputs)
+        log_message("S-index measurement-error check completed successfully")
+        log_complete(success = TRUE)
+
+        step2b2_time <- difftime(Sys.time(), step2b2_start, units = "mins")
+        message("STEP 2b2 complete (", round(step2b2_time, 2), " minutes)")
+
+        pipeline_results[["02b_sindex_measurement_error.R"]] <- list(
+          ran = TRUE, success = TRUE, duration = as.numeric(step2b2_time),
+          error = NULL, skipped = FALSE
+        )
+      }, error = function(e) {
+        log_message(paste("ERROR:", e$message), "ERROR")
+        log_complete(success = FALSE)
+        pipeline_results[["02b_sindex_measurement_error.R"]] <<- list(
+          ran = TRUE, success = FALSE, duration = 0,
+          error = e$message, skipped = FALSE
+        )
+        stop("S-index measurement-error check failed: ", e$message)
+      })
+    } else {
+      message("STEP 2b2 skipped (no changes detected)")
+      pipeline_results[["02b_sindex_measurement_error.R"]] <- list(
         ran = FALSE, success = TRUE, duration = 0,
         error = NULL, skipped = TRUE
       )

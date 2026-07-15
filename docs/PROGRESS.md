@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-01
+Last updated: 2026-07-15
 
 ## Current State
 
@@ -72,6 +72,24 @@ scenarios were retired during this consolidation (see
 `45b23aa Remove obsolete counterfactual scripts`).
 
 ## Recent Pipeline Changes (since 2026-04-23)
+
+### 2026-07-15: s-index measurement-error appendix check
+
+- **`02b_sindex_measurement_error.R`** added (STEP 2b2 in `run_all.R`) —
+  reproduces the paper's Appendix A.18 measurement-error check on the updated
+  data. It recomputes the s-index separately for each month within a quarter
+  (up to three measurements per salon-quarter) and reports the pairwise
+  within-quarter correlations, full-sample and excluding 2020. The month-level
+  index uses the same rate-distortion formula as `build_staff_task_features`
+  (`cluster.R`), regrouped by month; a fidelity assertion recomputes the
+  quarter-level s-index and checks it against `01_staff_task_full.rds` (matches
+  to 1e-15) before trusting the month numbers. Outputs
+  `results/out/tables/02b_sindex_month_corr.tex` and
+  `results/data/02b_sindex_measurement_error.rds`. Runs on the full national
+  sample; depends only on build outputs (`00_tasks_cosmo`,
+  `01_staff_task_full`), not the confidential raw pulls STEP 2b needs. Current
+  numbers: full sample 0.947 / 0.938 / 0.957, excluding 2020 0.968 / 0.959 /
+  0.978.
 
 ### 2026-06-29 – 2026-07-01: replication-package pass
 
@@ -196,22 +214,23 @@ scenarios were retired during this consolidation (see
 2. package restore through `renv` (renv.lock is authoritative)
 3. `01_build_data.R`
 4. `02_stylized_facts.R` (STEP 2b; needs the confidential raw pulls, skipped elsewhere)
-5. `03_spatial_corr.R` (STEP 2c; needs the Census/ZCTA geo files, skipped elsewhere)
-6. `04_estimation_sample.R`
-7. `05_iv_spec_comparison.R`
-8. `06_estimation.R`
-9. `06b_estimation_monotone.R` (STEP 5b; monotone-restricted robustness variant)
-10. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
-11. `07_vcov.R` (first-stage 2SLS + Murphy-Topel structural SEs)
-12. `08_display_estimates.R`
-13. `09_invert_gammas.R`
-14. `12_validate.R`
-15. `run_counterfactuals.R`
-16. `20_substitution.R` (wage-substitution patterns at the cleared equilibrium
+5. `02b_sindex_measurement_error.R` (STEP 2b2; s-index within-quarter measurement-error check, build outputs only)
+6. `03_spatial_corr.R` (STEP 2c; needs the Census/ZCTA geo files, skipped elsewhere)
+7. `04_estimation_sample.R`
+8. `05_iv_spec_comparison.R`
+9. `06_estimation.R`
+10. `06b_estimation_monotone.R` (STEP 5b; monotone-restricted robustness variant)
+11. `06c_wage_identification.R` (wage-stage Hessian + perturbation diagnostic)
+12. `07_vcov.R` (first-stage 2SLS + Murphy-Topel structural SEs)
+13. `08_display_estimates.R`
+14. `09_invert_gammas.R`
+15. `12_validate.R`
+16. `run_counterfactuals.R`
+17. `20_substitution.R` (wage-substitution patterns at the cleared equilibrium
     wages from `13_initial_wages.rds`)
-17. `21_substitution_prod.R` (productivity-substitution patterns at the
+18. `21_substitution_prod.R` (productivity-substitution patterns at the
     cleared equilibrium wages)
-18. `22_skill_parameter_units.R` (skill parameters in interpretable units)
+19. `22_skill_parameter_units.R` (skill parameters in interpretable units)
 
 ### Counterfactual runner
 
@@ -232,6 +251,8 @@ Shared utilities live in `utils/counterfactuals_core.R`.
 
 The automated workflow writes:
 
+- `results/out/tables/02b_sindex_month_corr.tex`,
+  `results/data/02b_sindex_measurement_error.rds` (when build outputs present)
 - `mkdata/data/04_estimation_sample.rds`
 - `results/out/tables/04_summary_stats_structural.tex`
 - `results/out/tables/05_standard_iv_comparison.tex`
@@ -275,6 +296,10 @@ Several formerly-standalone scripts are now wired into `run_all.R`:
 - `02_stylized_facts.R` (STEP 2b) and `03_spatial_corr.R` (STEP 2c) run after
   the build-data step; both skip gracefully when their confidential raw inputs
   are unavailable.
+- `02b_sindex_measurement_error.R` (STEP 2b2) runs the s-index within-quarter
+  measurement-error check between them; it needs only the build outputs
+  (`00_tasks_cosmo`, `01_staff_task_full`), so it runs even where the STEP 2b
+  raw pulls are absent.
 - `06b_estimation_monotone.R` (STEP 5b) runs the workers-as-rows monotone
   estimation track.
 - `22_skill_parameter_units.R` (STEP 13) renders the skill matrix in

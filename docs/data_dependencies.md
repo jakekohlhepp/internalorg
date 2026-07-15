@@ -81,6 +81,11 @@ flowchart TD
     a02 --> a02out[results/data/02_stylized_facts_data.rds]
     a02out --> a03[03_spatial_corr.R]
 
+    tasks --> a02b[02b_sindex_measurement_error.R]
+    stafffull --> a02b
+    a02b --> a02btex[results/out/tables/02b_sindex_month_corr.tex]
+    a02b --> a02brds[results/data/02b_sindex_measurement_error.rds]
+
     esample_out --> vcov[07_vcov.R]
     params --> vcov
     vcov --> fsout[results/data/07_first_stage_vcov.rds]
@@ -156,9 +161,9 @@ flowchart TD
 ### Main runner: `run_all.R`
 
 > **Where it runs:** steps `0`–`2c` (`00_mk_tasks_cosmo`, `01_build_data`,
-> `02_stylized_facts`, `03_spatial_corr`) and the `prep_*` build above run
-> **locally** — they need the confidential raw transaction pull and external
-> geo/Census files. Steps `3`–`13` (`04_estimation_sample` → `22_skill_parameter_units`)
+> `02_stylized_facts`, `02b_sindex_measurement_error`, `03_spatial_corr`) and the
+> `prep_*` build above run **locally** — they need the confidential raw
+> transaction pull and external geo/Census files. Steps `3`–`13` (`04_estimation_sample` → `22_skill_parameter_units`)
 > run on the **Longleaf cluster** from committed inputs (parameters, warm
 > starts, public-source prep outputs) plus derived firm/staff-level inputs
 > transferred out-of-band — those are pseudonymized microdata and are not
@@ -226,6 +231,7 @@ full-sample branch rather than the estimation-only branch.
 | Script | Main input | Main output |
 |--------|------------|-------------|
 | `02_stylized_facts.R` | `mkdata/data/00_tasks_cosmo.rds`, `mkdata/data/01_staff_task_full.rds` | `results/data/02_stylized_facts_data.rds` plus tables and figures |
+| `02b_sindex_measurement_error.R` | `mkdata/data/00_tasks_cosmo.rds`, `mkdata/data/01_staff_task_full.rds` | `results/out/tables/02b_sindex_month_corr.tex`, `results/data/02b_sindex_measurement_error.rds` (within-quarter month-to-month s-index correlations; Appendix A.18 measurement-error check) |
 | `03_spatial_corr.R` | `results/data/02_stylized_facts_data.rds` | `results/out/figures/03_spatial_cor_*.png`, `03_coverage.png` |
 | `22_skill_parameter_units.R` | `results/data/06_parameters.rds`, `results/data/12_data_for_counterfactuals.rds` | `results/out/tables/22_*.tex` (skill matrix re-expressed in WTP-per-customer and percentage-point market-share units) |
 | `compile_warm_start_wages.R` | most-recent `results/data/counterfactuals/14_*-17_*_wages_*.rds` | `results/data/counterfactuals/13_warm_start_wages_<scenario>.rds` (per-scenario warm starts consumed by 14-17) |
