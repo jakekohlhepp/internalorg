@@ -17,8 +17,11 @@
 ##
 ## Outputs:
 ##   - console: parameter comparison tables + per-county dominance / monotone /
-##     QP-gap readout
-##   - results/out/figures/ (.png + .pdf):
+##     QP-gap readout (console readouts keep the repo's internal names)
+##   - results/out/figures/ (.png + .pdf) -- these are manuscript-facing, so
+##     they use the paper's notation (skill matrix = Theta, workers = skill
+##     sets) and carry a self-contained Note; see the notation comment above
+##     SECTION B:
 ##       06b_skillmatrix_percounty   paired heatmaps, per-county color scale
 ##       06b_skillmatrix_sharedlog   paired heatmaps, shared signed-log scale
 ##       06b_skillmatrix_diff        constrained - unconstrained, per county
@@ -49,6 +52,35 @@ main <- function() {
             "06b_estimation_monotone.R first):\n  ",
             paste(missing, collapse = "\n  "), "\nSkipping.")
     return(invisible(NULL))
+  }
+
+  ## Vintage guard. This script compares point estimates from two separate
+  ## runs and silently produces a figure whichever files happen to be on disk,
+  ## so a partial re-run yields a plausible-looking but meaningless comparison.
+  ## 06b writes perms/qp_diagnostics early ("before any solver risk") and its
+  ## parameters at the end, so a 06b that died mid-solve leaves a NEW perms file
+  ## beside an OLD parameters file -- the figure then reorders one run's matrix
+  ## by another run's ranking, which breaks the monotone pattern the figure
+  ## exists to show. Warn rather than abort: a deliberate cross-vintage
+  ## comparison is still someone's prerogative.
+  input_mtime <- function(p) if (file.exists(p)) file.mtime(p) else NA
+  vintages <- c(unc = unc_path, con = con_path, perms = perms_path)
+  message("06b_compare input vintages:")
+  for (nm in names(vintages)) {
+    message(sprintf("  %-6s %s  (%s)", nm,
+                    format(input_mtime(vintages[[nm]]), "%Y-%m-%d %H:%M"),
+                    basename(vintages[[nm]])))
+  }
+  perms_gap <- abs(as.numeric(difftime(input_mtime(perms_path),
+                                       input_mtime(con_path), units = "mins")))
+  if (isTRUE(perms_gap > 10)) {
+    warning("06b_compare: results/data/06b_perms.rds and ",
+            basename(con_path), " were written ",
+            round(perms_gap), " minutes apart, but 06b writes both in one run. ",
+            "The worker ordering and the constrained estimates are therefore ",
+            "from different 06b runs, and the constrained panel will not be ",
+            "monotone. Re-run 06b_estimation_monotone.R to completion before ",
+            "trusting these figures.", call. = FALSE)
   }
 
   n_t <- CONFIG$n_task_types
@@ -249,6 +281,21 @@ main <- function() {
     }, character(1))
   }
 
+  ## Figure text follows the manuscript's notation and house style, not the
+  ## repo's internal parameter names (docs/manuscript_terminology.md):
+  ##   - the skill matrix is Theta (the repo stores it as `B_raw_<task>_<worker>`
+  ##     because of the model-matrix naming; the paper reserves B_j for a firm's
+  ##     task ASSIGNMENTS, so calling these cells "B" in a figure clashes with
+  ##     the text). Cell (k, i) is theta_i(k), skill set i's skill at task k.
+  ##   - workers are "Skill Set 1-5", numbered arbitrarily (p. 33).
+  ##   - Greek is spelled out in labels, per the paper's "Log Organization Cost
+  ##     (Gamma)" convention -- also avoids missing-glyph risk on the pdf device.
+  ##   - explanations go in a "Note:" block under the figure, not in jargon
+  ##     subtitles.
+  ## The constraint 06b imposes is the paper's "ranked by absolute advantage"
+  ## (p. 22): one order of skill sets in which, at EVERY task, each skill set is
+  ## at least as skilled as the previous one.
+
   ## wide table: one row per (county, task, rank) with unc, con, diff
   wide <- rbindlist(lapply(county_order, function(cnty) {
     pi_c  <- as.integer(perms[[cnty]])
@@ -263,15 +310,40 @@ main <- function() {
                fro_diff = froben(M_con - M_unc))
   }))
   wide[, diff := con - unc]
-  wide[, rank_lab := factor(rank, levels = seq_len(n_w),
-        labels = paste0(seq_len(n_w), ifelse(seq_len(n_w) == 1, "\n(worst)",
-                                      ifelse(seq_len(n_w) == n_w, "\n(best)", ""))))]
   wide[, task_lab := factor(task, levels = rev(seq_len(n_t)), labels = task_labels[rev(seq_len(n_t))])]
 
-  raw_breaks <- c(-190, -50, -10, 0, 10, 50, 190)   # signed-log legend ticks (real B units)
+  ## Columns are the actual skill sets (paper numbering) laid out least- to
+  ## most-skilled. That order is county-specific, so the x key carries its
+  ## county ("<label>___<county>") and the facets use free x scales; the suffix
+  ## is stripped at render. Without this the axis could only show a rank
+  ## position, which is what forced the old "worker rank" (solver) labelling and
+  ## left the columns impossible to match against the paper's skill-set tables.
+  wide[, x_disp := fifelse(
+    rank == 1L,  paste0(worker, "\n(least\nskilled)"),
+    fifelse(rank == n_w, paste0(worker, "\n(most\nskilled)"),
+            as.character(worker))
+  )]
+  wide[, x_key := paste0(x_disp, "___", county)]
+  x_levels <- unique(wide[order(match(county, county_order), rank), x_key])
+  wide[, x_key := factor(x_key, levels = x_levels)]
+  strip_key <- function(x) sub("___.*$", "", x)
+
+  ## Panel heading: county + the Frobenius distance between the unconstrained
+  ## and constrained matrices -- the quantity the text compares across counties.
+  ## (The old heading printed each matrix's own norm, ||Theta_unc|| -> ||Theta_con||,
+  ## which is a different quantity and left the text's claim uncheckable here.)
+  ## Three lines: a single line does not fit the strip at this panel width and
+  ## gets clipped ("robenius distance = ...").
+  head_lab <- function(cnty, fdiff, func) sprintf(
+    "%s\nFrobenius distance = %.1f\n(%.0f%% of unconstrained)",
+    county_label[cnty], fdiff, 100 * fdiff / func
+  )
+
+  raw_breaks <- c(-190, -50, -10, 0, 10, 50, 190)   # signed-log legend ticks (real Theta units)
   heat_theme <- theme_bw(base_size = 11) +
-    theme(panel.grid = element_blank(), strip.text = element_text(face = "bold", size = 9.5),
+    theme(panel.grid = element_blank(), strip.text = element_text(face = "bold", size = 8.6),
           strip.placement = "outside", plot.subtitle = element_text(size = 8.2, colour = "grey35"),
+          plot.caption = element_text(size = 7.6, colour = "grey25", hjust = 0),
           axis.text = element_text(size = 8), legend.position = "right",
           legend.key.height = unit(1.15, "cm"))
   write_fig <- function(plot, stem, w, h) {
@@ -282,6 +354,29 @@ main <- function() {
     message("wrote results/out/figures/", stem, ".{png,pdf}")
   }
 
+  ## Shared sentences so the three notes stay consistent with each other.
+  note_cells <- paste(
+    "Each cell is an estimated skill parameter Theta: the skill of a worker",
+    "skill set (column) at a task (row), in the same units as the paper's",
+    "skill-parameter tables."
+  )
+  note_constraint <- paste(
+    "Unconstrained estimates are the baseline; constrained estimates add the",
+    "requirement that skill sets can be ranked by absolute advantage, i.e. that",
+    "one ordering exists in which each skill set is at least as skilled as the",
+    "previous one at every task. Columns are ordered least- to most-skilled",
+    "under that ranking, so under the constraint values never fall from left to",
+    "right; skill sets are numbered as in the paper and the ordering differs by",
+    "county."
+  )
+  note_distance <- paste(
+    "Each heading reports the Frobenius distance between that county's",
+    "unconstrained and constrained matrices (the square root of the summed",
+    "squared cell-by-cell changes), with that distance as a percentage of the",
+    "unconstrained matrix's own Frobenius norm."
+  )
+  note_fmt <- function(...) str_wrap(paste("Note:", paste(...)), width = 178)
+
   ## ----- FIGURE 1: per-county scale (robust-capped), values printed -----
   long <- melt(wide, id.vars = setdiff(names(wide), c("unc", "con", "diff")),
                measure.vars = c("unc", "con"), variable.name = "version", value.name = "value")
@@ -290,57 +385,81 @@ main <- function() {
   long[, cap := as.numeric(quantile(abs(value), 0.90, na.rm = TRUE)), by = county]
   long[, fill_scaled := pmax(pmin(value, cap), -cap) / cap]
   long[, txt := ifelse(abs(value) >= 100, sprintf("%.0f", value), sprintf("%.1f", value))]
-  long[, lab_b := sprintf("%s\n||B||: %.0f -> %.0f", county_label[county], fro_unc, fro_con)]
-  lev_b <- unique(long[match(county_order, county)]$lab_b)
+  long[, lab_b := head_lab(county, fro_diff, fro_unc)]
+  lev_b <- unique(long[order(match(county, county_order))]$lab_b)
   long[, col_lab := factor(lab_b, levels = lev_b)]
 
-  p_pc <- ggplot(long, aes(rank_lab, task_lab, fill = fill_scaled)) +
+  p_pc <- ggplot(long, aes(x_key, task_lab, fill = fill_scaled)) +
     geom_tile(colour = "grey92", linewidth = 0.4) +
     geom_text(aes(label = txt, colour = abs(fill_scaled) > 0.6), size = 2.7, show.legend = FALSE) +
-    facet_grid(version_f ~ col_lab, switch = "y") +
+    facet_grid(version_f ~ col_lab, switch = "y", scales = "free_x") +
+    scale_x_discrete(labels = strip_key) +
     scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                          limits = c(-1, 1), breaks = c(-1, 0, 1),
                          labels = c("-1 (county max)", "0", "+1 (county max)"),
-                         name = "B, scaled\nwithin county") +
+                         name = "Skill parameter\n(Theta), scaled\nwithin county") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(subtitle = "Columns ordered by QP worker rank (worst -> best). Constrained rows ramp left-to-right = monotone ladder. Cell = true B; colour capped at each county's 90th pctile |B|.",
-         x = "worker rank (within county)", y = NULL) + heat_theme
-  write_fig(p_pc, "06b_skillmatrix_percounty", 12, 6.2)
+    labs(x = "Worker skill set, ordered least- to most-skilled", y = NULL,
+         caption = note_fmt(
+           note_cells, note_constraint,
+           "Printed numbers are the estimates themselves; colour is rescaled within each",
+           "county and saturates at that county's 90th percentile of |Theta|, so that a",
+           "single extreme cell does not wash out the rest. Colours are therefore",
+           "comparable within a county but not across counties.",
+           note_distance
+         )) + heat_theme
+  write_fig(p_pc, "06b_skillmatrix_percounty", 12, 6.6)
 
   ## ----- FIGURE 2: shared signed-log scale (cross-county comparable) -----
   long[, sval := slog(value)]
   lim1 <- slog(max(abs(long$value), na.rm = TRUE))
-  p_sl <- ggplot(long, aes(rank_lab, task_lab, fill = sval)) +
+  p_sl <- ggplot(long, aes(x_key, task_lab, fill = sval)) +
     geom_tile(colour = "grey92", linewidth = 0.4) +
     geom_text(aes(label = txt, colour = abs(sval) > 0.6 * lim1), size = 2.7, show.legend = FALSE) +
-    facet_grid(version_f ~ col_lab, switch = "y") +
+    facet_grid(version_f ~ col_lab, switch = "y", scales = "free_x") +
+    scale_x_discrete(labels = strip_key) +
     scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                          limits = c(-lim1, lim1), breaks = slog(raw_breaks), labels = raw_breaks,
-                         name = "B\n(signed-log,\nshared scale)") +
+                         name = "Skill parameter\n(Theta)") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(subtitle = "One colour scale across all six panels: magnitudes comparable across counties. NYC's unconstrained spike (Administrative = -190) dominates, as it should.",
-         x = "worker rank (within county)", y = NULL) + heat_theme
-  write_fig(p_sl, "06b_skillmatrix_sharedlog", 12, 6.2)
+    labs(x = "Worker skill set, ordered least- to most-skilled", y = NULL,
+         caption = note_fmt(
+           note_cells, note_constraint,
+           "All six panels share one colour scale, so magnitudes are comparable across",
+           "counties; the scale is compressed logarithmically (preserving sign) because a",
+           "few cells are an order of magnitude larger than the rest, and its tick labels",
+           "are in skill-parameter units.",
+           note_distance
+         )) + heat_theme
+  write_fig(p_sl, "06b_skillmatrix_sharedlog", 12, 6.6)
 
   ## ----- FIGURE 3: constrained - unconstrained per county -----
   d <- copy(wide)
   d[, sdiff := slog(diff)]
   d[, txt := ifelse(abs(diff) >= 100, sprintf("%+.0f", diff), sprintf("%+.1f", diff))]
-  d[, lab_d := sprintf("%s\n||diff||: %.0f  (rel %.2f)", county_label[county], fro_diff, fro_diff / fro_unc)]
-  lev_d <- unique(d[match(county_order, county)]$lab_d)
+  d[, lab_d := head_lab(county, fro_diff, fro_unc)]
+  lev_d <- unique(d[order(match(county, county_order))]$lab_d)
   d[, col_lab := factor(lab_d, levels = lev_d)]
   lim2 <- slog(max(abs(d$diff), na.rm = TRUE))
-  p_df <- ggplot(d, aes(rank_lab, task_lab, fill = sdiff)) +
+  p_df <- ggplot(d, aes(x_key, task_lab, fill = sdiff)) +
     geom_tile(colour = "grey92", linewidth = 0.4) +
     geom_text(aes(label = txt, colour = abs(sdiff) > 0.6 * lim2), size = 2.9, show.legend = FALSE) +
-    facet_wrap(~col_lab, nrow = 1) +
+    facet_wrap(~col_lab, nrow = 1, scales = "free_x") +
+    scale_x_discrete(labels = strip_key) +
     scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0,
                          limits = c(-lim2, lim2), breaks = slog(raw_breaks), labels = raw_breaks,
-                         name = "con - unc\n(signed-log)") +
+                         name = "Change in skill\nparameter (Theta)") +
     scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey20")) +
-    labs(subtitle = "Red = constraint raised B for that (task, worker rank); blue = lowered it. NYC Administrative is the noisy spike being flattened; LA barely moves.",
-         x = "worker rank (within county)", y = NULL) + heat_theme
-  write_fig(p_df, "06b_skillmatrix_diff", 12, 3.9)
+    labs(x = "Worker skill set, ordered least- to most-skilled", y = NULL,
+         caption = note_fmt(
+           "Each cell is the change in the estimated skill parameter Theta from imposing",
+           "the constraint (constrained minus unconstrained) for one worker skill set",
+           "(column) at one task (row): red means the constraint raised the estimate, blue",
+           "that it lowered it.", note_constraint,
+           "The colour scale is compressed logarithmically (preserving sign) and shared",
+           "across counties.", note_distance
+         )) + heat_theme
+  write_fig(p_df, "06b_skillmatrix_diff", 12, 4.6)
 
   message("06b_compare: done.")
   invisible(NULL)
