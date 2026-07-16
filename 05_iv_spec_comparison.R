@@ -440,7 +440,7 @@ estim_matrix$log_within_share <- working_data$log_within_share
 ## These four are constructed inline (not propagated to 04_estimation_sample)
 ## because they are used only for the Table 4 instrument-comparison; the
 ## production demand IV in preamble.R still uses the standard logit with
-## dye + hausman.
+## dye instrument.
 ##   labor_instrument:  county hourly wage x own avg_labor (already in 04)
 ##   min_wage:          county-quarter minimum wage (already in 04)
 ##   minwage_inst:      min_wage x own avg_labor (NEW)
