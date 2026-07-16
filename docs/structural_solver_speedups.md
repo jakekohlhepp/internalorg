@@ -119,6 +119,72 @@ the saved `seeit_bb.rds` wage vector:
 The main speed gain comes after the first objective call, which is the relevant
 case inside an optimizer, and specifically inside `BBsolve`.
 
+## Wage-Stage Scheduling Parallelism (2026-07)
+
+The PSO wage stage's wall-clock cost is dominated by sequential scheduling of
+work that is provably independent. Three changes address this; the first two
+are bit-identical to the sequential code and default ON, the third changes
+low-order bits and defaults OFF.
+
+### County-parallel PSO (`JMP_WAGE_PSO_COUNTY_PARALLEL`, default true)
+
+`estimate_wage_parameters_pso()` forks one child per county (Linux only,
+needs >1 core). Bit-identity with the sequential loop rests on four facts:
+
+1. County objectives are exactly separable: `build_cost_matrix()` selects
+   wage parameters by county pattern, and each county's moments are computed
+   on its own rows (other counties' moment columns are exact zeros).
+2. Each county reseeds its own RNG (`set.seed(pso_seed)`) before consuming
+   any randomness.
+3. Warm-start cache keys are county-prefixed, so the children's cache writes
+   are disjoint; the parent merges them per county after the forks return.
+4. The single genuine sequential coupling — `get_solver_tolerances()`'
+   coarse/fine branch at a county's *first* objective call reads the previous
+   county's final moment norm — is checked after the forks return, and any
+   county whose branch would have differed is transparently re-run in-process
+   with the exact serial incoming state (worst case: sequential speed).
+
+The parent also restores the post-loop `.Random.seed` and the global cache
+norm exactly as the sequential loop would have left them (the price stage
+consumes the cache via `get_gammas()`).
+
+### Parallel L5 joint multistart (`JMP_WAGE_FB_L5_PARALLEL`, default true)
+
+Each L5 start is a pure function of its start vector: the dispatcher resets
+the global solver cache on entry and every RNG consumer reseeds
+deterministically. The K starts therefore fork cleanly; the parent re-emits
+each start's warnings in order, applies the same best-selection rule, and
+installs start K's final cache and RNG state (what a serial loop leaves
+behind). Only active when `solver_state` is NULL — a caller-supplied live
+state is not reset by the dispatcher and couples the starts.
+
+### L4 polish-only (`JMP_WAGE_FB_L4_POLISH_ONLY`, default false)
+
+A full L4 re-dispatch re-runs the cold-start swarm with the same per-county
+seed, so the swarm and its polish reproduce round 1 (verified in
+`p06_58869070.out`); only the polish from the L1/L3-improved seed adds
+information. This flag makes L4 rounds skip the swarm and polish from the
+improved seed only. NOT bit-identical (the polish starts from a different
+warm-gamma cache history), so it stays opt-in; enable it to roughly halve
+L4 cost when exact replication is not required.
+
+### Verification
+
+`diagnostics/verify_wage_stage_bitident.R` runs the full wage stage
+(dispatcher + L1–L5 ladder) on a row-subset of the real estimation sample
+and snapshots the result object, the global solver cache, and the final
+`.Random.seed`. Old-code (HEAD overlay in `diagnostics/baseline_src_head/`)
+vs new-code and serial vs parallel payloads are compared byte-for-byte via
+`serialize()`.
+
+### Sizing note
+
+With county-parallel on, 06's PSO phase uses ~3 concurrent county solves,
+each of which row-parallelizes across `SLURM_CPUS_PER_TASK / 3` cores; with
+L5 K>1 the multiplier grows to `K x 3`. Request 24 cores for a K=2 run
+instead of the historical 8 to realize the full speedup (cores are split
+automatically via `config$core_count`).
+
 ## Main Configuration Switches
 
 - `JMP_WAGE_OPTIMIZER_MODE=joint|county`
@@ -128,6 +194,9 @@ case inside an optimizer, and specifically inside `BBsolve`.
 - `JMP_USE_STAGED_SOLVER_TOLERANCES=true|false`
 - `JMP_USE_RCPP_EQUILIBRIUM=true|false`
 - `JMP_SOLVER_CACHE_ROUND_DIGITS=12`
+- `JMP_WAGE_PSO_COUNTY_PARALLEL=true|false`
+- `JMP_WAGE_FB_L5_PARALLEL=true|false`
+- `JMP_WAGE_FB_L4_POLISH_ONLY=true|false`
 
 ## Counterfactual Reuse
 

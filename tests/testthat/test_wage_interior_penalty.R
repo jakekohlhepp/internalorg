@@ -114,3 +114,43 @@ test_that("gate score adds weight * penalty only when the flag is on", {
                  2.5 * wage_interior_penalty_terms(mv, xa, cfg_w),
                tolerance = 1e-12)
 })
+
+## ---------------------------------------------------------------------------
+## Regression: the omitted reference type (type 1) must be penalised too.
+## Before this was fixed the penalty summed only over types 2..n_w, so the BASE
+## type could go extinct with the penalty reading exactly zero -- which is what
+## priced New York's type 1 out entirely (model share 0.000 vs 0.235 observed)
+## while types 2..5 absorbed its mass and all looked healthy.
+## ---------------------------------------------------------------------------
+
+test_that("penalty fires when the omitted base type (1) goes extinct", {
+  ## 3 types: shares must sum to 1, so type 1 = 1 - (share_2 + share_3).
+  ## Put types 2 and 3 comfortably interior but let them absorb ALL the mass.
+  obs <- c(0.5, 0.2)                 # observed shares, types 2..3 => obs type 1 = 0.3
+  model_extinct <- c(0.65, 0.35)     # sums to 1.0 => model type-1 share = 0
+  mm <- model_extinct - obs          # moment means (E_model - E_obs)
+
+  pen <- wage_interior_penalty_county(mm, obs, cfg_toy)
+
+  ## types 2 and 3 are both far above the floor, so a types-2..n-only penalty
+  ## would return exactly 0 here. It must not.
+  expect_gt(pen, 1)
+})
+
+test_that("penalty stays exactly zero when every type incl. type 1 is interior", {
+  obs <- c(0.5, 0.2)                 # type 1 = 0.3
+  model_ok <- c(0.45, 0.25)          # sums to 0.7 => model type-1 share = 0.3
+  mm <- model_ok - obs
+  expect_equal(wage_interior_penalty_county(mm, obs, cfg_toy), 0)
+})
+
+test_that("type-1 share is recovered by adding-up, not read from the data", {
+  ## Same types-2..n moments, different implied type-1 share => different penalty.
+  obs <- c(0.5, 0.2)
+  alive <- wage_interior_penalty_county(c(0.45, 0.25) - obs, obs, cfg_toy)  # t1 = 0.30
+  dying <- wage_interior_penalty_county(c(0.60, 0.39) - obs, obs, cfg_toy)  # t1 = 0.01
+  dead  <- wage_interior_penalty_county(c(0.65, 0.35) - obs, obs, cfg_toy)  # t1 = 0.00
+  expect_equal(alive, 0)
+  expect_equal(dying, 0)          # 0.01 is still above the 1e-3 floor
+  expect_gt(dead, dying)          # extinction must cost strictly more
+})

@@ -48,6 +48,38 @@ get_default_solver_state <- local({
   }
 })
 
+#' Snapshot the mutable solver state as a plain list. Used by the parallel
+#' wage-stage paths: forked children export their final state so the parent
+#' can reproduce, exactly, the cache a serial run would have left behind
+#' (the price stage consumes these warm starts via get_gammas()).
+export_solver_state <- function(state) {
+  list(
+    gamma = as.list(state$gamma_by_key),
+    E = as.list(state$E_by_key),
+    last_moment_norm = state$last_moment_norm,
+    n_objective_calls = state$n_objective_calls
+  )
+}
+
+#' Write a snapshot's cache entries back into a live solver state. When
+#' `key_prefix` is given, only keys starting with it are imported -- the
+#' county-parallel path uses this to import exactly the entries a county's
+#' fork wrote (solver keys are "<county>|..."), leaving other counties'
+#' entries to their own forks. Does NOT touch last_moment_norm or
+#' n_objective_calls; callers restore those explicitly.
+import_solver_state_entries <- function(state, snapshot, key_prefix = NULL) {
+  keep <- function(keys) {
+    if (is.null(key_prefix)) keys else keys[startsWith(keys, key_prefix)]
+  }
+  for (key in keep(names(snapshot$gamma))) {
+    assign(key, snapshot$gamma[[key]], envir = state$gamma_by_key)
+  }
+  for (key in keep(names(snapshot$E))) {
+    assign(key, snapshot$E[[key]], envir = state$E_by_key)
+  }
+  invisible(state)
+}
+
 solver_flag <- function(config, name, default = FALSE) {
   value <- config[[name]]
   if (is.null(value)) {
@@ -833,8 +865,18 @@ structural_bound_moments <- function(theta, x, beta, beta_2_subset,
 #' observed shares enter solely to recover the model share from the moment
 #' means. Exactly zero when all types are interior; grows like log(share)^2
 #' as a type goes numerically extinct.
+#'
+#' Type 1 is the omitted reference type: it has no moment and no coefficient, so
+#' `moment_means`/`obs_means` cover only types 2..n_w. Its model share is still
+#' pinned by adding-up (shares sum to 1), so recover it as `1 - sum(shares_2..n)`
+#' and hold it to the same floor. Without this the penalty is blind to the base
+#' type going extinct -- the failure mode that priced New York's type 1 out
+#' entirely (model share 0.000 vs 0.235 observed) while the penalty read exactly
+#' zero, because types 2..5 had simply absorbed its mass and all looked healthy.
 wage_interior_penalty_county <- function(moment_means, obs_means, config = CONFIG) {
-  share <- pmax(as.numeric(moment_means) + as.numeric(obs_means), config$numeric_floor)
+  raw <- as.numeric(moment_means) + as.numeric(obs_means)
+  raw_1 <- 1 - sum(raw)
+  share <- pmax(c(raw_1, raw), config$numeric_floor)
   floor_k <- max(
     solver_value(config, "wage_interior_penalty_min_share", 1e-3),
     config$numeric_floor
@@ -1577,7 +1619,19 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     objective_config, moment_weights
   )
 
-  for (cnty in config$counties) {
+  ## Per-county solve, extracted verbatim from the historical sequential loop
+  ## so the serial path and the county-parallel path share one implementation.
+  ## A county's moments depend only on its own parameter slice
+  ## (build_cost_matrix() selects wage parameters by county pattern and the
+  ## objective is evaluated on that county's rows alone), so passing the
+  ## pre-loop joint vector (parallel path) or the sequentially updated one
+  ## (serial path) as `full_par_in` yields bit-identical results. Returns NULL
+  ## for counties with no parameters/rows, else
+  ## list(cnty_key, par_idx, result); the caller applies
+  ## `full_par[par_idx] <- result$par` (a rejected candidate carries the
+  ## unchanged seed slice, so unconditional assignment is safe).
+  solve_pso_county <- function(cnty, full_par_in, cfg_obj = objective_config) {
+    full_par <- full_par_in
     cnty_key <- as.character(cnty)
     parscale_w <- if (!is.null(parscale_by_county[[cnty_key]])) {
       parscale_by_county[[cnty_key]]
@@ -1593,14 +1647,14 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     county_pattern <- paste0("factor(county)", cnty, ":avg_labor:E_raw_")
     par_idx <- grepl(county_pattern, names(full_par), fixed = TRUE)
     row_idx <- as.character(data$county) == cnty
-    if (!any(par_idx) || !any(row_idx)) next
+    if (!any(par_idx) || !any(row_idx)) return(NULL)
 
     x_county <- data[row_idx, , drop = FALSE]
     county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
-    interior_pen_on <- solver_flag(objective_config, "wage_interior_penalty_enabled", FALSE)
-    interior_pen_weight <- solver_value(objective_config, "wage_interior_penalty_weight", 1)
+    interior_pen_on <- solver_flag(cfg_obj, "wage_interior_penalty_enabled", FALSE)
+    interior_pen_weight <- solver_value(cfg_obj, "wage_interior_penalty_weight", 1)
     county_obs_means <- if (interior_pen_on) {
-      wage_interior_obs_means(x_county, objective_config, county_weights)
+      wage_interior_obs_means(x_county, cfg_obj, county_weights)
     } else NULL
 
     objective_county_ssq <- function(parms) {
@@ -1609,7 +1663,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       moments <- tryCatch(
         weighted_col_means(objective_gmm(
           theta = candidate, x = x_county, beta = beta,
-          beta_2_subset = beta_2_subset, config = objective_config,
+          beta_2_subset = beta_2_subset, config = cfg_obj,
           clust = clust, solver_state = NULL
         ), weights = county_weights),
         error = function(e) NULL
@@ -1625,7 +1679,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       ssq <- sum(v^2)
       if (interior_pen_on) {
         ssq <- ssq + interior_pen_weight *
-          wage_interior_penalty_county(v, county_obs_means, objective_config)
+          wage_interior_penalty_county(v, county_obs_means, cfg_obj)
       }
       ssq
     }
@@ -1636,7 +1690,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       moments <- tryCatch(
         weighted_col_means(objective_gmm(
           theta = candidate, x = x_county, beta = beta,
-          beta_2_subset = beta_2_subset, config = objective_config,
+          beta_2_subset = beta_2_subset, config = cfg_obj,
           clust = clust, solver_state = NULL
         ), weights = county_weights),
         error = function(e) NULL
@@ -1659,7 +1713,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     start_candidate[par_idx] <- start_par
     start_score <- structural_wage_objective_score(
       objective_county_vec(start_par), start_candidate, x_county,
-      beta, beta_2_subset, objective_config, county_weights
+      beta, beta_2_subset, cfg_obj, county_weights
     )
 
     d <- length(start_par)
@@ -1673,6 +1727,20 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       pso_seed <- 1L
     }
     set.seed(pso_seed)
+    if (solver_flag(cfg_obj, "pso_skip_swarm", FALSE)) {
+      ## L4 polish-only re-solve (wage_fallback_repso_polish_only): the cold
+      ## swarm is deterministic given pso_seed, so re-running it reproduces
+      ## the previous round bit-for-bit; only the polish from the improved
+      ## seed start below adds information. Inf-valued placeholders keep the
+      ## candidate bookkeeping and convergence gates on their existing paths.
+      message(sprintf(
+        "PSO county %s: swarm skipped (pso_skip_swarm); polishing from seed start only.",
+        cnty
+      ))
+      pso_res <- list(par = as.numeric(start_par), value = Inf,
+                      n_iter = 0L, n_particles = 0L)
+      polish_pso <- list(par = pso_res$par, value = Inf, convergence = NA_integer_)
+    } else {
     message(sprintf(
       "PSO county %s: %d particles x %d iter, search box +/- %g, cold start, rng seed %d.",
       cnty, n_particles, n_iter, halfwidth, pso_seed
@@ -1702,6 +1770,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
         list(par = pso_res$par, value = pso_res$value, convergence = -1L)
       }
     )
+    }
 
     polish_seed <- tryCatch(
       stats::optim(
@@ -1802,7 +1871,7 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     final_score_county <- tryCatch(
       structural_wage_objective_score(
         final_moments_county, final_candidate, x_county,
-        beta, beta_2_subset, objective_config, county_weights
+        beta, beta_2_subset, cfg_obj, county_weights
       ),
       error = function(e) {
         warning("PSO post-check structural_wage_objective_score failed for county ",
@@ -1818,7 +1887,6 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     result$accepted <- accepted
 
     if (accepted) {
-      full_par[par_idx] <- result_par
       result$par <- result_par
       result$x <- result_par
       result$value <- final_objective_county
@@ -1840,7 +1908,151 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       result$final_objective <- start_objective
       result$final_score <- start_score
     }
-    county_results[[cnty_key]] <- result
+    list(cnty_key = cnty_key, par_idx = par_idx, result = result)
+  }
+
+  county_parallel <- solver_flag(config, "wage_pso_county_parallel", FALSE) &&
+    !identical(get_os(), "windows") &&
+    solver_flag(config, "pl_on", TRUE) &&
+    length(config$counties) > 1L &&
+    get_core_count(config) > 1L
+
+  if (!county_parallel) {
+    for (cnty in config$counties) {
+      county_out <- solve_pso_county(cnty, full_par)
+      if (is.null(county_out)) next
+      full_par[county_out$par_idx] <- county_out$result$par
+      county_results[[county_out$cnty_key]] <- county_out$result
+    }
+  } else {
+    ## Fork one child per county. Bit-identity with the sequential loop rests
+    ## on: (i) exact county separability of the objective; (ii) per-county RNG
+    ## reseeding (set.seed(pso_seed) above); (iii) warm-start cache keys being
+    ## county-prefixed, so the children's cache writes are disjoint; (iv) the
+    ## staged-tolerance handoff check below. The only cross-county coupling in
+    ## the sequential loop is get_solver_tolerances()' coarse/fine branch at a
+    ## county's FIRST objective call, which reads the previous county's final
+    ## moment norm; children fork before any county runs and therefore see the
+    ## pre-loop norm. Whenever the branch these two norms select differs, the
+    ## county is re-run in-process with the exact serial incoming state.
+    solver_state_env <- if (solver_flag(config, "use_solver_warm_starts", TRUE)) {
+      get_default_solver_state()
+    } else {
+      NULL
+    }
+    pre_norm <- if (!is.null(solver_state_env)) solver_state_env$last_moment_norm else Inf
+    pre_calls <- if (!is.null(solver_state_env)) solver_state_env$n_objective_calls else 0L
+    n_child_cores <- max(1L, get_core_count(config) %/% length(config$counties))
+
+    county_child <- function(cnty) {
+      warn_msgs <- character(0)
+      cfg_child <- objective_config
+      cfg_child$core_count <- n_child_cores
+      out <- withCallingHandlers(
+        tryCatch(
+          solve_pso_county(cnty, full_par, cfg_obj = cfg_child),
+          error = function(e) {
+            structure(list(message = conditionMessage(e)),
+                      class = "pso_county_child_error")
+          }
+        ),
+        warning = function(w) {
+          warn_msgs <<- c(warn_msgs, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      )
+      list(
+        out = out,
+        state = if (!is.null(solver_state_env)) {
+          export_solver_state(get_default_solver_state())
+        } else {
+          NULL
+        },
+        rng = if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+          get(".Random.seed", envir = globalenv(), inherits = FALSE)
+        } else {
+          NULL
+        },
+        warnings = warn_msgs
+      )
+    }
+
+    children <- parallel::mclapply(
+      config$counties,
+      county_child,
+      mc.cores = min(length(config$counties), get_core_count(config)),
+      mc.preschedule = FALSE
+    )
+    names(children) <- as.character(config$counties)
+
+    staged_active <- !is.null(solver_state_env) &&
+      solver_flag(config, "use_staged_solver_tolerances", TRUE)
+    switch_norm <- solver_value(config, "staged_tolerance_switch_norm", 1e-3)
+    coarse_branch <- function(norm) is.finite(norm) && norm > switch_norm
+
+    expected_norm <- pre_norm
+    forked_call_delta <- 0L
+    last_rng <- NULL
+
+    for (cnty in config$counties) {
+      cnty_key <- as.character(cnty)
+      child <- children[[cnty_key]]
+      child_ok <- is.list(child) && !inherits(child$out, "pso_county_child_error")
+      handoff_ok <- !staged_active ||
+        identical(coarse_branch(expected_norm), coarse_branch(pre_norm))
+
+      if (child_ok && handoff_ok) {
+        for (msg in child$warnings) warning(msg, call. = FALSE)
+        county_out <- child$out
+        if (is.null(county_out)) next
+        full_par[county_out$par_idx] <- county_out$result$par
+        county_results[[county_out$cnty_key]] <- county_out$result
+        if (!is.null(solver_state_env) && !is.null(child$state)) {
+          import_solver_state_entries(solver_state_env, child$state,
+                                      key_prefix = paste0(cnty_key, "|"))
+          forked_call_delta <- forked_call_delta +
+            (child$state$n_objective_calls - pre_calls)
+          expected_norm <- child$state$last_moment_norm
+        }
+        if (!is.null(child$rng)) last_rng <- child$rng
+      } else {
+        if (!child_ok) {
+          message("[pso county-parallel] child for county ", cnty_key,
+                  " failed (",
+                  if (is.list(child)) child$out$message else "worker process died",
+                  "); re-running this county in-process.")
+        } else {
+          message("[pso county-parallel] staged-tolerance handoff for county ",
+                  cnty_key, " differs from serial order; re-running this ",
+                  "county in-process for bit-identical results.")
+        }
+        if (!is.null(solver_state_env)) {
+          solver_state_env$last_moment_norm <- expected_norm
+        }
+        county_out <- solve_pso_county(cnty, full_par)
+        if (is.null(county_out)) next
+        last_rng <- NULL
+        full_par[county_out$par_idx] <- county_out$result$par
+        county_results[[county_out$cnty_key]] <- county_out$result
+        if (!is.null(solver_state_env)) {
+          expected_norm <- solver_state_env$last_moment_norm
+        }
+      }
+    }
+
+    ## Leave the parent process exactly as the sequential loop would have:
+    ## warm-start cache entries were merged per county above; the norm is the
+    ## last-run county's final norm; the RNG state is the last forked county's
+    ## final state (a NULL last_rng means the last county ran in-process, so
+    ## the parent RNG already advanced serially).
+    if (!is.null(solver_state_env)) {
+      solver_state_env$last_moment_norm <- expected_norm
+      solver_state_env$n_objective_calls <-
+        solver_state_env$n_objective_calls + forked_call_delta
+    }
+    if (!is.null(last_rng)) {
+      assign(".Random.seed", last_rng, envir = globalenv())
+    }
   }
 
   final_moments <- weighted_col_means(objective_gmm(

@@ -612,17 +612,36 @@ assemble_triangular_mt_vcov(psi_b, s2, s3,
 
 ## 9.7 Current FOC / diagnostics snapshot
 
-From the shipped object and the current end-to-end reproduction run (both single-thread,
-tight tolerances):
+**Snapshot date: 2026-07-14, post-relabel point estimates** (`06_parameters.rds` from the
+worker-type relabel re-run, commit `69281bd`; FOC norms from the `07_vcov.R` base moment
+evaluation, run `58869073`, single-thread, tight tolerances). **Status:** these are the FOC
+norms at the current point estimates; the Murphy-Topel vcov itself has **not** been
+recomputed post-relabel --- run `58869073` was cancelled during the Jacobian pass, so the
+shipped `results/data/07_murphy_topel_vcov.rds` (2026-07-03) is a **stale, pre-relabel**
+object and must be regenerated before the SEs are quoted. The `07_first_stage_vcov.rds`
+demand block (2026-07-14) is current.
 
-- $\lVert\overline{g_2}\rVert = 3.05\times10^{-5}$ (the wage moment floor --- the wage
-  solver exits at a basin floor, not exactly zero, as caveat 2 anticipates).
-- $\max|\overline{g_3}| = 1.393$; **no price coordinates bind** their lower bound, so
-  the full $p$ block is retained and $K_{\text{total}} = 111+12+120 = 243$.
-- Beta block reproduces the analytical stage-1 vcov to `beta_block_rel_dev`
-  $\approx 3.2\times10^{-14}$ (after the known adjustment-ratio rescaling).
-- Nonzero raw price moments are expected here even with nothing binding: the price KKT
-  gradient on the free coordinates is reported alongside `max|mean g3|` for context.
+- $\lVert\overline{g_2}\rVert = 0.0359$ (the wage moment floor --- the wage solver exits at
+  a basin floor, not exactly zero, as caveat 2 anticipates; this floor is looser than the
+  pre-relabel $3.05\times10^{-5}$, consistent with the current point estimates not clearing
+  every county's wage block to machine zero).
+- $\max|\overline{g_3}| = 1.393 \to 6.116$; **four price coordinates now bind** their lower
+  bound and are excluded from the $p$ block (NA SE):
+  `avg_labor:factor(county)17031:factor(quarter_year)2018.1`,
+  `...36061:...2018.1`, `...36061:...2018.2`, `...17031:...2018.3`. The retained $p$ block
+  is therefore $120-4 = 116$ and $K_{\text{total}} = 111+12+116 = 239$ (down from $243$ when
+  nothing bound pre-relabel).
+- The beta-block cross-check against the analytical stage-1 vcov (`beta_block_rel_dev`) is
+  computed during MT assembly and is **pending** the completed post-relabel Jacobian run.
+- Nonzero raw price moments are expected once a bound binds: the price KKT gradient on the
+  free coordinates is reported alongside `max|mean g3|` for context (here max $|\cdot| =
+  78.31$ on the free coords vs raw $\max|\overline{g_3}| = 6.116$).
+
+**Default SE sources (current pipeline):** the structural (wage/price) SEs consumed by
+`08_display_estimates.R` default to the **Murphy-Topel sandwich** (`JMP_STRUCTURAL_SE_SOURCE`
+unset $\Rightarrow$ `murphy_topel`, config.R); the legacy Petrin-Train across-rep draws
+(`=draws`) are retained only as a fallback. The demand block defaults to the analytical
+clustered 2SLS vcov from `07_vcov.R` (`07_first_stage_vcov.rds`).
 
 *These are diagnostic FOC norms, not SEs; they document how close the point estimates
 sit to the exact estimating-equation zeros and confirm the assumptions behind the
