@@ -176,11 +176,12 @@ if (file.exists(first_stage_path)) {
           "analytical first-stage SEs.")
 }
 
-## Structural-SE source switch (JMP_STRUCTURAL_SE_SOURCE): "draws" (default)
-## keeps the across-rep SD from the Petrin-Train replications; "murphy_topel"
-## replaces the second-stage SEs with the analytical two-step sandwich from
-## 07c_murphy_topel.R (docs/murphy_topel_proposal.md). Price coordinates that
-## bind their lower bound have NA Murphy-Topel SEs and keep the draw-based SD.
+## Structural-SE source switch (JMP_STRUCTURAL_SE_SOURCE): "murphy_topel"
+## (default) replaces the second-stage SEs with the analytical two-step
+## sandwich from 07c_murphy_topel.R (docs/murphy_topel_proposal.md); "draws"
+## (legacy) keeps the across-rep SD from the retired Petrin-Train replications.
+## Price coordinates that bind their lower bound have NA Murphy-Topel SEs and
+## keep the draw-based SD.
 if (identical(CONFIG$structural_se_source, "murphy_topel")) {
   mt_path <- file.path("results", "data", "07_murphy_topel_vcov.rds")
   if (!file.exists(mt_path)) {
