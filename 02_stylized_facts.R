@@ -287,6 +287,11 @@ full_unsmoothed<-unique(full_unsmoothed[,.SD, .SDcols=c(colnames(full_unsmoothed
 # histories do not survive through the merge when the task panel has been cleaned.
 firm_quarter<-merge(full_unsmoothed, firm_quarter, by=c("location_id", "quarter_year"))
 
+## exclude partial quarters (see CONFIG$excluded_quarters_analysis) BEFORE any
+## standard deviations are computed. Otherwise the std_* variables below are
+## scaled by an sd that still contains the partial quarter, which distorts the
+## units of every standardized output once that quarter is dropped.
+firm_quarter <- firm_quarter[!quarter_year %in% CONFIG$excluded_quarters_analysis, ]
 
 firm_quarter[, std_sindex:=s_index/sd(s_index, na.rm=TRUE)]
 firm_quarter[, std_uniq_desc:=uniq_desc/sd(uniq_desc, na.rm=TRUE)]
@@ -366,9 +371,6 @@ firm_quarter<-merge(firm_quarter, product_data, by=c("quarter_year", "location_i
 firm_quarter[, has_productdata:=!is.na(uniq_products) & uniq_products>0,]
 firm_quarter[, std_uniq_discounts:=uniq_discounts/sd(uniq_discounts, na.rm=TRUE)]
 firm_quarter[, std_multi_rate:=multi_rate/sd(multi_rate, na.rm=TRUE)]
-
-## exclude partial quarters (see CONFIG$excluded_quarters_analysis)
-firm_quarter <- firm_quarter[!quarter_year %in% CONFIG$excluded_quarters_analysis, ]
 
 saveRDS(firm_quarter, "results/data/02_stylized_facts_data.rds")
 
