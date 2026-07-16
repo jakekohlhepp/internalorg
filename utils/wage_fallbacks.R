@@ -466,15 +466,25 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
     if (!any_improvement || repso_iter > l4_max_iter) break
 
     ## Layer 4: re-PSO from the improved warm start. Pass the updated
-    ## full_par as the new wage start; everything else identical.
+    ## full_par as the new wage start; everything else identical. In pso mode
+    ## the optional polish-only variant skips the deterministic re-swarm
+    ## (identical seed => identical trajectory) and re-polishes from the
+    ## improved seed only; see config.R wage_fallback_repso_polish_only.
     if (repso_iter <= l4_max_iter) {
+      l4_config <- config
+      l4_polish_only <- solver_flag(config, "wage_fallback_repso_polish_only", FALSE) &&
+        identical(tolower(solver_value(config, "wage_optimizer_mode", "nleqslv")), "pso")
+      if (l4_polish_only) {
+        l4_config$pso_skip_swarm <- TRUE
+      }
       wage_fallback_log(sprintf(
-        "L4 round %d: re-running wage solver from improved warm start.",
-        repso_iter), config)
+        "L4 round %d: re-running wage solver from improved warm start%s.",
+        repso_iter,
+        if (l4_polish_only) " (polish-only, swarm skipped)" else ""), config)
       tryCatch({
         new_result <- estimate_wage_parameters_dispatch(
           start = full_par, x = x, beta = beta, beta_2_subset = beta_2_subset,
-          config = config, clust = clust, solver_state = solver_state,
+          config = l4_config, clust = clust, solver_state = solver_state,
           moment_weights = moment_weights
         )
         full_par <- new_result$par
@@ -527,14 +537,11 @@ estimate_wage_parameters_with_joint_multistart <- function(start, x, beta,
   inner_config <- config
   inner_config$wage_fallback_joint_multistart_k <- 0L
 
-  best <- NULL
-  best_val <- Inf
-  for (k in seq_len(K)) {
-    wage_fallback_log(sprintf("L5 start %d/%d.", k, K), config)
+  run_start <- function(k, cfg = inner_config) {
     res <- tryCatch(
       estimate_wage_parameters_dispatch(
         start = starts[[k]], x = x, beta = beta, beta_2_subset = beta_2_subset,
-        config = inner_config, clust = clust, solver_state = solver_state,
+        config = cfg, clust = clust, solver_state = solver_state,
         moment_weights = moment_weights
       ),
       error = function(e) {
@@ -543,14 +550,104 @@ estimate_wage_parameters_with_joint_multistart <- function(start, x, beta,
         NULL
       }
     )
-    if (is.null(res)) next
-    res <- apply_wage_fallback_layers(res, x, beta, beta_2_subset, inner_config,
-                                      clust, solver_state, moment_weights)
-    val <- if (is.numeric(res$objective)) res$objective else
-           if (is.numeric(res$value))     res$value     else Inf
-    if (is.finite(val) && val < best_val) {
-      best_val <- val
-      best <- res
+    if (is.null(res)) return(NULL)
+    apply_wage_fallback_layers(res, x, beta, beta_2_subset, cfg,
+                               clust, solver_state, moment_weights)
+  }
+
+  ## Parallel path: each start is a pure function of its start vector -- the
+  ## dispatcher resets the global solver cache on entry and every RNG consumer
+  ## (per-county PSO seeds, L3 multistart seeds) reseeds deterministically --
+  ## so K forked starts reproduce the sequential loop bit-for-bit. Gated on
+  ## is.null(solver_state): a caller-supplied live state is NOT reset by the
+  ## dispatcher, which couples consecutive starts and forces the serial loop.
+  l5_parallel <- solver_flag(config, "wage_fallback_joint_multistart_parallel", FALSE) &&
+    !identical(get_os(), "windows") &&
+    solver_flag(config, "pl_on", TRUE) &&
+    K > 1L &&
+    get_core_count(config) > 1L &&
+    is.null(solver_state)
+
+  best <- NULL
+  best_val <- Inf
+  if (!l5_parallel) {
+    for (k in seq_len(K)) {
+      wage_fallback_log(sprintf("L5 start %d/%d.", k, K), config)
+      res <- run_start(k)
+      if (is.null(res)) next
+      val <- if (is.numeric(res$objective)) res$objective else
+             if (is.numeric(res$value))     res$value     else Inf
+      if (is.finite(val) && val < best_val) {
+        best_val <- val
+        best <- res
+      }
+    }
+  } else {
+    n_forks <- min(K, get_core_count(config))
+    wage_fallback_log(sprintf(
+      "L5 running %d starts in parallel forks (%d at a time).", K, n_forks), config)
+
+    l5_child <- function(k) {
+      warn_msgs <- character(0)
+      cfg_child <- inner_config
+      cfg_child$core_count <- max(1L, get_core_count(config) %/% n_forks)
+      wage_fallback_log(sprintf("L5 start %d/%d.", k, K), config)
+      res <- withCallingHandlers(
+        run_start(k, cfg_child),
+        warning = function(w) {
+          warn_msgs <<- c(warn_msgs, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      )
+      list(
+        res = res,
+        state = export_solver_state(get_default_solver_state()),
+        rng = if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+          get(".Random.seed", envir = globalenv(), inherits = FALSE)
+        } else {
+          NULL
+        },
+        warnings = warn_msgs
+      )
+    }
+
+    children <- parallel::mclapply(seq_len(K), l5_child,
+                                   mc.cores = n_forks, mc.preschedule = FALSE)
+
+    for (k in seq_len(K)) {
+      ch <- children[[k]]
+      if (!is.list(ch)) {
+        wage_fallback_log(sprintf(
+          "L5 start %d/%d fork failed; re-running in-process.", k, K), config)
+        res <- run_start(k)
+      } else {
+        for (msg in ch$warnings) warning(msg, call. = FALSE)
+        res <- ch$res
+      }
+      if (is.null(res)) next
+      val <- if (is.numeric(res$objective)) res$objective else
+             if (is.numeric(res$value))     res$value     else Inf
+      if (is.finite(val) && val < best_val) {
+        best_val <- val
+        best <- res
+      }
+    }
+
+    ## Restore the parent-process side effects a serial loop would have left:
+    ## the global solver cache and RNG state of start K (the price stage
+    ## consumes the cache as warm starts via get_gammas()). If start K's fork
+    ## failed, its in-process re-run above already left both in place.
+    last_child <- children[[K]]
+    if (is.list(last_child)) {
+      if (solver_flag(config, "use_solver_warm_starts", TRUE)) {
+        state <- get_default_solver_state(reset = TRUE)
+        import_solver_state_entries(state, last_child$state)
+        state$last_moment_norm <- last_child$state$last_moment_norm
+        state$n_objective_calls <- last_child$state$n_objective_calls
+      }
+      if (!is.null(last_child$rng)) {
+        assign(".Random.seed", last_child$rng, envir = globalenv())
+      }
     }
   }
 

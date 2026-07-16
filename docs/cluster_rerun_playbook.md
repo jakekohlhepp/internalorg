@@ -69,8 +69,8 @@ row of `sacct` (it is absent on the `-X` summary row).
 |---|---|---|---|---|---|
 | `p04` | `04_estimation_sample.R` | 1 | 8g | 20m | 5.3 s, 0.20 GB (measured; never on Slurm) |
 | `p05` | `05_iv_spec_comparison.R` | 1 | 8g | 20m | 10.7 s, 0.24 GB; serial `ivreg`/`lm` |
-| `p06` | `06_estimation.R` | 8 | 24g | 2d | 57566182 = 14:41:33, MaxRSS 1.92 GB (family peak 2.11 GB) |
-| `p06b` | `06b_estimation_monotone.R` | 8 | 24g | 2d | 57566183 = 04:11:21, MaxRSS 2.33 GB |
+| `p06` | `06_estimation.R` | 8 | 24g | 2d | 57566182 = 14:41:33, MaxRSS 1.92 GB (family peak 2.11 GB). Since the 2026-07 county-parallel PSO + parallel-L5 changes (bit-identical, on by default; docs/structural_solver_speedups.md), the wage stage forks 3 county solves (x K with `JMP_WAGE_FB_L5_K>1`): request **24 CPUs** (mem unchanged; forks are copy-on-write) to realize the ~3x wall-clock cut |
+| `p06b` | `06b_estimation_monotone.R` | 8 | 24g | 2d | 57566183 = 04:11:21, MaxRSS 2.33 GB. Same county-parallel note as `p06` |
 | `p06c` | `06c_wage_identification.R` | 8 | 16g | 2d | 8c: 18 m–1:58. A 4-core attempt (58314149) **TIMED OUT at 4 h** |
 | `p07` | `07_vcov.R` | 12 | 16g | 2d | 57652896 = 02:55:35, MaxRSS 3.18 GB, 9.63 effective cores |
 | `p08` | `08_display_estimates.R` | 4 | 8g | 1h | 57669512 = 07:45, 2.24 effective cores |

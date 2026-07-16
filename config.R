@@ -250,6 +250,17 @@ CONFIG <- list(
   pso_polish_method = Sys.getenv("JMP_PSO_POLISH_METHOD", unset = "Nelder-Mead"),
   pso_seed_offset = as.integer(Sys.getenv("JMP_PSO_SEED_OFFSET", unset = "0")),
   min_optim_trace = as.integer(Sys.getenv("JMP_MIN_OPTIM_TRACE", unset = "0")),
+  ## Run the per-county PSO solves in parallel forks (Linux only). Counties are
+  ## exactly separable (build_cost_matrix() selects parameters by county
+  ## pattern; each county's RNG is reseeded from its own pso_seed), so results
+  ## are bit-identical to the sequential loop. The one sequential coupling --
+  ## the staged-tolerance coarse/fine decision at each county's first
+  ## objective call, which depends on the previous county's final moment norm
+  ## -- is checked after the forks return, and any county whose decision would
+  ## have differed is transparently re-run in-process with the exact serial
+  ## incoming state (see estimate_wage_parameters_pso).
+  wage_pso_county_parallel = tolower(Sys.getenv("JMP_WAGE_PSO_COUNTY_PARALLEL", unset = "true")) %in%
+    c("true", "1", "yes"),
 
   ## ---------------------------------------------------------------------------
   ## Wage-stage layered fallbacks. Wrap the per-mode wage solver above with up
@@ -299,6 +310,17 @@ CONFIG <- list(
   ## more than repso_min_improvement (relative).
   wage_fallback_repso_max_iter = as.integer(Sys.getenv("JMP_WAGE_FB_L4_MAX_ITER", unset = "2")),
   wage_fallback_repso_min_improvement = as.numeric(Sys.getenv("JMP_WAGE_FB_L4_MIN_IMPROVEMENT", unset = "0.01")),
+  ## L4 polish-only (pso mode, opt-in): a full L4 re-dispatch re-runs the
+  ## cold-start swarm with the SAME per-county RNG seed, so the swarm and its
+  ## polish reproduce round 1's results (verified in p06_58869070.out); the
+  ## only new information is the polish from the L1/L3-improved seed. When
+  ## TRUE, L4 rounds skip the swarm and polish only from the improved seed
+  ## (+ the bounded L-BFGS-B pass). NOT bit-identical to a full re-dispatch:
+  ## the polish then starts from a different warm-gamma cache history, so
+  ## final wages can differ in low-order digits. Leave FALSE for replication
+  ## runs; enable to roughly halve L4 cost.
+  wage_fallback_repso_polish_only = tolower(Sys.getenv("JMP_WAGE_FB_L4_POLISH_ONLY", unset = "false")) %in%
+    c("true", "t", "1", "yes", "y"),
 
   ## Layer 5: joint multistart. Run the entire wage solver (with layers 1-4)
   ## K times from K perturbed joint starts, keep the run with the lowest
@@ -306,6 +328,16 @@ CONFIG <- list(
   ## Set JMP_WAGE_FB_L5_K=4 (or similar) to enable for ship-time runs.
   wage_fallback_joint_multistart_k = as.integer(Sys.getenv("JMP_WAGE_FB_L5_K", unset = "0")),
   wage_fallback_joint_multistart_jitter = as.numeric(Sys.getenv("JMP_WAGE_FB_L5_JITTER", unset = "0.1")),
+  ## Run the K joint-multistart solves in parallel forks (Linux only). Each
+  ## start is a pure function of its start vector: the dispatcher resets the
+  ## global solver cache on entry and all RNG consumers reseed
+  ## deterministically, so results are bit-identical to the sequential loop.
+  ## The parent re-installs start K's final solver cache and RNG state so the
+  ## downstream price stage sees exactly what a serial run would have left.
+  ## Only takes effect when solver_state is NULL (the 06 path); a caller-
+  ## supplied solver_state couples the starts and forces the serial loop.
+  wage_fallback_joint_multistart_parallel = tolower(Sys.getenv("JMP_WAGE_FB_L5_PARALLEL", unset = "true")) %in%
+    c("true", "1", "yes"),
 
   ## Checkpoint path for the L1/L3/L4 joint wage vector. Defaults (when unset)
   ## to <prep_output_dir>/06_wage_fb_checkpoint.rds inside
