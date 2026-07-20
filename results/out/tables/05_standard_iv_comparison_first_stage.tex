@@ -7,23 +7,23 @@
  & County$\times$quarter; omit & Quarter only; omit & County$\times$quarter; omit & Quarter only; omit \\
 \hline \\[-1.8ex]
 Fixed effects & County$\times$quarter; omit & Quarter FE & County$\times$quarter; omit & Quarter FE \\
-Price on Hausman (Cook) & 0.0776*** & 0.0445*** &  &  \\
- & (0.0172) & (0.0086) &  &  \\
-Price on Hausman (New York) & 0.0359 & 0.0491 &  &  \\
- & (0.0314) & (0.0283) &  &  \\
-Price on Hausman (Los Angeles) & 0.1762** & 0.1634** &  &  \\
- & (0.0557) & (0.0524) &  &  \\
-Price on Dye (Cook) &  &  & 0.3114* & 0.1509 \\
- &  &  & (0.1345) & (0.1011) \\
-Price on Dye (New York) &  &  & 0.2916 & 0.2535* \\
- &  &  & (0.2752) & (0.1259) \\
-Price on Dye (Los Angeles) &  &  & 0.7203** & 0.6324*** \\
- &  &  & (0.2200) & (0.1765) \\
-Weak-IV F Price (Cook) & 39.81 & 38.65 & 9.91 & 9.23 \\
-Weak-IV F Price (New York) & 2.65 & 7.67 & 2.67 & 7.18 \\
-Weak-IV F Price (Los Angeles) & 22.67 & 23.06 & 21.53 & 22.86 \\
-Observations & 468 & 468 & 468 & 468 \\
+Price on Hausman (Cook) & 0.1095*** & 0.0554*** &  &  \\
+ & (0.0287) & (0.0142) &  &  \\
+Price on Hausman (New York) & 0.0515* & 0.0524* &  &  \\
+ & (0.0231) & (0.0216) &  &  \\
+Price on Hausman (Los Angeles) & 0.1089* & 0.0996* &  &  \\
+ & (0.0505) & (0.0476) &  &  \\
+Price on Dye (Cook) &  &  & 0.1574 & 0.0518 \\
+ &  &  & (0.1185) & (0.1084) \\
+Price on Dye (New York) &  &  & 0.3616 & 0.2123* \\
+ &  &  & (0.1976) & (0.1023) \\
+Price on Dye (Los Angeles) &  &  & 0.5380** & 0.4682** \\
+ &  &  & (0.1989) & (0.1688) \\
+Weak-IV F Price (Cook) & 51.45 & 33.38 & 2.98 & 1.28 \\
+Weak-IV F Price (New York) & 7.95 & 13.37 & 5.47 & 6.59 \\
+Weak-IV F Price (Los Angeles) & 10.19 & 10.30 & 13.90 & 13.39 \\
+Observations & 472 & 472 & 472 & 472 \\
 \hline \\[-1.8ex]
-\multicolumn{5}{p{0.92\linewidth}}{\footnotesize Notes: Fully standardized first-stage OLS coefficients on county-specific instruments: each cell reports $\widehat{\beta}_{c,z}\times\widehat{\mathrm{SD}}_c(z)/\widehat{\mathrm{SD}}_c(\text{cust\_price})$, the within-county standard-deviation change in \texttt{cust\_price} (county $c$) associated with a one-within-county-SD increase in the underlying instrument $z$. Standard errors are rescaled by the same constant, so $t$-statistics and stars are unchanged. Within-county SDs used for the rescaling: 17031: SD(Price)=182.805, SD(Hausman)=17.879, SD(Dye)=18.914; 36061: SD(Price)=129.637, SD(Hausman)=10.883, SD(Dye)=18.836; 6037: SD(Price)=136.002, SD(Hausman)=27.842, SD(Dye)=19.958. Location-level clustered standard errors in parentheses, for the same specifications reported in Table \ref{tab:standard_iv_comparison}. Each column regresses the endogenous county-specific \texttt{cust\_price} column on all exogenous controls plus the excluded instrument(s) for that column. Blank cells indicate that the instrument is not included in the column's specification. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows reproduce the diagnostics from \texttt{summary(ivreg, diagnostics = TRUE)}.}\\
+\multicolumn{5}{p{0.92\linewidth}}{\footnotesize Notes: Fully standardized first-stage OLS coefficients on county-specific instruments: each cell reports $\widehat{\beta}_{c,z}\times\widehat{\mathrm{SD}}_c(z)/\widehat{\mathrm{SD}}_c(\text{cust\_price})$, the within-county standard-deviation change in \texttt{cust\_price} (county $c$) associated with a one-within-county-SD increase in the underlying instrument $z$. Standard errors are rescaled by the same constant, so $t$-statistics and stars are unchanged. Within-county SDs used for the rescaling: 17031: SD(Price)=182.805, SD(Hausman)=18.515, SD(Dye)=18.914; 36061: SD(Price)=128.893, SD(Hausman)=10.936, SD(Dye)=18.602; 6037: SD(Price)=136.002, SD(Hausman)=26.892, SD(Dye)=19.958. Location-level clustered standard errors in parentheses, for the same specifications reported in Table \ref{tab:standard_iv_comparison}. Each column regresses the endogenous county-specific \texttt{cust\_price} column on all exogenous controls plus the excluded instrument(s) for that column. Blank cells indicate that the instrument is not included in the column's specification. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$. Weak-IV F rows reproduce the diagnostics from \texttt{summary(ivreg, diagnostics = TRUE)}.}\\
 \end{tabular}
 \end{table}
