@@ -1145,20 +1145,10 @@ estimate_wage_parameters_by_county <- function(start, x, beta, beta_2_subset, co
   )
 }
 
-#' Per-county wage solver that minimizes the bound-guarded ssq via optim
-#' Nelder-Mead with parameter scaling.
+#' Per-county Nelder-Mead wage solver for the bound-guarded moment SSR.
 #'
-#' Use case: when the per-county wage moment system has flat or saturated
-#' regions (e.g. LA where worker 3 gets priced out), nleqslv (a root-finder)
-#' stalls with termcd = 6 and returns extreme parameter values trying to
-#' satisfy the moment equations one-by-one. A minimizer on ||g||^2 sees a
-#' useful descent direction even at non-zero floors and finds clean
-#' interior solutions. Empirically (tests/wage_stage_minimizer_check.R) the
-#' LA wage block goes from ssq = 0.147 with extreme wages under nleqslv to
-#' ssq = 0.002 with sensible wages (all under 200) under this routine.
-#'
-#' Parscale defaults assume the wage parameters are O(50). Tune via
-#' ``min_optim_parscale_wage`` config entry if your scale differs.
+#' Useful when a root does not exist or the moment surface is locally flat.
+#' Tune parameter scaling with ``min_optim_parscale_wage``.
 estimate_wage_parameters_min_optim <- function(start, x, beta, beta_2_subset,
                                                config = CONFIG, clust = NULL,
                                                solver_state = NULL,
@@ -1553,22 +1543,11 @@ pso_solve <- function(fn, lower, upper, seed_particle,
   list(par = gbest, value = fgbest, n_iter = n_iter, n_particles = n_particles)
 }
 
-#' Per-county particle-swarm wage solver with NM polish.
+#' Per-county particle-swarm wage solver with local polish.
 #'
-#' Use case: when the per-county wage moment surface has multiple basins
-#' that local Nelder-Mead (even with multi-start) cannot escape. Empirical
-#' case in this project: NYC has a wide plateau at ssq ~0.025 near all-large-
-#' negative wages that NM dead-ends in; PSO with a wide search box finds a
-#' basin at ssq ~0.001 with a manuscript-like sign pattern.
-#'
-#' For each county the swarm initialises with all particles drawn uniformly
-#' in [-pso_search_halfwidth, +pso_search_halfwidth]^d (cold start; no
-#' particle pinned at the seed -- anchoring at a poor seed collapses the
-#' swarm to that basin), runs n_iter velocity updates, then runs the
-#' configured optim polisher (default Nelder-Mead) twice: once from the PSO
-#' global best, once from the seed start. The county solution is the lowest
-#' of (raw PSO, polish-from-PSO, polish-from-seed). The strict-exit guard
-#' (obj_tol) fires the same way as in min_optim mode.
+#' The cold swarm does not pin a particle at the seed. The configured optimizer
+#' polishes both the swarm best and supplied seed; the lowest objective is
+#' retained and checked against the local-minimizer convergence gate.
 estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
                                          config = CONFIG, clust = NULL,
                                          solver_state = NULL,
@@ -1728,11 +1707,8 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     }
     set.seed(pso_seed)
     if (solver_flag(cfg_obj, "pso_skip_swarm", FALSE)) {
-      ## L4 polish-only re-solve (wage_fallback_repso_polish_only): the cold
-      ## swarm is deterministic given pso_seed, so re-running it reproduces
-      ## the previous round bit-for-bit; only the polish from the improved
-      ## seed start below adds information. Inf-valued placeholders keep the
-      ## candidate bookkeeping and convergence gates on their existing paths.
+      ## Skip the deterministic repeated swarm and polish only the improved seed.
+      ## Infinite placeholders preserve the candidate-selection path.
       message(sprintf(
         "PSO county %s: swarm skipped (pso_skip_swarm); polishing from seed start only.",
         cnty
@@ -1745,11 +1721,8 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       "PSO county %s: %d particles x %d iter, search box +/- %g, cold start, rng seed %d.",
       cnty, n_particles, n_iter, halfwidth, pso_seed
     ))
-    ## Cold PSO: do not anchor any particle at the seed. Anchoring at a
-    ## bad-basin seed (as NYC's was previously) collapses the swarm to that
-    ## basin and prevents discovery of better basins elsewhere. Independent
-    ## NM polishes from both the PSO best and the seed below ensure the
-    ## seed's solution is never *worsened* by switching to PSO mode.
+    ## Keep the cold swarm independent of the seed, then polish both so the
+    ## seed remains an explicit candidate.
     pso_res <- pso_solve(objective_county_ssq, lower, upper,
                          seed_particle = NULL,
                          n_particles = n_particles, n_iter = n_iter,
@@ -1925,16 +1898,8 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
       county_results[[county_out$cnty_key]] <- county_out$result
     }
   } else {
-    ## Fork one child per county. Bit-identity with the sequential loop rests
-    ## on: (i) exact county separability of the objective; (ii) per-county RNG
-    ## reseeding (set.seed(pso_seed) above); (iii) warm-start cache keys being
-    ## county-prefixed, so the children's cache writes are disjoint; (iv) the
-    ## staged-tolerance handoff check below. The only cross-county coupling in
-    ## the sequential loop is get_solver_tolerances()' coarse/fine branch at a
-    ## county's FIRST objective call, which reads the previous county's final
-    ## moment norm; children fork before any county runs and therefore see the
-    ## pre-loop norm. Whenever the branch these two norms select differs, the
-    ## county is re-run in-process with the exact serial incoming state.
+    ## Fork by county with independent RNG seeds and cache keys. Re-run serially
+    ## if staged-tolerance state selects a different branch.
     solver_state_env <- if (solver_flag(config, "use_solver_warm_starts", TRUE)) {
       get_default_solver_state()
     } else {
@@ -1943,15 +1908,8 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     pre_norm <- if (!is.null(solver_state_env)) solver_state_env$last_moment_norm else Inf
     pre_calls <- if (!is.null(solver_state_env)) solver_state_env$n_objective_calls else 0L
 
-    ## Cores per child proportional to the county's row count, not an even
-    ## split: the stage's wall time is bounded by the slowest county, each
-    ## county's per-evaluation cost scales with its own rows, and the counties
-    ## are badly imbalanced (LA holds ~55% of the estimation sample, Cook 15%),
-    ## so an even split leaves most of the allocation idle once the small
-    ## counties finish. Job 59321331: 16 of 24 cores sat idle for hours while
-    ## LA ground on alone with 8. Scheduling-only -- worker counts never enter
-    ## the numerics (inner jobs are built before dispatch and results written
-    ## back in job order), so results are unchanged to the bit.
+    ## Allocate child cores by county row count. Scheduling does not affect
+    ## numerical inputs or result order.
     county_row_n <- vapply(as.character(config$counties),
                            function(cn) sum(as.character(data$county) == cn),
                            numeric(1))
@@ -2345,28 +2303,12 @@ estimate_wage_parameters_nleqslv <- function(start, x, beta, beta_2_subset,
 #' Estimate wage parameters with the configured outer solver.
 #'
 #' Modes:
-#'   - "nleqslv" (Broyden + double dogleg root-finder; the default kept for
-#'     backwards compatibility).
-#'   - "min_optim" (per-county optim Nelder-Mead minimizer on ||g||^2 with
-#'     parameter scaling). Recommended when the moment system has flat or
-#'     saturated regions where a root-finder gets stuck. See
-#'     ``docs/la_wage_moment_floor.md`` for the empirical case.
-#'   - "min_optim_warm" (identical to "min_optim" -- per-county Nelder-Mead +
-#'     parameter scaling + degenerate-simplex restarts -- but WITHOUT the
-#'     per-county random multistart. Each county does a single solve
-#'     warm-started from `start`. Intended for the bootstrap: every rep
-#'     already warm-starts from the 06 point estimate (the good basin), so a
-#'     single local solve tracks that basin under the rep's reweighting
-#'     instead of cold-searching for it as "pso" does -- avoiding the global
-#'     search that stalls/time-outs bootstrap reps. It will NOT escape to a
-#'     different basin, which is the intended behaviour for a warm-started
-#'     bootstrap (and the reason it is distinct from "min_optim").)
-#'   - "pso" (per-county vanilla particle swarm + NM polish on ||g||^2).
-#'     Use when the moment surface has multiple basins that local solvers
-#'     dead-end in. NYC's wage block at the manuscript-style basin is the
-#'     empirical case here.
-#'   - "county" (BBsolve per county; original paper-draft solver).
-#'   - "joint"  (BBsolve over the full wage vector; original paper-draft).
+#'   - "nleqslv": per-county root finding.
+#'   - "min_optim": per-county Nelder-Mead minimization with multistarts.
+#'   - "min_optim_warm": one warm-started local solve per county.
+#'   - "pso": per-county particle swarm followed by local polish.
+#'   - "county": BBsolve per county.
+#'   - "joint": BBsolve over the full wage vector.
 #' Per-mode wage-solver dispatcher. Picks the underlying solver based on
 #' `config$wage_optimizer_mode` and returns its result unchanged. The public
 #' entry point `estimate_wage_parameters()` (defined below) wraps this with
@@ -2392,12 +2334,8 @@ estimate_wage_parameters_dispatch <- function(start, x, beta, beta_2_subset,
     ))
   }
 
-  ## "min_optim" minus step-3 (per-county random multistart): a single
-  ## warm-started Nelder-Mead solve per county, keeping the parameter scaling
-  ## (incl. the NYC parscale override) and the degenerate-simplex restart.
-  ## Emptying `min_optim_n_multistarts_by_county` makes every county use
-  ## `n_multistarts = 1L` (the seed start only); parscale and restart settings
-  ## are untouched. See the dispatcher doc comment for the rationale.
+  ## Disable random multistarts while preserving parameter scaling and
+  ## degenerate-simplex restarts.
   if (identical(mode, "min_optim_warm")) {
     cfg <- config
     cfg$min_optim_n_multistarts_by_county <- list()

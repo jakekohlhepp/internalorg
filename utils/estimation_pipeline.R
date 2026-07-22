@@ -24,20 +24,9 @@ rank_aware_solve <- function(a, b, tolerance = sqrt(.Machine$double.eps),
   a <- as.matrix(a)
   b <- as.matrix(b)
 
-  ## Try a regular linear solve first. The previous SVD-only path applied the
-  ## LAPACK threshold ``max(dim) * max(SV) * tolerance`` directly to the raw
-  ## SVD, which assumes the columns share a common scale. In the demand-IV
-  ## crossproduct ``X'PzX`` they do NOT: county-quarter FE dummy crossproducts
-  ## have max SV ~ 2e7, while avg_labor x B_raw skill crossproducts sit in the
-  ## 1e-3 to 1e2 range, giving a condition number ~ 2e10. The naive threshold
-  ## then collapses to ~40 and silently dropped ~103 of 111 well-identified
-  ## directions, returning an SVD min-norm projection onto only the largest FE
-  ## dimensions. That was the root cause of the LA cost-matrix degeneracy:
-  ## worker-1 skill coefs were pinned near zero, making worker 1 the cheapest
-  ## at every task and the entropy bound = 0 for every LA salon. Falling back
-  ## to SVD only when ``solve()`` actually fails preserves the rank-aware
-  ## intent without paying the silent-truncation cost on full-rank but
-  ## ill-conditioned systems.
+  ## Prefer a direct solve for full-rank systems whose columns have very
+  ## different scales. Use the rank-aware SVD fallback only when the direct
+  ## solve fails or its residual is unacceptable.
   direct <- tryCatch(
     suppressWarnings(solve(a, b)),
     error = function(e) e
@@ -360,12 +349,8 @@ build_estimation_setup_rank_aware <- function(working_data, estim_matrix,
   e_mat <- model.matrix(build_E_formula(2:config$n_worker_types, include_s_index = TRUE),
                         data = e_match)
 
-  ## Identification guard: the excluded instrument(s) must retain residual
-  ## variation after partialling out the exogenous controls. If they lie in
-  ## the column span of the exog block, rank_aware_2sls would silently return
-  ## an SVD min-norm artifact rather than a meaningful 2SLS estimate. This is
-  ## the failure mode that produced the LA cost-matrix degeneracy (worker 1
-  ## cheapest everywhere) under the previously-saturated FE specification.
+  ## Excluded instruments must retain variation after partialling out the
+  ## exogenous controls; otherwise the 2SLS model is not identified.
   exog_cols <- intersect(colnames(mm_1), colnames(z_mm_1))
   excluded_inst_cols <- setdiff(colnames(z_mm_1), colnames(mm_1))
   if (length(excluded_inst_cols) > 0L && length(exog_cols) > 0L) {

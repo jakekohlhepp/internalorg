@@ -137,23 +137,12 @@ CONFIG <- list(
   # Bisection tolerance for gamma
   outertol = 1e-08,
 
-  # Outer optimization objective tolerance. Used as the strict-exit gate for
-  # every wage solver (nleqslv, min_optim, pso, BBsolve joint/county). 1e-06
-  # was unreachable on the rebuilt clustering data — even local optimizers
-  # that hit the basin bottom out at ssq ~5e-3. 0.01 reflects the empirical
-  # NYC floor of ~1.3e-3 plus a safety margin; counties with better-behaved
-  # moments still pass trivially because their seed start is already < 1e-7.
+  # Absolute objective threshold used by wage-solver convergence gates.
   obj_tol = 0.01,
 
-  # Wage-stage convergence gate. "obj_tol" (default): a county counts as
-  # converged only if its GMM objective reaches obj_tol (absolute). "reltol":
-  # a county counts as converged when its polish optimizer hit its own relative
-  # tolerance (convergence==0), regardless of the absolute objective level.
-  # The reltol gate is intended for BOOTSTRAP reps (set JMP_WAGE_CONVERGENCE_GATE=
-  # reltol), where filtering on the absolute obj_tol induces selection bias:
-  # resamples whose (e.g. LA) GMM floor sits above obj_tol are genuine local
-  # minima but get dropped as "non-converged". Estimation leaves this unset and
-  # keeps the absolute gate. Only changes the convergence FLAG, never the search.
+  # Wage-stage convergence flag: "obj_tol" requires the absolute GMM objective;
+  # "reltol" uses the polish optimizer's convergence status. This changes
+  # classification only, not the optimization path.
   wage_convergence_gate = tolower(Sys.getenv("JMP_WAGE_CONVERGENCE_GATE", unset = "obj_tol")),
 
   # The structural wage-parameter solve is expensive. 06_estimation.R runs the
@@ -186,11 +175,8 @@ CONFIG <- list(
   staged_tolerance_switch_norm = as.numeric(Sys.getenv("JMP_STAGED_TOLERANCE_SWITCH_NORM", unset = "1e-3")),
   use_rcpp_equilibrium = tolower(Sys.getenv("JMP_USE_RCPP_EQUILIBRIUM", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
-  ## Default "pso" since 2026-07-02: pso is the established full-run pattern
-  ## (Jun 12 + Jul 1 pipeline runs both overrode to pso via env), and the
-  ## wage interior penalty (default-on, see wage_interior_penalty_enabled)
-  ## only applies in the minimizer modes -- the nleqslv root-finding mode
-  ## ignores it. Set JMP_WAGE_OPTIMIZER_MODE=nleqslv to restore root-finding.
+  ## The interior-share penalty applies to minimizer modes; nleqslv is an
+  ## unpenalized root-finding alternative.
   wage_optimizer_mode = Sys.getenv("JMP_WAGE_OPTIMIZER_MODE", unset = "pso"),
   ## Skill-matrix monotonicity restriction. "none" leaves the demand-IV step
   ## unconstrained (matches 06_estimation.R). "workers_rows" imposes that each
@@ -208,11 +194,7 @@ CONFIG <- list(
   min_optim_maxit = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAXIT", unset = "5000")),
   min_optim_reltol = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RELTOL", unset = "1e-8")),
   min_optim_parscale_wage = as.numeric(Sys.getenv("JMP_MIN_OPTIM_PARSCALE_WAGE", unset = "20")),
-  ## Per-county parscale override (named list keyed by county code as a
-  ## character string). NYC (36061) wages live on an O(1000) scale, so the
-  ## default parscale_wage of 20 produces a tiny initial simplex relative to
-  ## the parameter magnitude and Nelder-Mead degenerates (code 10). A larger
-  ## parscale yields a simplex that actually explores the space.
+  ## Optional per-county Nelder-Mead scale overrides, keyed by county code.
   min_optim_parscale_wage_by_county = list(
     "36061" = as.numeric(Sys.getenv("JMP_MIN_OPTIM_PARSCALE_WAGE_36061", unset = "200"))
   ),
@@ -221,25 +203,13 @@ CONFIG <- list(
   ## up to min_optim_max_restarts times before raising the strict-exit error.
   min_optim_max_restarts = as.integer(Sys.getenv("JMP_MIN_OPTIM_MAX_RESTARTS", unset = "3")),
   min_optim_restart_jitter = as.numeric(Sys.getenv("JMP_MIN_OPTIM_RESTART_JITTER", unset = "0.05")),
-  ## Multi-start configuration. For counties listed in
-  ## min_optim_n_multistarts_by_county, draw n random starting vectors
-  ## uniformly in [-multistart_scale, +multistart_scale]^d (the seed start
-  ## from seeit_bb.rds is always included as the first start), run the full
-  ## NM-with-restart pipeline from each, and keep the best by final ssq.
-  ## NYC (36061) has a large local minimum at ssq=0.0248 that quasi-Newton
-  ## polishing cannot escape, so multi-start is the only way to find a
-  ## different basin. Default scale = 5 * parscale_w for the county.
+  ## Per-county multistart counts. The supplied seed is always included, and
+  ## the candidate with the lowest final objective is retained.
   min_optim_n_multistarts_by_county = list(
     "36061" = as.integer(Sys.getenv("JMP_MIN_OPTIM_N_MULTISTARTS_36061", unset = "5"))
   ),
   min_optim_multistart_scale_by_county = list(),
-  ## Settings for wage_optimizer_mode = "pso" (per-county particle swarm
-  ## with NM polish and the same strict-exit guard as min_optim). Use this
-  ## when the moment objective has multiple basins that the local NM solver
-  ## (even with multi-start) cannot reach. Empirical case: NYC's wage
-  ## block has a 0.0248 plateau near (-1000, -1000, -1000, -1000) that NM
-  ## cannot escape; PSO finds a 0.00128 basin near (-22, +498, +151, +1826)
-  ## that is qualitatively closer to the manuscript pattern.
+  ## Settings for per-county particle swarm search followed by NM polish.
   pso_n_particles = as.integer(Sys.getenv("JMP_PSO_N_PARTICLES", unset = "40")),
   pso_n_iter = as.integer(Sys.getenv("JMP_PSO_N_ITER", unset = "100")),
   pso_search_halfwidth = as.numeric(Sys.getenv("JMP_PSO_SEARCH_HALFWIDTH", unset = "2000")),
@@ -263,34 +233,14 @@ CONFIG <- list(
     c("true", "1", "yes"),
 
   ## ---------------------------------------------------------------------------
-  ## Wage-stage layered fallbacks. Wrap the per-mode wage solver above with up
-  ## to five graduated layers that hunt for deeper basins missed by PSO + the
-  ## existing coarse polish (CONFIG$obj_tol exit). Each layer is individually
-  ## gated; defaults are tuned so the cheap layers (1, 2) run on every solo
-  ## 06 invocation, the search layers (3, 4) only fire when layer 2 flags a
-  ## non-strict-min verdict, and the heaviest backstop (5) is opt-in via env.
-  ##
-  ## In bootstrap mode (config$bootstrap_iteration not NA) all layers are
-  ## skipped by default -- the bootstrap budget cannot afford the extra polish
-  ## per rep, and the inherited 06 warm start is already at the basin the
-  ## point estimate identifies.
+  ## Optional layered fallbacks for improving solutions left in weak basins.
+  ## Each layer is independently configurable; layer 5 is disabled by default.
   ## ---------------------------------------------------------------------------
 
-  ## Layer 0: converged-county short circuit. The ladder (L1 polish, L2
-  ## Hessian probe, L3 multistart) exists to rescue counties the wage solver
-  ## left at a bad point. A county whose slice ssq is already at machine-zero
-  ## has nothing to rescue: L1 cannot improve on it, L2 returns local_min, and
-  ## L3 is gated off by that verdict. Running the ladder anyway cost 59610108
-  ## its 2-day wall with all three counties already at 6.2e-16 / 5.5e-15 /
-  ## 5.0e-12. Skip any county whose slice ssq is below this tolerance; set to 0
-  ## to force the old always-run behaviour.
+  ## Layer 0: skip fallback work for county slices already below this objective.
   wage_fallback_converged_ssq_tol = as.numeric(Sys.getenv("JMP_WAGE_FB_CONVERGED_TOL", unset = "1e-8")),
 
-  ## Layer 1: per-county post-PSO polish at tight reltol. The existing PSO
-  ## path's polish exits at CONFIG$obj_tol (1e-2 production / 1e-4 bootstrap);
-  ## that's the tolerance smoke_06b_restart_basins.R found 06 was stopping at
-  ## above the LA basin floor (ssq=0.166 vs basin floor 0.001). Re-polishing
-  ## with reltol = 1e-4 walks past that gate.
+  ## Layer 1: per-county post-PSO polish with a tighter relative tolerance.
   wage_fallback_post_polish_enable = tolower(Sys.getenv("JMP_WAGE_FB_L1_ENABLE", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_fallback_post_polish_reltol = as.numeric(Sys.getenv("JMP_WAGE_FB_L1_RELTOL", unset = "1e-4")),
@@ -320,15 +270,9 @@ CONFIG <- list(
   ## more than repso_min_improvement (relative).
   wage_fallback_repso_max_iter = as.integer(Sys.getenv("JMP_WAGE_FB_L4_MAX_ITER", unset = "2")),
   wage_fallback_repso_min_improvement = as.numeric(Sys.getenv("JMP_WAGE_FB_L4_MIN_IMPROVEMENT", unset = "0.01")),
-  ## L4 polish-only (pso mode, opt-in): a full L4 re-dispatch re-runs the
-  ## cold-start swarm with the SAME per-county RNG seed, so the swarm and its
-  ## polish reproduce round 1's results (verified in p06_58869070.out); the
-  ## only new information is the polish from the L1/L3-improved seed. When
-  ## TRUE, L4 rounds skip the swarm and polish only from the improved seed
-  ## (+ the bounded L-BFGS-B pass). NOT bit-identical to a full re-dispatch:
-  ## the polish then starts from a different warm-gamma cache history, so
-  ## final wages can differ in low-order digits. Leave FALSE for replication
-  ## runs; enable to roughly halve L4 cost.
+  ## Optionally skip a repeated swarm and polish only from the improved seed.
+  ## This is faster but need not be bit-identical because solver cache state can
+  ## differ from a full re-dispatch.
   wage_fallback_repso_polish_only = tolower(Sys.getenv("JMP_WAGE_FB_L4_POLISH_ONLY", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
 
@@ -357,35 +301,17 @@ CONFIG <- list(
   ## falls through to that default, so normal runs are unchanged.
   wage_fallback_checkpoint_path = Sys.getenv("JMP_WAGE_FB_CHECKPOINT_PATH", unset = NA_character_),
 
-  ## Global gates.
-  ## Default changed 2026-05-26 from "true" to "false" so bootstrap reps run
-  ## the same L1-L4 fallback ladder 06 uses by default. Production array
-  ## 52396589 had 151/263 reps (57%) flagged wage_nonconverged with the gate
-  ## on; the strict tolerance gate also doesn't catch the NYC "wrong-basin"
-  ## failure mode the ladder is designed to escape. Set
-  ## JMP_WAGE_FB_SKIP_BOOTSTRAP=true to restore the old fast-path behavior.
+  ## Global fallback gates. Bootstrap runs use the same ladder unless explicitly
+  ## disabled for speed.
   wage_fallback_skip_in_bootstrap = tolower(Sys.getenv("JMP_WAGE_FB_SKIP_BOOTSTRAP", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_fallback_verbose = tolower(Sys.getenv("JMP_WAGE_FB_VERBOSE", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
 
-  ## Interior-share penalty for the wage stage (ON by default since 2026-07-02;
-  ## see docs/wage_interior_penalty_proposal.md). Adds to the wage minimizers'
-  ## objective a smooth hinge penalty
-  ##   weight * sum_{county c, type k>=2} max(0, log(min_share) - log(model_ck))^2
-  ## on the county-mean model worker shares, which is exactly zero whenever
-  ## every type keeps a model share of at least min_share and diverges like
-  ## log(share)^2 as a type's share -> 0. It enforces interiority ONLY: the
-  ## floor is an absolute share level, with no reference to the observed
-  ## shares (which enter solely to recover model shares from moment means).
-  ## Purpose: rule out the "priced-out plateau" solutions (Cook type-3 /
-  ## LA type-5, 2026-06) where a worker type's share hits the numeric floor,
-  ## the wage coefficient becomes locally unidentified, and warm-started
-  ## re-runs walk it outward arbitrarily. Applies to the minimizer modes
-  ## (min_optim / min_optim_warm / pso) and the accept/revert gates; the
-  ## nleqslv root-finding mode ignores it. 07_vcov's MT wage FOC reads this
-  ## same flag and must match the 06 estimation run. Set
-  ## JMP_WAGE_INTERIOR_PENALTY=false to disable.
+  ## Interior-share penalty for the wage stage:
+  ##   weight * sum max(0, log(min_share) - log(model_share))^2.
+  ## It prevents numerical-floor shares from leaving wage coefficients locally
+  ## unidentified. Minimizer modes and Murphy-Topel use it; nleqslv ignores it.
   wage_interior_penalty_enabled = tolower(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY", unset = "true")) %in%
     c("true", "t", "1", "yes", "y"),
   wage_interior_penalty_weight = as.numeric(Sys.getenv("JMP_WAGE_INTERIOR_PENALTY_WEIGHT", unset = "1")),
@@ -400,24 +326,9 @@ CONFIG <- list(
   price_optimizer_maxit = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_MAXIT", unset = "1000000")),
   price_optimizer_trace = as.integer(Sys.getenv("JMP_PRICE_OPTIMIZER_TRACE", unset = "3")),
   counterfactual_wage_tol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_WAGE_TOL", unset = "0.01")),
-  ## Tier-2 fallback strategy when the 5-equation labor-clearing system is
-  ## rank-deficient at the estimated parameters. The system collapses to rank
-  ## ~4 in wage space when two or more worker-type skill rows of theta are
-  ## near-collinear (LA's types 1, 2, 3 have pairwise theta-row correlations
-  ## 0.77-0.97). The reduced solver drops one labor-clearing residual and
-  ## fixes one wage at the BBsolve Tier-1 best, then solves the remaining
-  ## 4x4 root-finding problem with nleqslv. The dropped equation becomes a
-  ## documented, irreducible mis-fit; the kept 4 zero to machine precision.
-  ##
-  ## tier2_drop_residual_by_county: which worker type's labor-clearing
-  ##   residual to drop, by county FIPS. If unset for a county, the index is
-  ##   chosen automatically as argmax |u_k| from the SVD of the numerical
-  ##   Jacobian at the Tier-1 best (the row with the largest projection on
-  ##   the left null space). For LA (6037), worker type 1's residual carries
-  ##   ~98% of the irreducible direction, so we hardcode drop=1.
-  ## tier2_fix_wage_by_county: which wage to hold fixed at its BBsolve value,
-  ##   by county. If unset, chosen automatically as argmax |v_j| from the
-  ##   right null space of the same SVD.
+  ## Tier-2 fallback for a rank-deficient labor-clearing system. It fixes one
+  ## wage, drops one residual, and solves the reduced system. Explicit county
+  ## choices override the coordinates selected from the Jacobian null spaces.
   tier2_drop_residual_by_county = list("6037" = 1L),
   tier2_fix_wage_by_county = list(),
   # PSO search halfwidth in log-wage space for counterfactual_solve_wage_market_pso.
@@ -430,21 +341,10 @@ CONFIG <- list(
   # differ by O(1) in log space so unit parscale is appropriate; distinct from
   # min_optim_parscale_wage (=20) which targets wage-coefficient scales.
   counterfactual_pso_log_parscale = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_PSO_LOG_PARSCALE", unset = "1")),
-  # Inner SQUAREM fixed-point tolerance used by 13-19's local solve_org loops.
-  # Default preserves the value the scripts hardcoded before they were wired
-  # to CONFIG; tighten via JMP_COUNTERFACTUAL_INNERTOL once estimates are
-  # validated against this baseline.
+  # Inner SQUAREM tolerance used by counterfactual organization solves.
   counterfactual_innertol = as.numeric(Sys.getenv("JMP_COUNTERFACTUAL_INNERTOL", unset = "1e-10")),
-  # SQUAREM iteration cap for the counterfactual *assignment* fixed point only
-  # (counterfactual_assignment). Decoupled from fixedpoint_max_iter so the
-  # counterfactual reorg solve can run a high cap for near-corner firms WITHOUT
-  # slowing the plain, unaccelerated get_demands setup loop in 13_ (which caps
-  # at fixedpoint_max_iter either way and gains no accuracy from a higher cap).
-  # Hardened default 5e6: the anti-cap-artifact value. Near-corner LA firms
-  # (gamma~0.898) can need ~1.1M assignment SQUAREM iters; a lower cap hits the
-  # ceiling WITHOUT converging and produces false-clearing artifacts. Converging
-  # firms stop at innertol, so the generous cap is ~free. Lower via env only for
-  # fast smoke runs. See docs/counterfactual_tolerances.md.
+  # Counterfactual-assignment SQUAREM cap, separate from the setup-loop limit
+  # because near-corner assignments may require many iterations.
   counterfactual_fixedpoint_max_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER", unset = "5000000")),
   # Adaptive-cap cheap budget for counterfactual_assignment's SQUAREM. Each
   # firm first runs SQUAREM with this cap; if it converges (most firms do in
@@ -477,33 +377,13 @@ CONFIG <- list(
   counterfactual_fallback_pso_iter = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_FALLBACK_PSO_ITER", unset = "100")),
   counterfactual_coord_descent_sweeps = as.integer(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_SWEEPS", unset = "14")),
 
-  # Coordinate-descent-first routing for counterfactual_solve_wage_market.
-  # Default OFF (2026-06-02). When on, the solver short-circuits to
-  # full_5d_retry (coord_descent) seeded from the warm `start` BEFORE the
-  # root-finders run. That was found to short-circuit too early under the
-  # labor_weighted gate -- the warm seed is already weighted-cleared, so it
-  # accepted the seed (LA worker-5 left at ~0.1-0.23) without giving nleqslv/
-  # BBsolve or coord_descent a chance to clear the thin type. The intended
-  # ordering is now the legacy path: attempt the root-finders (multistart
-  # nleqslv -> homotopy -> BBsolve -> pracma::broyden) first, check the
-  # acceptance gate (counterfactual_convergence_metric), and ONLY if it fails
-  # escalate to full_5d_retry/coord_descent. Leave this off for that ordering.
+  # When disabled, try root-finders before applying the acceptance gate and
+  # escalating to coordinate descent.
   counterfactual_coord_descent_first = tolower(Sys.getenv("JMP_COUNTERFACTUAL_COORD_DESCENT_FIRST", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
 
-  # Labor-clearing convergence metric for the counterfactual wage solver.
-  # "max": a cell counts as cleared only if max_k |log(new_k/target_k)|
-  # <= counterfactual_wage_tol -- every worker type's market must clear. This is
-  # tripped by structurally thin/inelastic types (LA worker-5 is 0.5% of labor
-  # with wage-inelastic demand; a ~4.8k-labor-unit miss reads as a 9.7% relative
-  # residual). "labor_weighted" (default): a cell counts as cleared when the labor-share-
-  # weighted mean fractional miss, Σ_k (L_k/ΣL)·|log(new_k/target_k)|, <= tol --
-  # i.e. the market clears in aggregate where labor actually is. The solver still
-  # MINIMIZES max|r| (it never sacrifices a type); only the acceptance gate is
-  # reweighted. Measured 2026-06-01: immigration/merger pass the weighted gate
-  # (0.0085/0.0039) but max|r| flags them on thin markets (LA worker-5 ~4.8k
-  # labor units = 9.7% on a 0.5%-share type), while diffusion fails both (a
-  # genuine ~2% imbalance on the 2.5M-worker markets). See la-immigration memory.
+  # "max" requires every worker type to meet the tolerance; "labor_weighted"
+  # uses the target-labor-weighted mean residual. Ranking still uses max|r|.
   counterfactual_convergence_metric = tolower(Sys.getenv("JMP_COUNTERFACTUAL_CONVERGENCE_METRIC", unset = "labor_weighted")),
 
   # ---------------------------------------------------------------------------
@@ -536,31 +416,16 @@ CONFIG <- list(
     c("true", "t", "1", "yes", "y"),
   slurm_array_task_id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", unset = NA_character_)),
 
-  # Whether 08_display_estimates.R filters the bootstrap distribution to
-  # status=="ok" reps before computing standard errors. Default FALSE
-  # (2026-06-01): report SEs over ALL non-error reps and just FLAG the
-  # soft-reverted / non-converged ones, rather than dropping them.
-  # Rationale: per docs/bootstrap_slurm.md and the wage_convergence_gate note
-  # above, filtering on status=="ok" induces selection bias -- the reltol gate
-  # flags genuine local minima as "non-converged", and (e.g. for NYC) the
-  # wage_nonconverged reps are real re-estimates that carry full parameter
-  # tables, none revert to the 06 warm start, and they sit MORE in the low
-  # basin, so dropping them actually INFLATES the reported SE. status=="error"
-  # reps (no parameter columns) are always excluded. Set
-  # JMP_BOOTSTRAP_SE_FILTER_TO_OK=true to restore the strict ok-only filter.
+  # Whether bootstrap standard errors use only status=="ok" replications.
+  # By default all non-error replications are retained.
   bootstrap_se_filter_to_ok = tolower(Sys.getenv("JMP_BOOTSTRAP_SE_FILTER_TO_OK", unset = "false")) %in%
     c("true", "t", "1", "yes", "y"),
 
   # ---------------------------------------------------------------------------
   # Murphy-Topel structural standard errors (07_vcov.R)
   # ---------------------------------------------------------------------------
-  # Which SEs 08_display_estimates.R reports for the SECOND-stage (wage/price)
-  # rows: "murphy_topel" (default; analytical two-step sandwich from
-  # results/data/07_murphy_topel_vcov.rds; see docs/murphy_topel_proposal.md)
-  # or "draws" (legacy; SD across the retired 07_bootstrap Petrin-Train
-  # first-stage-draw replications). Default changed 2026-06-13 from "draws" to
-  # "murphy_topel" when the bootstrap was retired in favor of the analytical
-  # sandwich. Demand rows always use the analytical clustered 2SLS SEs either way.
+  # Structural SE source: Murphy-Topel or SD across first-stage draws. Demand
+  # rows always use analytical clustered 2SLS standard errors.
   structural_se_source = tolower(Sys.getenv("JMP_STRUCTURAL_SE_SOURCE", unset = "murphy_topel")),
   # Workers for the numerical Jacobian columns (mclapply forks; serial default).
   mt_workers = as.integer(Sys.getenv("JMP_MT_WORKERS", unset = "1")),

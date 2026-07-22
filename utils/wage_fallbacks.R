@@ -1,22 +1,16 @@
 ## ===========================================================================
 ## utils/wage_fallbacks.R
 ##
-## Layered post-solve fallbacks for the wage stage of 06_estimation.R. Wraps
-## the per-mode wage solver in `utils/structural_solver.R` with up to five
-## escalating layers designed to catch the basin-miss failure modes that
-## smoke_06b_restart_basins.R surfaced (LA: 06 PSO stopped at ssq=0.166 while
-## the per-county slice basin floor was 0.001; NYC: PSO sat at a saddle above
-## a basin at ssq=0.011).
+## Layered post-solve fallbacks for the structural wage stage.
+## Each layer targets weak or non-local solutions left by the primary solver.
 ##
-## Layer 1 -- per-county post-PSO polish (tight reltol).
-## Layer 2 -- per-county slice-Hessian probe + verdict (diagnostic).
+## Layer 1 -- per-county post-PSO polish.
+## Layer 2 -- per-county slice-Hessian diagnostic.
 ## Layer 3 -- per-county multistart for flagged counties.
-## Layer 4 -- re-PSO from the joint vector improved by Layers 1-3.
-## Layer 5 -- joint multistart (opt-in via JMP_WAGE_FB_L5_K).
+## Layer 4 -- re-PSO from the improved joint vector.
+## Layer 5 -- optional joint multistart.
 ##
-## Defaults (see config.R): L1 + L2 + L3 on for solo 06 runs; all off in
-## bootstrap mode (config$bootstrap_iteration is not NA AND
-## wage_fallback_skip_in_bootstrap is TRUE).
+## Bootstrap execution can disable the ladder through configuration.
 ## ===========================================================================
 
 #' TRUE if we are running inside a bootstrap rep AND the user has not
@@ -249,10 +243,7 @@ wage_fallback_layer2_hessian_one <- function(cnty, full_par, x_county, beta,
                                            beta, beta_2_subset, config,
                                            clust, county_weights)
   x_cur <- as.numeric(full_par[par_idx])
-  ## numDeriv's `d` is a RELATIVE finite-difference fraction (h = |d*x| +
-  ## eps*(|x| < zero.tol)); the old max(parscale_w*0.05, 1) was an ABSOLUTE step
-  ## (>= 1) and, passed as `d`, perturbed each wage coordinate by 100%-1000% of
-  ## its own magnitude. Use a small relative fraction for a local slice-Hessian.
+  ## numDeriv's `d` is relative; keep it small so the Hessian remains local.
   fd_rel <- 1e-2
   H <- tryCatch(
     numDeriv::hessian(fn, x_cur,

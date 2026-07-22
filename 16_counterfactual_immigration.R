@@ -3,15 +3,6 @@
 ## the entire increase concentrated in the lowest-wage worker type per
 ## county. Then re-solves wages and writes the productivity panel.
 ##
-## Magnitude history: was 10% in earlier runs; lowered to 5% after the
-## smoke_16_immigration_5pct experiment showed the production wage solver
-## converges cleanly across Cook/NYC/LA at 5% but fails to clear Cook+NYC
-## (residuals 0.12-0.75) at 10%. At 5%, all 6 (county x sol_type) markets
-## clear via standard nleqslv with no homotopy/PSO fallback needed.
-## 5% is also closer in absolute magnitude to the old manuscript's shock
-## (10% of a single worker type's labor, rather than 10% of total county
-## labor concentrated in one worker type, as the previous 10% implementation
-## did), so this re-anchors the economic interpretation as well.
 source("config.R")
 source("utils/counterfactuals_core.R")
 
@@ -138,35 +129,14 @@ get_everything <- function(wage_guess, cnty, qy) {
 orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_wages)
 
 
-## immigration: increase total labor (summed across all worker types) by 5%,
-## with the entire increase concentrated in the lowest-wage worker type per
-## county. The target type is DERIVED per county as the argmin of the
-## focus-quarter baseline-equilibrium wage vector (13_initial_wages.rds via
-## counterfactual_lowest_wage_types), so it tracks the current baseline solve
-## instead of a hardcoded mapping. The shock to the target type is
-## 5% * sum(tot_k), not 5% of the target alone.
-## Shock size and target are env-overridable so robustness variants can run
-## without editing this script. Defaults reproduce the production shock
-## exactly (5% of county-wide labor, target = argmin baseline wage).
-##   JMP_IMM_SHOCK_FRAC  numeric fraction (default 0.05)
-##   JMP_IMM_SHOCK_BASE  "county" => frac * sum_k tot_k          (default)
-##                       "target" => frac * tot_{k*}, i.e. a frac increase in
-##                                   the target type's OWN labor supply, which
-##                                   is the manuscript's literal wording
-##                                   ("a 10% increase in the total labor supply
-##                                   of the worker skill set with the lowest
-##                                   wage"). Note the two bases differ sharply
-##                                   when the target type is small: at 5% of
-##                                   county labor NY's target absorbs ~50% of
-##                                   its own size, vs 16% (Cook) / 11% (LA), so
-##                                   the "county" base applies uneven treatment
-##                                   intensity across markets.
-##   JMP_IMM_TARGET_OVERRIDE  "6037=1,17031=2" forces the target type for the
-##                            listed counties (robustness for near-ties in the
-##                            argmin; LA's top two baseline wages differ by
-##                            0.0044%, well inside solver resolution).
-##   JMP_IMM_OUT_SUFFIX  appended to output stems so variants never overwrite
-##                       the production 16_*_immigration.rds artifacts.
+## Increase labor supply for the lowest-baseline-wage worker type in each county.
+## By default the increase is 5% of total county labor.
+##
+## Environment overrides:
+##   JMP_IMM_SHOCK_FRAC       shock fraction
+##   JMP_IMM_SHOCK_BASE       "county" for total labor or "target" for target labor
+##   JMP_IMM_TARGET_OVERRIDE  explicit county-to-worker-type mappings
+##   JMP_IMM_OUT_SUFFIX       suffix for robustness output files
 imm_shock_frac <- as.numeric(Sys.getenv("JMP_IMM_SHOCK_FRAC", unset = "0.05"))
 imm_shock_base <- tolower(Sys.getenv("JMP_IMM_SHOCK_BASE", unset = "county"))
 stopifnot(is.finite(imm_shock_frac), imm_shock_frac > 0,

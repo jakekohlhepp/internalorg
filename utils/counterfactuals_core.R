@@ -379,16 +379,10 @@ get_counterfactual_focus_quarter <- function(config = CONFIG) {
   max(config$estimation_quarters)
 }
 
-#' Lowest-wage worker type per county from the 13_ baseline equilibrium.
+#' Lowest-wage worker type per county from the baseline equilibrium.
 #'
-#' Returns the argmin wage type per county at the focus quarter as a named
-#' integer vector keyed by county FIPS, read from the cleared baseline wages
-#' (results/data/counterfactuals/13_initial_wages.rds) unless a wage table is
-#' supplied. 16/18/19 derive the immigration target type from this so the
-#' shock always hits the lowest-wage type implied by the CURRENT baseline
-#' solve; a hardcoded mapping goes stale whenever 13_ is re-solved into a
-#' different wage basin (which is exactly what happened to the original
-#' LA->1 / Cook->4 mapping).
+#' Returns the focus-quarter wage argmin keyed by county, using either the
+#' supplied table or saved baseline wages. This avoids stale hardcoded mappings.
 counterfactual_lowest_wage_types <- function(initial_wages = NULL,
                                              focus_quarter = NULL,
                                              config = CONFIG) {
@@ -426,9 +420,8 @@ counterfactual_lowest_wage_types <- function(initial_wages = NULL,
   out
 }
 
-## Warm-start wage table written by compile_warm_start_wages.R. Returns NULL
-## when the RDS hasn't been compiled yet (cold start before any smoke run);
-## 13_counterfactual_prep.R falls back to the parm-decomposition initial guess.
+## Read compiled warm-start wages, returning NULL when unavailable so the caller
+## can use its standard initial guess.
 read_counterfactual_warm_starts <- function(config = CONFIG) {
   path <- counterfactual_data_path("13_warm_start_wages.rds", config)
   if (!file.exists(path)) {
@@ -451,11 +444,8 @@ counterfactual_warm_start_for <- function(warm_table, cnty, qy,
   ))
 }
 
-## Read a scenario-specific warm-start table (one per counterfactual script).
-## File format: data.table keyed by (county, quarter_year, sol_type) with
-## wage columns w1..w{n_worker_types}. Returns NULL if the file doesn't exist
-## yet (cold start). Built by diagnostics/build_counterfactual_warm_starts.R
-## from a prior run's *_wages_*.rds output.
+## Read scenario-specific warm starts keyed by county, quarter, and solution
+## type. Return NULL when the file is unavailable.
 read_counterfactual_warm_start_table <- function(filename, config = CONFIG) {
   path <- counterfactual_data_path(filename, config)
   if (!file.exists(path)) return(NULL)
@@ -560,12 +550,8 @@ counterfactual_assignment <- function(cost_matrix, alpha, gamma,
       p * C
     }
 
-    ## Adaptive cap: try a cheap cap first (most firms converge in <1000
-    ## fpevals); only the near-corner small-gamma firms need the full cap.
-    ## If the cheap solve converges (SQUAREM convergence flag TRUE), accept
-    ## it; otherwise warm-restart at the full cap. Same fixed point either
-    ## way, but fast firms avoid the expensive cap setup cost. Gated by
-    ## env JMP_COUNTERFACTUAL_FIXEDPOINT_MAX_ITER_CHEAP (default 1000).
+    ## Try a short fixed-point solve first, then warm-restart at the full cap
+    ## when needed. Both paths target the same assignment fixed point.
     full_cap <- as.integer(config$counterfactual_fixedpoint_max_iter)
     cheap_cap <- as.integer(solver_value(
       config, "counterfactual_fixedpoint_max_iter_cheap", 1000L))
@@ -1114,25 +1100,11 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
                                              config = CONFIG) {
   fn <- counterfactual_safe_wage_fn(fn, config)
 
-  ## Coordinate-descent-first routing (config$counterfactual_coord_descent_first,
-  ## default on; gated on use_homotopy so only the top-level call routes, not the
-  ## recursive homotopy invocations). The legacy multistart below seeds nleqslv
-  ## from `start` PLUS the reallocation/baseline/perturbed starts. For the LA
-  ## reorganization cell those auxiliary seeds evaluate to enormous residuals
-  ## (realloc ~17, baseline ~0.31); when an interior seed's org-solve returns
-  ## non-finite the good warm `start` (residual ~0.029) gets demoted and the
-  ## solve converges from the ~0.31 baseline seed. Seeding full_5d_retry
-  ## (coord_descent = phase 0) directly from `start` -- never the bad auxiliary
-  ## seeds -- mirrors diagnostics/smoke_la_reorg_coord_descent.R, which clears LA
-  ## reorg to ~0.029 where the multistart path stalls. Cells whose warm seed
-  ## already clears short-circuit, so easy reallocation / Cook+NYC reorg cells
-  ## are unaffected. Diagnosis: diagnostics/probe_reorg_realloc_contamination.R.
+  ## Optional top-level coordinate-descent route. Seed it only from `start` so
+  ## auxiliary multistarts cannot displace a stronger primary warm start.
   if (use_homotopy && isTRUE(config$counterfactual_coord_descent_first)) {
     cd_seed <- pmax(as.numeric(start), config$numeric_floor)
-    ## Step 1: clean nleqslv polish from the warm seed ALONE (no bad auxiliary
-    ## seeds). Easy cells (all reallocation, Cook+NYC reorganization) clear to
-    ## machine precision here exactly as the legacy multistart did -- same
-    ## Broyden/dbldog control -- so their results and speed are unchanged.
+    ## First polish the primary seed alone with the standard Broyden controls.
     cd_best <- counterfactual_candidate_result(
       fn, cd_seed, "coord_first_seed",
       if (is.null(label)) "coord_first seed" else paste(label, "coord_first seed"))
@@ -1155,15 +1127,8 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
       cd_best$target_tol <- target_tol
       return(cd_best)
     }
-    ## Step 2: nleqslv could not clear the market exactly (e.g. LA
-    ## reorganization, which has a genuine residual floor, not a root). Hand to
-    ## full_5d_retry (coord_descent = phase 0) seeded from the BEST wage found in
-    ## step 1 -- i.e. cd_best$par, the lowest-residual point nleqslv reached, not
-    ## the raw warm seed and never the bad reallocation/baseline seeds. This
-    ## gives nleqslv a full chance at an exact clear first, then lets
-    ## coord_descent push the best point down to the floor, mirroring
-    ## diagnostics/smoke_la_reorg_coord_descent.R (~0.029 vs the legacy
-    ## multistart's ~0.31 baseline-seed stall).
+    ## If polishing does not clear the market, seed the full fallback ladder
+    ## from its lowest-residual candidate.
     cd_result <- tryCatch(
       counterfactual_full_5d_retry(
         fn = fn, start_par = pmax(cd_best$par, config$numeric_floor),
@@ -1361,21 +1326,8 @@ counterfactual_solve_wage_market <- function(fn, start, label = NULL,
     }
   }
 
-  ## "Start the coord descent": escalate to counterfactual_full_5d_retry
-  ## (coord_descent = phase 0, then Newton/dbldog, Broyden/qline, minpack.lm,
-  ## L-BFGS-B SSR, NM SSR, LHS-dfsane, PSO) whenever the root-finders above
-  ## (multistart nleqslv, homotopy, BBsolve, pracma::broyden) left max|r| > tol.
-  ## The trigger is MAX, NOT the labor-weighted gate: coord_descent is the only
-  ## phase that clears a thin type like LA worker-5, and the weighted gate would
-  ## never fire here (the warm seed already passes it), so gating coord_descent
-  ## on it would skip the very step that clears worker-5. The labor-weighted
-  ## gate is applied where it belongs -- INSIDE full_5d_retry as an early accept
-  ## right after coord_descent (so a cell coord_descent leaves aggregate-cleared
-  ## but with worker-5 still off is accepted without grinding phases 1-7), and
-  ## as the final $converged flag below. full_5d_retry seeds its best from
-  ## start_par and only updates on improvement, so escalation can only help.
-  ## Gate on use_homotopy=TRUE so only the top-level call escalates (the
-  ## recursive homotopy invocation runs on a blended objective).
+  ## Escalate the top-level solve when max|r| exceeds tolerance, giving thin
+  ## worker types a strict polish before labor-weighted acceptance is applied.
   if (use_homotopy &&
       (!is.finite(best_result$residual) || best_result$residual > target_tol)) {
     fb_label <- if (is.null(label)) "solve_wage_market full_5d" else paste(label, "full_5d")
@@ -1670,10 +1622,8 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
     }
   }
 
-  ## Stopping rule for the phases below is MAX (every market clears) so
-  ## coord_descent keeps driving a thin type like LA worker-5 down. The
-  ## labor-weighted acceptance is applied separately as an early-accept right
-  ## after the coord_descent phase (see below) and as the final $converged flag.
+  ## Solver phases use max|r|; labor-weighted acceptance is checked separately
+  ## after coordinate descent and for the final convergence flag.
   cleared <- function() {
     is.finite(best_result$residual) && best_result$residual <= target_tol
   }
@@ -1728,16 +1678,9 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
     }
   }
 
-  ## 0. Coordinate-descent via 1D uniroot (moved to FIRST phase 2026-05-30).
-  ## For each wage k in turn, solves the k-th log-labor residual to zero (or
-  ## minimizes |r_k| when no sign-change bracket exists) while holding the
-  ## other 4 fixed, then rotates. Several sweeps with progressively
-  ## shrinking brackets so the first sweeps capture large reallocations and
-  ## later sweeps fine-tune. Empirically the only phase that meaningfully
-  ## moves LA's near-corner residual (others bottom at ~0.15 worker 5);
-  ## running it first lets the ladder either clear immediately or hand
-  ## subsequent phases a much-better warm start (saving many hours of
-  ## futile method-grinding).
+  ## 0. Coordinate descent over wages. Each step zeros its log-labor residual,
+  ## or minimizes its absolute value when no sign-change bracket exists.
+  ## Repeated sweeps use shrinking brackets before later fallback methods run.
   if (!cleared()) {
     cd_n_sweeps <- as.integer(solver_value(config,
       "counterfactual_coord_descent_sweeps", 14L))
@@ -1802,13 +1745,8 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   }
   if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
 
-  ## Labor-weighted early-accept (only matters under the "labor_weighted"
-  ## metric; a no-op under "max" since max already failed the check above).
-  ## coord_descent has run; if it left the cell aggregate-cleared but not
-  ## max-cleared -- e.g. LA worker-5 floors at ~0.10 but the big markets clear --
-  ## accept here rather than grinding root-finder phases 1-7 chasing a root that
-  ## does not exist. Cells that are neither max- nor weighted-cleared (a genuine
-  ## big-market imbalance like diffusion) fall through and keep trying.
+  ## Apply the configured acceptance metric after coordinate descent. Continue
+  ## when neither strict nor labor-weighted clearing holds.
   if (counterfactual_is_cleared(best_result, target_tol, config)) {
     best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result)
   }
@@ -1904,13 +1842,8 @@ counterfactual_full_5d_retry <- function(fn, start_par, label = NULL,
   }
   if (cleared()) { best_result$converged <- TRUE; best_result$target_tol <- target_tol; return(best_result) }
 
-  ## 6. LHS-dfsane wide-multistart root-finder. Uniformly samples log-wage
-  ## space around the running best with a wider half-width than the Gaussian
-  ## perturbation_set, then runs BB::dfsane (derivative-free spectral
-  ## residual) from each start. Catches cases where the prior phases are all
-  ## trapped in a spurious local minimum of SSR (e.g., Cook 17031 2021.2,
-  ## where every other fallback method floored at residual ~1 but uniform
-  ## starts at halfwidth=2.5 located a different basin clearing to ~1e-6).
+  ## 6. LHS-dfsane wide-multistart search over log wages, centered on the
+  ## running best and followed by derivative-free spectral residual solves.
   if (!cleared() && requireNamespace("BB", quietly = TRUE)) {
     lhs_n         <- as.integer(solver_value(config, "counterfactual_lhs_dfsane_n_starts", 8L))
     lhs_halfwidth <- solver_value(config, "counterfactual_lhs_dfsane_halfwidth", 2.5)
