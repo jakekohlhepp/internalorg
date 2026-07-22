@@ -276,6 +276,16 @@ CONFIG <- list(
   ## point estimate identifies.
   ## ---------------------------------------------------------------------------
 
+  ## Layer 0: converged-county short circuit. The ladder (L1 polish, L2
+  ## Hessian probe, L3 multistart) exists to rescue counties the wage solver
+  ## left at a bad point. A county whose slice ssq is already at machine-zero
+  ## has nothing to rescue: L1 cannot improve on it, L2 returns local_min, and
+  ## L3 is gated off by that verdict. Running the ladder anyway cost 59610108
+  ## its 2-day wall with all three counties already at 6.2e-16 / 5.5e-15 /
+  ## 5.0e-12. Skip any county whose slice ssq is below this tolerance; set to 0
+  ## to force the old always-run behaviour.
+  wage_fallback_converged_ssq_tol = as.numeric(Sys.getenv("JMP_WAGE_FB_CONVERGED_TOL", unset = "1e-8")),
+
   ## Layer 1: per-county post-PSO polish at tight reltol. The existing PSO
   ## path's polish exits at CONFIG$obj_tol (1e-2 production / 1e-4 bootstrap);
   ## that's the tolerance smoke_06b_restart_basins.R found 06 was stopping at
