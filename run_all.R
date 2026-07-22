@@ -360,6 +360,15 @@ if (RUN_STYLIZED_FACTS) {
           error = e$message, skipped = FALSE
         )
         stop("Stylized-facts analysis failed: ", e$message)
+      }, finally = {
+        # 02 tees its console output to logs/02_stylized_facts_console.log and
+        # closes that sink itself when it finishes. It cannot clean up after a
+        # mid-script error -- source() evaluates each top-level expression in
+        # its own short-lived frame, so on.exit() there fires immediately -- and
+        # a stranded sink is invisible (split = TRUE keeps the console echo)
+        # while it swallows the rest of the session's output into that log.
+        # No-op on the success path, where 02 already closed it.
+        while (sink.number() > 0) sink()
       })
     } else {
       message("STEP 2b skipped (no changes detected)")

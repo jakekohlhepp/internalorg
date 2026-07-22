@@ -22,8 +22,7 @@
 #'                                customer) over firm-quarters in county c.
 #'                                Reads as consumer WTP per customer (USD)
 #'                                at a mean-labor firm in county c from
-#'                                reassigning 1 percentage point of total
-#'                                task mass, at task t, from the worst worker
+#'                                reassigning 1 percentage point of task t mass, from the worst worker
 #'                                to worker w (absolute task-mass units; the
 #'                                % Share block instead uses 1% of task t's
 #'                                own mass).

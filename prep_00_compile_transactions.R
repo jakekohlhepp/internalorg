@@ -23,8 +23,8 @@
 #'   service_id: Service ID (UUID)
 #'   service_performed: Service description
 #'   price: Service price
-#'   duration: Service duration in minutes
-#'   total_app_time: Total appointment time
+#'   duration:  Total appointment time
+#'   total_app_time: service-level time, soemtimes missing.
 #'   app_datetime: Appointment datetime
 #'   date: Date extracted from datetime
 #'   location_state, location_city, location_zip: Location info

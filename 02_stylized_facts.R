@@ -26,7 +26,9 @@
 #' Outputs:
 #'   - results/data/02_stylized_facts_data.rds  (firm-quarter panel used by 03)
 #'   - results/out/tables/02_*.tex               (7 tex files)
-#'   - results/out/figures/02_*.png              (5 png files)
+#'   - results/out/figures/02_*.png              (8 png files; each binscatter
+#'     is drawn on equal-width bins and again on equal-count bins, *_qbins.png)
+#'   - logs/02_stylized_facts_console.log        (every number printed below)
 #' =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -63,6 +65,29 @@ source('config.R')
 ensure_directory("results/data")
 ensure_directory("results/out/tables")
 ensure_directory("results/out/figures")
+ensure_directory(CONFIG$log_dir)
+
+# -----------------------------------------------------------------------------
+# Console log
+# -----------------------------------------------------------------------------
+# The Fact 1-4 numbers below are reported with cat()/print() and nothing else
+# captures them: logs/02_stylized_facts.log is written by run_all.R's wrapper
+# and records only the start/finish bookkeeping, so every printed statistic is
+# lost when the session ends. Tee stdout to its own file (split = TRUE keeps the
+# console echo) so the numbers cited in the manuscript stay recoverable.
+#
+# The sink is opened and closed here rather than via on.exit(): source() gives
+# each top-level expression its own short-lived frame, so an on.exit()
+# registered here would fire the instant this expression finishes, tearing the
+# sink down before anything is logged. That leaves the failure path uncovered --
+# an error before the closing sink() would strand it, and split = TRUE means
+# the console keeps echoing, so the rest of the session would silently append
+# to this log with no visible symptom. run_all.R's STEP 2b drops a stranded
+# sink in its finally block; the reset here covers a standalone re-run.
+while (sink.number() > 0) sink()
+console_log_path <- file.path(CONFIG$log_dir, "02_stylized_facts_console.log")
+console_log_con <- file(console_log_path, open = "wt")
+sink(console_log_con, split = TRUE)
 
 if (!nzchar(CONFIG$raw_data_base)) {
   stop("CONFIG$raw_data_base must be set to run 02_stylized_facts.R")
@@ -102,6 +127,35 @@ set.seed(588621)
 rowMax <- function(data) apply(data, 1, max, na.rm = TRUE)
 rowMin <- function(data) apply(data, 1, min, na.rm = TRUE)
 spec_log <- function(x) ifelse(x == 0 | x == -Inf | is.nan(x), 0, log(x))
+
+scaleFUN <- function(x) formatC(signif(x, digits=1), digits=1, format="fg", flag="#")
+
+#' Binned scatter of a firm-quarter outcome against the s-index.
+#'
+#' Every binscatter in this script goes through here, so the panels cannot drift
+#' apart on binning rule or theme -- which is how one of them ended up on a
+#' quantile grid while the other two used equal-width bins.
+#'
+#' @param breaks Bin edges. Pass s_index_breaks for equal-width bins (an
+#'   interpretable x-axis, but bin counts run from ~1,500 near zero to single
+#'   digits in the sparse right tail) or s_index_qbreaks for equal-count bins
+#'   (~225 salon-quarters each, at the cost of a bin width that varies ~10x).
+#' @param facet Whether to facet by round_emps (the establishment-size groups).
+binscatter_sindex <- function(dt, yvar, ylab_text, breaks, xlab_text,
+                              text_size, facet = FALSE) {
+  p <- ggplot(data = dt, aes(x = s_index, y = .data[[yvar]])) +
+    geom_smooth(method = 'lm', color = "red", se = FALSE) +
+    stat_summary_bin(fun = mean, breaks = breaks, geom = "point") +
+    xlab(xlab_text) + ylab(ylab_text) +
+    theme_bw() + theme(axis.text = element_text(size = text_size)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          panel.background = element_blank(), axis.line = element_line(colour = "black"))
+  if (facet) {
+    p <- p + scale_x_continuous(labels = scaleFUN, breaks = c(0, 0.5, 1)) +
+      facet_wrap(~round_emps)
+  }
+  p
+}
 
 #' -----------------------------------------------------------------------------
 #' LOAD AND PREPARE TASK DATA
@@ -399,6 +453,21 @@ stargazer(firm_stats, header=FALSE,digits=2, out='results/out/tables/02_summary_
 s_index_breaks<-seq(from=min(firm_quarter$s_index), to=max(firm_quarter$s_index), by=0.05)
 # use equal spacing now.
 
+# Equal-COUNT companion grid: every binscatter below is also drawn on these
+# breaks, as a *_qbins.png variant, so the equal-width panels can be read
+# against a version whose bins carry the same number of salon-quarters. The two
+# rules trade off against each other and neither dominates: equal-width bins
+# give an interpretable x-axis but their counts run from ~1,500 near zero down
+# to single digits in the sparse right tail, so the rightmost points are noisy;
+# equal-count bins hold that noise fixed at ~225 salon-quarters per point but
+# their width varies ~10x, which compresses the right tail.
+# unique() is required, not defensive: 5.4% of salon-quarters sit at exactly
+# s_index == 0 (a salon whose staff all do the same task mix), so the 0% and 5%
+# quantiles are both 0 and stat_summary_bin errors on duplicate breaks. The
+# collapse leaves 19 bins rather than 20, and folds that zero mass into a first
+# bin of ~450.
+s_index_qbreaks<-unique(quantile(firm_quarter$s_index, seq(from=0, to=1, by=0.05)))
+
 ## syverson style facts: firm-quarter
 res_fe<-feols(s_index~1|quarter_year+location_id, data=firm_quarter)
 
@@ -413,11 +482,24 @@ cat(sprintf("s_index P75/P25 ratio (manuscript reports ~12.85): %.3f\n",
 cat(sprintf("s_index raw SD: %.4f\n", sd(firm_quarter$s_index)))
 cat(sprintf("s_index residual SD share after county+quarter FE w/ task mix: %.4f\n",
             sd(resid(feols(s_index~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)))
-## Manuscript spec: residualize s_index on establishment size + county + quarter FE.
-cat(sprintf("s_index residual SD after emps+county+quarter FE (manuscript spec): %.4f\n",
+## Size + county + quarter FE, no task mix.
+cat(sprintf("s_index residual SD after emps+county+quarter FE (no task mix): %.4f\n",
             sd(resid(feols(s_index~1|emps+county+quarter_year, firm_quarter)))))
-cat(sprintf("s_index residual SD share after emps+county+quarter FE (manuscript spec): %.4f\n",
+cat(sprintf("s_index residual SD share after emps+county+quarter FE (no task mix): %.4f\n",
             sd(resid(feols(s_index~1|emps+county+quarter_year, firm_quarter)))/sd(firm_quarter$s_index)))
+## Manuscript spec: the paper residualizes the s-index on "the task mix,
+## establishment-size fixed effects, county fixed effects and quarter fixed
+## effects" -- the same four controls it uses for rev_labor in FACT 1B, so the
+## two shares it reports side by side net out the same variation. Neither spec
+## above does that: the first drops the size FE, the second drops the task mix.
+## The task mix is not an incidental control here -- s_index is the worker-task
+## mutual information, bounded above by the entropy of the task mix (s_max,
+## computed above), so the mix mechanically caps how specialized a salon can be.
+res_sindex_full <- feols(s_index~task_mix_2+task_mix_3+task_mix_4+task_mix_5|county+quarter_year+emps, firm_quarter)
+cat(sprintf("s_index residual SD after county+quarter+emps FE w/ task mix (manuscript spec): %.4f\n",
+            sd(resid(res_sindex_full))))
+cat(sprintf("s_index residual SD share after county+quarter+emps FE w/ task mix (manuscript spec): %.4f\n",
+            sd(resid(res_sindex_full))/sd(firm_quarter$s_index)))
 
 cat("\n===== FACT 1B: REVENUE PER MINUTE DISPERSION (firm-quarter; Syverson comparison) =====\n")
 cat(sprintf("rev_labor P75/P25 ratio: %.3f\n",
@@ -499,10 +581,14 @@ firm_quarter[, quarter_num:=(quarter_year-floor(quarter_year)-0.1)*10*0.25]
 firm_quarter[, gap:=floor(quarter_year)+quarter_num-floor(shift(quarter_year))-shift(quarter_num), by="location_id"]
 firm_quarter[,l_sindex:=shift(s_index) ,by="location_id"]
 firm_quarter[,l_rev_labor:=shift(rev_labor) ,by="location_id"]
-summary(feols(s_index~l_sindex, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id)
-summary(feols(s_index~l_sindex|location_id, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id)
-summary(feols(rev_labor~l_rev_labor, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id)
-summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id)
+## print() explicitly: run_all.R source()s this script with print.eval left at
+## its FALSE default, so a bare summary() at top level is evaluated and thrown
+## away. The manuscript quotes these four AR(1) coefficients.
+cat("\n===== FACT 1E: AR(1) PERSISTENCE (manuscript reports s_index 0.955 / 0.570, rev_labor 0.851 / 0.791) =====\n")
+print(summary(feols(s_index~l_sindex, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id))
+print(summary(feols(s_index~l_sindex|location_id, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id))
+print(summary(feols(rev_labor~l_rev_labor, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id))
+print(summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)==0.25]), cluster=~location_id))
 
 
 
@@ -525,20 +611,27 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
 
   
   ## do graphs unconditional and conditional on firm size.
-  ggplot(data = firm_quarter, aes( x = s_index, y = rev_labor)) + geom_smooth(method='lm',color = "red", se=FALSE)+ylab("Revenue per Minute")+xlab("Task-Specialization (S-Index)")+
-    stat_summary_bin(fun = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + theme(axis.text = element_text(size = 14))+
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))
-  
+  ## Each is drawn twice, once per binning rule (see s_index_qbreaks above).
+  binscatter_sindex(firm_quarter, "rev_labor", "Revenue per Minute",
+                    s_index_breaks, "Task-Specialization (S-Index)", 14)
   ggsave("results/out/figures/02_sindex_prod_all.png", width=4, height=4, units="in")
-  
-  scaleFUN <- function(x) formatC(signif(x, digits=1), digits=1, format="fg", flag="#")
-  
-  ggplot(data = firm_quarter[!is.na(round_emps)], aes( x = s_index, y = rev_labor)) + geom_smooth(method='lm',color = "red", se=FALSE)+
-    stat_summary_bin(fun = mean, breaks=quantile(firm_quarter$s_index,seq(from=0.05, to=0.95,by=0.05)), geom = "point")+ xlab("Task Specialization")+ ylab("Revenue per Minute")+theme_bw() + theme(axis.text = element_text(size = 10))+
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+scale_x_continuous(labels=scaleFUN,breaks=c(0,0.5, 1))+
-  facet_wrap(~round_emps) 
-  
+
+  binscatter_sindex(firm_quarter, "rev_labor", "Revenue per Minute",
+                    s_index_qbreaks, "Task-Specialization (S-Index)", 14)
+  ggsave("results/out/figures/02_sindex_prod_all_qbins.png", width=4, height=4, units="in")
+
+  ## Binned on s_index_breaks, the same equal-width grid as the plot above. This
+  ## previously binned on the P5-P95 quantiles of s_index, which both varied the
+  ## bin width across the x-axis and silently dropped the top and bottom 5% of
+  ## salon-quarters; the *_qbins variant below is the deliberate equal-count
+  ## version, on a grid that covers the full support.
+  binscatter_sindex(firm_quarter[!is.na(round_emps)], "rev_labor", "Revenue per Minute",
+                    s_index_breaks, "Task Specialization", 10, facet = TRUE)
   ggsave("results/out/figures/02_sindex_prod_byemps.png", width=4, height=4, units="in")
+
+  binscatter_sindex(firm_quarter[!is.na(round_emps)], "rev_labor", "Revenue per Minute",
+                    s_index_qbreaks, "Task Specialization", 10, facet = TRUE)
+  ggsave("results/out/figures/02_sindex_prod_byemps_qbins.png", width=4, height=4, units="in")
   
   
   # the most specialized quartile of firms on average generate $1.08 more revenue per minute
@@ -622,13 +715,13 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
                                                                              task_mix_4="Admin. Task Mix", task_mix_5="Nail Task Mix", location_id="Establishment"),
          file="results/out/tables/02_productivity_teamwork.tex", replace=TRUE,signifCode=c(`***`=0.001,`**`=0.01, `*`=0.05))
   
-  ggplot(data = firm_quarter, aes( x = s_index, y = multi_rate)) + geom_smooth(method='lm',color = "red", se=FALSE)+
-    stat_summary_bin(fun.y = mean, breaks=s_index_breaks, geom = "point")+theme_bw() + 
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
-    theme(axis.text = element_text(size = 14))+
-    xlab("Task Specialization (S-Index)")+ylab("Teamwork")
-  
+  binscatter_sindex(firm_quarter, "multi_rate", "Teamwork",
+                    s_index_breaks, "Task Specialization (S-Index)", 14)
   ggsave("results/out/figures/02_sindex_teamwork.png", width=4, height=4, units="in")
+
+  binscatter_sindex(firm_quarter, "multi_rate", "Teamwork",
+                    s_index_qbreaks, "Task Specialization (S-Index)", 14)
+  ggsave("results/out/figures/02_sindex_teamwork_qbins.png", width=4, height=4, units="in")
   
   
 
@@ -684,14 +777,15 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   
   ## mediation analysis for staff req.
   
+  cat("\n===== MEDIATION: S-INDEX -> STAFF-REQUEST RATE -> REVENUE PER MINUTE =====\n")
   model.M <- lm(std_staffreq ~ std_sindex, firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10])
-  summary(model.M)
+  print(summary(model.M))
   model.Y <- lm(std_rev_labor ~ std_sindex+std_staffreq, firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10])
-  summary(model.Y)
-  
+  print(summary(model.Y))
+
   results <- mediate(model.M, model.Y, treat='std_sindex', mediator='std_staffreq',
                      boot=TRUE, sims=500)
-  summary(results)
+  print(summary(results))
   
   cat("\n===== POST-STAFFREQ-ADOPTION SAMPLE SUMMARIES =====\n")
   cat("s_index distribution among firm-quarters at/after first_staffreq:\n")
@@ -699,6 +793,9 @@ summary(feols(rev_labor~l_rev_labor|location_id, data=firm_quarter[round(gap,6)=
   cat("staffreq_rate distribution among firm-quarters at/after first_staffreq:\n")
   print(summary(firm_quarter[quarter_year>=year(as_date(first_staffreq))+quarter(as_date(first_staffreq))/10]$staffreq_rate))
 
+sink()
+close(console_log_con)
+message("02: console output written to ", console_log_path)
 message("02: complete")
 
 
