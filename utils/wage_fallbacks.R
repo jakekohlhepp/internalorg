@@ -359,6 +359,8 @@ wage_fallback_layer3_multistart_one <- function(cnty, full_par, x_county, beta,
 ## Apply Layers 1-4 around a freshly-solved wage result.
 ## ---------------------------------------------------------------------------
 #' Modify `result` in place (returning a copy) by running:
+#'   - Layer 0 short circuit: skip any county whose slice ssq is already below
+#'     `wage_fallback_converged_ssq_tol`
 #'   - Layer 1 polish per county (tight reltol)
 #'   - Layer 2 Hessian probe per county (diagnostic log)
 #'   - Layer 3 multistart per flagged county
@@ -377,6 +379,7 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
   l3_only_flagged <- solver_flag(config, "wage_fallback_multistart_only_flagged", TRUE)
   l4_max_iter <- solver_value(config, "wage_fallback_repso_max_iter", 2L)
   l4_min_improve <- solver_value(config, "wage_fallback_repso_min_improvement", 0.01)
+  converged_tol <- solver_value(config, "wage_fallback_converged_ssq_tol", 1e-8)
 
   if (!any(c(l1_enable, l2_enable, l3_enable)) && l4_max_iter <= 0L) {
     result$fallback_disabled <- TRUE
@@ -396,6 +399,31 @@ apply_wage_fallback_layers <- function(result, x, beta, beta_2_subset, config,
       county_weights <- if (is.null(moment_weights)) NULL else moment_weights[row_idx]
 
       cnty_record <- list(cnty = cnty_key)
+
+      ## Layer 0: skip counties already at machine-zero. One slice evaluation
+      ## here replaces an L1 polish + L2 Hessian probe + (possibly) an L3
+      ## multistart that cannot improve on a converged point.
+      if (is.finite(converged_tol) && converged_tol > 0) {
+        par_idx <- wage_fallback_county_par_idx(cnty, names(full_par))
+        cur_ssq <- tryCatch(
+          wage_fallback_make_slice_objective(
+            cnty, full_par, par_idx, x_county, beta, beta_2_subset,
+            config, clust, county_weights
+          )(full_par[par_idx]),
+          error = function(e) NA_real_
+        )
+        if (is.finite(cur_ssq) && cur_ssq < converged_tol) {
+          wage_fallback_log(sprintf(
+            "L0 county %s: slice ssq %.6g < %.6g; already converged, skipping ladder.",
+            cnty_key, cur_ssq, converged_tol), config)
+          cnty_record$layer0 <- list(skipped_ladder = TRUE, ssq = cur_ssq,
+                                     tol = converged_tol)
+          iter_report[[cnty_key]] <- cnty_record
+          next
+        }
+        cnty_record$layer0 <- list(skipped_ladder = FALSE, ssq = cur_ssq,
+                                   tol = converged_tol)
+      }
 
       ## Layer 1: post-PSO polish.
       if (l1_enable) {

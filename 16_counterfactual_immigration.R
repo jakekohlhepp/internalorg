@@ -145,18 +145,71 @@ orig_struct <- build_counterfactual_structure_snapshot(get_everything, initial_w
 ## counterfactual_lowest_wage_types), so it tracks the current baseline solve
 ## instead of a hardcoded mapping. The shock to the target type is
 ## 5% * sum(tot_k), not 5% of the target alone.
+## Shock size and target are env-overridable so robustness variants can run
+## without editing this script. Defaults reproduce the production shock
+## exactly (5% of county-wide labor, target = argmin baseline wage).
+##   JMP_IMM_SHOCK_FRAC  numeric fraction (default 0.05)
+##   JMP_IMM_SHOCK_BASE  "county" => frac * sum_k tot_k          (default)
+##                       "target" => frac * tot_{k*}, i.e. a frac increase in
+##                                   the target type's OWN labor supply, which
+##                                   is the manuscript's literal wording
+##                                   ("a 10% increase in the total labor supply
+##                                   of the worker skill set with the lowest
+##                                   wage"). Note the two bases differ sharply
+##                                   when the target type is small: at 5% of
+##                                   county labor NY's target absorbs ~50% of
+##                                   its own size, vs 16% (Cook) / 11% (LA), so
+##                                   the "county" base applies uneven treatment
+##                                   intensity across markets.
+##   JMP_IMM_TARGET_OVERRIDE  "6037=1,17031=2" forces the target type for the
+##                            listed counties (robustness for near-ties in the
+##                            argmin; LA's top two baseline wages differ by
+##                            0.0044%, well inside solver resolution).
+##   JMP_IMM_OUT_SUFFIX  appended to output stems so variants never overwrite
+##                       the production 16_*_immigration.rds artifacts.
+imm_shock_frac <- as.numeric(Sys.getenv("JMP_IMM_SHOCK_FRAC", unset = "0.05"))
+imm_shock_base <- tolower(Sys.getenv("JMP_IMM_SHOCK_BASE", unset = "county"))
+stopifnot(is.finite(imm_shock_frac), imm_shock_frac > 0,
+          imm_shock_base %in% c("county", "target"))
+imm_out_suffix <- Sys.getenv("JMP_IMM_OUT_SUFFIX", unset = "")
+
 tot_field_names <- counterfactual_tot_labor_field_names(CONFIG)
 add_immigrants_to_target <- function(cnty, target_idx, qy = 2021.2) {
   base <- as.numeric(as.matrix(total_labor[
     county == cnty & quarter_year == qy,
     .SD, .SDcols = tot_field_names
   ]))
-  delta <- 0.05 * sum(base)
+  delta <- if (identical(imm_shock_base, "target")) {
+    imm_shock_frac * base[target_idx]
+  } else {
+    imm_shock_frac * sum(base)
+  }
+  message(sprintf(
+    "[16] %s: target SS%d, delta = %.4g (%.2f%% of county labor, %.1f%% of target's own)",
+    cnty, target_idx, delta, 100 * delta / sum(base), 100 * delta / base[target_idx]))
   target_col <- tot_field_names[target_idx]
   total_labor[county == cnty & quarter_year == qy,
               (target_col) := get(target_col) + delta]
 }
 imm_target_types <- counterfactual_lowest_wage_types(initial_wages)
+
+## Optional per-county target override (robustness for argmin near-ties).
+imm_target_override <- Sys.getenv("JMP_IMM_TARGET_OVERRIDE", unset = "")
+if (nzchar(imm_target_override)) {
+  for (kv in strsplit(imm_target_override, ",")[[1]]) {
+    parts <- strsplit(trimws(kv), "=")[[1]]
+    stopifnot(length(parts) == 2L)
+    cnty_o <- parts[1]; type_o <- as.integer(parts[2])
+    stopifnot(cnty_o %in% names(imm_target_types),
+              type_o >= 1L, type_o <= CONFIG$n_worker_types)
+    message(sprintf("[16] TARGET OVERRIDE %s: SS%d -> SS%d",
+                    cnty_o, imm_target_types[[cnty_o]], type_o))
+    imm_target_types[[cnty_o]] <- type_o
+  }
+}
+
+message("[16] immigration shock: frac=", imm_shock_frac, " base=", imm_shock_base,
+        if (nzchar(imm_out_suffix)) paste0(" suffix=", imm_out_suffix) else "")
 message("[16] immigration target types (lowest baseline wage per county): ",
         paste(names(imm_target_types), imm_target_types, sep = "->",
               collapse = ", "))
@@ -268,8 +321,8 @@ for (cnty in CONFIG$counties) {
 }
 save_counterfactual_rds(
   res_wages,
-  "16_wages_immigration.rds",
-  legacy_filename = "16_wages_immigration.rds"
+  paste0("16_wages_immigration", imm_out_suffix, ".rds"),
+  legacy_filename = paste0("16_wages_immigration", imm_out_suffix, ".rds")
 )
 
 
@@ -321,6 +374,6 @@ for (cnty in unique(res_wages[is.finite(w1), ]$county)) {
 }
 save_counterfactual_rds(
   prod_data_new,
-  "16_prod_immigration.rds",
-  legacy_filename = "16_prod_immigration.rds"
+  paste0("16_prod_immigration", imm_out_suffix, ".rds"),
+  legacy_filename = paste0("16_prod_immigration", imm_out_suffix, ".rds")
 )

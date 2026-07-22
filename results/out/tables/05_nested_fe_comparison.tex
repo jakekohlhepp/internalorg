@@ -7,28 +7,28 @@
  & County$\times$quarter; omit & Quarter only; omit & Quarter only; all & County + quarter \\
 \hline \\[-1.8ex]
 Fixed effects & County$\times$quarter; omit & Quarter FE & All quarter FE & County + quarter \\
-Price (Cook) & 0.0005 & 0.0009 & 0.0287 & 0.0306 \\
- & (0.0026) & (0.0065) & (0.0896) & (0.1711) \\
-Sigma (Cook) & 0.9260*** & 0.9427*** & -0.8767 & 8.9750 \\
- & (0.0736) & (0.1421) & (4.3885) & (36.8414) \\
-Price (New York) & -0.0017 & -0.0156 & -0.0005 & -0.0131 \\
- & (0.0056) & (0.0093) & (0.0288) & (0.0239) \\
-Sigma (New York) & 0.8944*** & 0.5744* & -1.6015 & 0.9423 \\
- & (0.0988) & (0.2417) & (5.7611) & (1.3878) \\
-Price (Los Angeles) & -0.0002 & 0.0026 & -0.0128 & 0.0065 \\
- & (0.0004) & (0.0026) & (0.0475) & (0.0102) \\
-Sigma (Los Angeles) & 0.9333*** & 1.0492*** & -1.8068 & 2.9600 \\
- & (0.0130) & (0.0913) & (7.3333) & (3.6925) \\
-Weak-IV F price (Cook) & 19.79 & 21.82 & 17.73 & 1.95 \\
-Weak-IV F price (New York) & 1.45 & 4.36 & 4.59 & 1.22 \\
-Weak-IV F price (Los Angeles) & 13.28 & 14.66 & 7.99 & 2.05 \\
-Weak-IV F sigma (Cook) & 919.78 & 783.16 & 685.83 & 1.36 \\
-Weak-IV F sigma (New York) & 164.11 & 163.10 & 144.83 & 6.82 \\
-Weak-IV F sigma (Los Angeles) & 168.51 & 147.84 & 72.26 & 0.32 \\
+Price (Cook) & 0.0002 & 0.0026 & 0.0373 & -0.0036 \\
+ & (0.0002) & (0.0070) & (0.2679) & (0.0870) \\
+Sigma (Cook) & 0.9125*** & 0.9283*** & -6.1567 & -4.5471 \\
+ & (0.0089) & (0.2605) & (53.3682) & (42.1788) \\
+Price (New York) & 0.0060 & -0.0531 & 0.1422 & -0.0202 \\
+ & (0.0460) & (0.0805) & (1.3024) & (0.0418) \\
+Sigma (New York) & 1.0851 & -0.6715 & -3.9637 & -0.8887 \\
+ & (1.2891) & (2.3281) & (31.2156) & (1.2574) \\
+Price (Los Angeles) & -0.0003 & 0.0028 & -0.0552 & 0.0031 \\
+ & (0.0003) & (0.0074) & (0.4448) & (0.0285) \\
+Sigma (Los Angeles) & 0.9365*** & 1.0420*** & -7.3447 & 2.1261 \\
+ & (0.0084) & (0.1960) & (63.1803) & (7.7767) \\
+Weak-IV F price (Cook) & 32.72 & 23.61 & 22.80 & 7.09 \\
+Weak-IV F price (New York) & 3.96 & 6.69 & 5.97 & 0.41 \\
+Weak-IV F price (Los Angeles) & 7.35 & 8.00 & 4.73 & 2.28 \\
+Weak-IV F sigma (Cook) & 319.74 & 278.97 & 265.64 & 0.44 \\
+Weak-IV F sigma (New York) & 111.44 & 121.50 & 103.81 & 3.45 \\
+Weak-IV F sigma (Los Angeles) & 185.17 & 167.36 & 70.14 & 0.82 \\
 Wu-Hausman $p$-value & $<$0.0001 & $<$0.0001 & $<$0.0001 & $<$0.0001 \\
-Scaled $X'P_ZX$ cond. & 1,475,541 & 64,785 & 4,104,665 & 10,248,700 \\
-Adj. $R^2$ & 0.9998 & 0.9872 & 0.9174 & 0.9386 \\
-Observations & 468 & 468 & 468 & 468 \\
+Scaled $X'P_ZX$ cond. & 1,293,181 & 100,447 & 22,333,673 & 32,665,701 \\
+Adj. $R^2$ & 0.9987 & 0.8991 & -0.3291 & 0.9631 \\
+Observations & 472 & 472 & 472 & 472 \\
 \hline \\[-1.8ex]
 \multicolumn{5}{p{0.92\linewidth}}{\footnotesize Notes: Nested-logit 2SLS coefficients with location-level clustered standard errors in parentheses. Price rows report county-specific coefficients on \texttt{cust\_price}; sigma rows report county-specific coefficients on \texttt{log\_within\_share}. All columns use the county-specific dye instrument and the county-specific Hausman instrument (leave-own-county-out same-quarter price) together, plus county-specific $avg\_labor \times B\_raw$ controls. Columns vary only in the fixed-effect parameterization. ``County$\times$quarter; omit'' drops the county-specific 2018.1 quarter indicators; ``Quarter only; omit'' and ``County + quarter'' use an omitted common quarter reference; ``Quarter only; all'' includes all quarter fixed effects. The fully saturated ``County$\times$quarter; full'' spec is omitted because it absorbs the instrument's identifying variation in the nested model. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows report the diagnostics from \texttt{summary(ivreg, diagnostics = TRUE)}. In a simple nested-logit interpretation, sigma values in $[0,1)$ are the usual RUM-consistent range.}\\
 \end{tabular}

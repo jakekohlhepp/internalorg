@@ -7,19 +7,19 @@
  & County$\times$quarter; full & County$\times$quarter; omit & Quarter only; omit & Quarter only; all & County + quarter \\
 \hline \\[-1.8ex]
 Fixed effects & County$\times$quarter; full & County$\times$quarter; omit & Quarter FE & All quarter FE & County + quarter \\
-Price (Cook) & 0.0191 & -0.0314*** & -0.0538*** & -0.0009 & 0.0073 \\
- & (0.0097) & (0.0076) & (0.0136) & (0.0046) & (0.0129) \\
-Price (New York) & -0.0103 & -0.0520 & -0.0370 & -0.0001 & -0.0152 \\
- & (0.1097) & (0.0458) & (0.0226) & (0.0037) & (0.0142) \\
-Price (Los Angeles) & -0.0380 & -0.0260** & -0.0270** & -0.0020 & 0.0077 \\
- & (0.0920) & (0.0089) & (0.0094) & (0.0022) & (0.0080) \\
-Weak-IV F price (Cook) & -- & 39.81 & 38.65 & 31.69 & 2.11 \\
-Weak-IV F price (New York) & -- & 2.65 & 7.67 & 7.90 & 0.98 \\
-Weak-IV F price (Los Angeles) & -- & 22.67 & 23.06 & 12.62 & 0.95 \\
-Wu-Hausman $p$-value & -- & $<$0.0001 & $<$0.0001 & 0.8520 & 0.3935 \\
-Scaled $X'P_ZX$ cond. & NA & 8,170 & 2,998 & 16,951 & 97,352 \\
-Adj. $R^2$ & 0.7975 & 0.7718 & 0.8166 & 0.9916 & 0.9728 \\
-Observations & 468 & 468 & 468 & 468 & 468 \\
+Price (Cook) & 0.0136* & -0.0212*** & -0.0467* & 0.0070 & 0.0023 \\
+ & (0.0065) & (0.0051) & (0.0199) & (0.0042) & (0.0182) \\
+Price (New York) & 0.0027 & -0.0324* & -0.0307* & 0.0056 & -0.0084 \\
+ & (0.0053) & (0.0146) & (0.0154) & (0.0049) & (0.0130) \\
+Price (Los Angeles) & 0.0158 & -0.0423* & -0.0448* & -0.0031 & 0.0026 \\
+ & (0.0111) & (0.0205) & (0.0219) & (0.0025) & (0.0077) \\
+Weak-IV F price (Cook) & -- & 51.45 & 33.38 & 33.34 & 3.71 \\
+Weak-IV F price (New York) & -- & 7.95 & 13.37 & 11.96 & 0.75 \\
+Weak-IV F price (Los Angeles) & -- & 10.19 & 10.30 & 6.01 & 1.21 \\
+Wu-Hausman $p$-value & -- & $<$0.0001 & $<$0.0001 & 0.0559 & 0.8073 \\
+Scaled $X'P_ZX$ cond. & NA & 4,189 & 3,984 & 13,013 & 250,343 \\
+Adj. $R^2$ & 0.9594 & 0.7603 & 0.7406 & 0.9910 & 0.9880 \\
+Observations & 472 & 472 & 472 & 472 & 472 \\
 \hline \\[-1.8ex]
 \multicolumn{6}{p{0.92\linewidth}}{\footnotesize Notes: Standard-logit 2SLS price coefficients with location-level clustered standard errors in parentheses. All columns use the county-specific Hausman instrument (leave-own-county-out same-quarter average customer price) and county-specific $avg\_labor \times B\_raw$ controls. Columns vary only in the fixed-effect parameterization. ``County$\times$quarter; omit'' drops the county-specific 2018.1 quarter indicators; ``Quarter only; omit'' and ``County + quarter'' use an omitted common quarter reference; ``Quarter only; all'' includes all quarter fixed effects. *, **, and *** denote $p<0.05$, $p<0.01$, and $p<0.001$, respectively. Weak-IV rows report the diagnostic statistics from \texttt{summary(ivreg, diagnostics = TRUE)}.}\\
 \end{tabular}

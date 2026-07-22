@@ -85,6 +85,10 @@ stopifnot(uniqueN(firm_groups[, c("quarter_year", "location_id")]) == nrow(firm_
 
 ### restore the unsmoothed data just to get task_mix and s_index, and set group numbers.
 full_unsmoothed <- readRDS(staff_task_full_path)
+cust_counts <- unique(full_unsmoothed[, .(location_id, quarter_year, cust_count)])
+stopifnot(nrow(cust_counts) == uniqueN(cust_counts[, .(location_id, quarter_year)]))
+emps_counts <- unique(full_unsmoothed[, .(location_id, quarter_year, emps)])
+stopifnot(nrow(emps_counts) == uniqueN(emps_counts[, .(location_id, quarter_year)]))
 full_unsmoothed <- unique(full_unsmoothed[, .SD, .SDcols = c(colnames(full_unsmoothed)[grep("^task_mix", colnames(full_unsmoothed))],
                                                               "s_index", "location_id", "quarter_year", "county", "tot_duration")])
 full_unsmoothed <- merge(full_unsmoothed, firm_groups[, c("location_id", "quarter_year", "types_observed_firm", "service_mix_id")],
@@ -93,6 +97,31 @@ full_unsmoothed <- merge(full_unsmoothed, firm_groups[, c("location_id", "quarte
 ## restrict to the three counties and quarters
 full_unsmoothed <- full_unsmoothed[county %in% CONFIG$counties_padded &
                                      quarter_year %in% CONFIG$estimation_quarters, ]
+
+## Outlier screen, ported from 09_invert_gammas.R (see the comment there).
+## One 2021.2 salon-quarter (a single-staffer whose only bookings are
+## multi-day "Administrative" calendar blocks) carries an avg_labor of 61.3
+## hours per customer against a sample maximum of 4.4 otherwise. Assert the
+## known shape of the outlier before dropping, so a change in the underlying
+## data surfaces here instead of silently shifting the counterfactuals.
+avg_labor_screen <- merge(
+  full_unsmoothed[, .(location_id, quarter_year, county, tot_duration, s_index)],
+  cust_counts, by = c("location_id", "quarter_year"), all.x = TRUE)
+avg_labor_screen <- merge(avg_labor_screen, emps_counts,
+                          by = c("location_id", "quarter_year"), all.x = TRUE)
+stopifnot(nrow(avg_labor_screen[is.na(cust_count) | is.na(emps)]) == 0)
+avg_labor_screen[, avg_labor := tot_duration / cust_count / 60]
+outlier_2021q2 <- avg_labor_screen[quarter_year == 2021.2 & avg_labor > 5]
+stopifnot(nrow(outlier_2021q2) == 1)
+stopifnot(outlier_2021q2$avg_labor > 60)
+stopifnot(outlier_2021q2$s_index == 0)
+stopifnot(outlier_2021q2$emps == 1)
+excluded_salon_quarters <- avg_labor_screen[avg_labor > 60,
+                                            .(location_id, quarter_year)]
+print(paste0("12b: excluding ", nrow(excluded_salon_quarters),
+             " salon-quarter(s) with avg_labor > 60"))
+full_unsmoothed <- full_unsmoothed[!excluded_salon_quarters,
+                                   on = c("location_id", "quarter_year")]
 
 ### first construct wage-adjusted skill matrix from the MONOTONE estimates
 all_results <- readRDS(parameters_path)

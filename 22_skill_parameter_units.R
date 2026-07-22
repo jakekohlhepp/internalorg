@@ -14,25 +14,35 @@
 #' linear scaling of theta within a column, the worst-worker identity is the
 #' same in every unit block.
 #'
+#' Both blocks price the SAME experiment -- reassigning 1% of task t's own mass
+#' (i.e. 0.01 * alphabar_{c,t} in absolute task-mass units) from the worst
+#' worker to worker w -- and differ only in the units they report it in.
+#'
 #' Unit blocks emitted (one column block per task, side-by-side):
 #'   1. Willingness-to-pay (USD). (theta[w,t] - theta_worst,t) / |rho_c| *
-#'                                Lbar_c * 0.01, where |rho_c| is the county
-#'                                disutility from price and Lbar_c is the
-#'                                unweighted mean of avg_labor (hours per
-#'                                customer) over firm-quarters in county c.
-#'                                Reads as consumer WTP per customer (USD)
-#'                                at a mean-labor firm in county c from
-#'                                reassigning 1 percentage point of task t mass, from the worst worker
-#'                                to worker w (absolute task-mass units; the
-#'                                % Share block instead uses 1% of task t's
-#'                                own mass).
+#'                                Lbar_c * 0.01 * alphabar_{c,t}, where |rho_c|
+#'                                is the county disutility from price, Lbar_c is
+#'                                the unweighted mean of avg_labor (hours per
+#'                                customer) over firm-quarters in county c, and
+#'                                alphabar_{c,t} is the mean share of task t in
+#'                                the firm's appointment mix. Reads as consumer
+#'                                WTP per customer (USD) at a mean-labor firm in
+#'                                county c from reassigning 1% of task t's own
+#'                                mass from the worst worker to worker w.
 #'   2. % market share (pooled).  theta[w,t] * (1 - sbar_c) * Lbar_c *
 #'                                alphabar_{c,t}, recentered. Reads as the
 #'                                percent change (Delta s / s, not Delta s)
 #'                                in market share at the mean firm of moving
 #'                                1% of task t mass from the worst worker to
 #'                                worker w. Pooled over firm-quarters in
-#'                                county c.
+#'                                county c. (The 0.01 of the reassignment
+#'                                cancels against the x100 that turns the
+#'                                share response into percent, which is why
+#'                                no 0.01 appears in this block's factor.)
+#'
+#' Because the two blocks now share one experiment, within a county they are
+#' proportional: share_cell / wtp_cell = |rho_c| * (1 - sbar_c) * 100 for every
+#' worker and task.
 #'
 #' The data variable avg_labor is constructed in cluster.R as
 #'   avg_labor := tot_duration / cust_count / 60
@@ -145,6 +155,21 @@ share_scale_matrix <- function(theta_mat, scale) {
   sweep(theta_mat, 2, col_factor, FUN = "*")
 }
 
+## Per-county column-scaling factors for the WTP block:
+## (theta[w,t] / |rho_c|) * Lbar_c * 0.01 * alphabar_{c,t}. The alphabar_{c,t}
+## factor sizes the reassignment at 1% of task t's OWN mass (0.01 *
+## alphabar_{c,t} of total task mass), which is the experiment the Pct. Share
+## block prices; without it the cell priced a flat 1 percentage point of total
+## task mass instead, so the two blocks described different reassignments and
+## the dollar figures overstated thin tasks (a task with alphabar = 0.05 does
+## not have a percentage point of mass to move in the first place). Linear in
+## theta, so recentering then scaling matches scaling then recentering.
+wtp_scale_matrix <- function(theta_mat, scale, rho_c) {
+  if (is.null(scale)) return(NULL)
+  col_factor <- scale$L * 0.01 * scale$alpha
+  sweep(theta_mat / abs(rho_c), 2, col_factor, FUN = "*")
+}
+
 ## Subtract the column minimum (the worst worker's value) from every entry,
 ## so each cell reads as the gain over the worst worker at that task.
 recenter_to_worst_worker <- function(mat) {
@@ -162,13 +187,10 @@ unit_blocks_for <- function(cnty) {
   ## index minimizes each block.
   worst_worker <- apply(theta, 2, which.min)
 
-  ## WTP cell: (theta - worst)/|rho_c| * Lbar_c * 0.01. Linear in theta so
-  ## recentering then scaling matches scaling then recentering.
-  wtp_scale   <- if (is.null(pooled_scale)) NA_real_ else pooled_scale$L * 0.01
-  dollars_mat <- (theta / abs(rho[[cnty]])) * wtp_scale
-
   list(
-    dollars      = recenter_to_worst_worker(dollars_mat),
+    dollars      = recenter_to_worst_worker(
+      wtp_scale_matrix(theta, pooled_scale, rho[[cnty]])
+    ),
     share_pooled = recenter_to_worst_worker(share_scale_matrix(theta, pooled_scale)),
     pooled_scale = pooled_scale,
     worst_worker = worst_worker
@@ -249,24 +271,26 @@ build_stacked_notes <- function() {
     "county-specific baseline."
   )
   units_explain <- paste0(
-    "\\textit{Willingness-to-pay (USD)}: cell $= (\\theta[w,t] - ",
-    "\\theta_{\\min,t})\\,/\\,|\\rho_c| \\cdot \\bar L_c \\cdot 0.01$, where ",
-    "$\\theta[w,t]$ is the estimated skill parameter, $\\theta_{\\min,t}$ is ",
-    "the worst worker's value in column $t$, $|\\rho_c|$ is the negative-",
-    "utility coefficient on price, and $\\bar L_c$ is the unweighted mean of ",
-    "hours of labor per customer over firm-quarters in county $c$. Reads as ",
-    "the consumer WTP per customer (USD) at a mean-labor firm in county $c$ ",
-    "from reassigning 1 percentage point of total task mass at task $t$ ",
-    "(absolute task-mass units) from the worst worker to worker $w$. ",
+    "Both blocks price the same experiment --- reassigning 1\\% of task $t$'s ",
+    "own mass from the worst worker to worker $w$ at the mean firm --- and ",
+    "differ only in units. \\textit{Willingness-to-pay (USD)}: cell $= ",
+    "(\\theta[w,t] - \\theta_{\\min,t})\\,/\\,|\\rho_c| \\cdot \\bar L_c \\cdot ",
+    "0.01\\,\\bar\\alpha_{c,t}$, where $\\theta[w,t]$ is the estimated skill ",
+    "parameter, $\\theta_{\\min,t}$ is the worst worker's value in column $t$, ",
+    "$|\\rho_c|$ is the negative-utility coefficient on price, $\\bar L_c$ is ",
+    "the unweighted mean of hours of labor per customer over firm-quarters in ",
+    "county $c$, and $\\bar\\alpha_{c,t}$ is the mean share of task $t$ in the ",
+    "firm's appointment mix. Reads as the consumer WTP per customer (USD) at a ",
+    "mean-labor firm in county $c$. ",
     "\\textit{Pct.\\ Share (pooled)}: the same recentered $\\theta$ gain ",
     "multiplied by $\\bar L_c\\,(1-\\bar s_c)\\,\\bar\\alpha_{c,t}$, where each ",
     "$\\bar{\\cdot}$ is the unweighted mean over firm-quarters in county $c$ ",
     "($\\bar L_c$ in hours/customer, $\\bar s_c$ the within-subdivision market ",
     "share, $\\bar\\alpha_{c,t}$ the share of task $t$ in the firm's ",
     "appointment mix). A cell value $\\approx$ the percent change in the ",
-    "mean firm's market share from reassigning 1\\% of task $t$ from the ",
-    "worst worker to worker $w$ (i.e., $\\Delta s_j / s_j \\cdot 100$, not ",
-    "$\\Delta s_j \\cdot 100$)."
+    "mean firm's market share (i.e., $\\Delta s_j / s_j \\cdot 100$, not ",
+    "$\\Delta s_j \\cdot 100$); the $0.01$ of the reassignment cancels against ",
+    "the $\\times 100$ that converts to percent."
   )
 
   paste(c(intro, units_explain), collapse = " ")

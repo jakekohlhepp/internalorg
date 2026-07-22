@@ -1942,12 +1942,32 @@ estimate_wage_parameters_pso <- function(start, x, beta, beta_2_subset,
     }
     pre_norm <- if (!is.null(solver_state_env)) solver_state_env$last_moment_norm else Inf
     pre_calls <- if (!is.null(solver_state_env)) solver_state_env$n_objective_calls else 0L
-    n_child_cores <- max(1L, get_core_count(config) %/% length(config$counties))
+
+    ## Cores per child proportional to the county's row count, not an even
+    ## split: the stage's wall time is bounded by the slowest county, each
+    ## county's per-evaluation cost scales with its own rows, and the counties
+    ## are badly imbalanced (LA holds ~55% of the estimation sample, Cook 15%),
+    ## so an even split leaves most of the allocation idle once the small
+    ## counties finish. Job 59321331: 16 of 24 cores sat idle for hours while
+    ## LA ground on alone with 8. Scheduling-only -- worker counts never enter
+    ## the numerics (inner jobs are built before dispatch and results written
+    ## back in job order), so results are unchanged to the bit.
+    county_row_n <- vapply(as.character(config$counties),
+                           function(cn) sum(as.character(data$county) == cn),
+                           numeric(1))
+    county_child_cores <- if (sum(county_row_n) > 0) {
+      pmax(1L, as.integer(round(get_core_count(config) *
+                                  county_row_n / sum(county_row_n))))
+    } else {
+      rep(max(1L, get_core_count(config) %/% length(config$counties)),
+          length(config$counties))
+    }
+    names(county_child_cores) <- as.character(config$counties)
 
     county_child <- function(cnty) {
       warn_msgs <- character(0)
       cfg_child <- objective_config
-      cfg_child$core_count <- n_child_cores
+      cfg_child$core_count <- county_child_cores[[as.character(cnty)]]
       out <- withCallingHandlers(
         tryCatch(
           solve_pso_county(cnty, full_par, cfg_obj = cfg_child),

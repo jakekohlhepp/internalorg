@@ -119,3 +119,82 @@ test_that("wage_fallback_checkpoint_write does not raise on unwritable path", {
   expect_error(wage_fallback_checkpoint_write(c(1, 2), config, "bad-path"),
                NA)
 })
+
+# ---------------------------------------------------------------------------
+# Layer 0 short circuit (added after 59610108 burned its 2-day wall running the
+# full ladder on three counties that were already at 6.2e-16 / 5.5e-15 / 5.0e-12).
+# ---------------------------------------------------------------------------
+
+test_that("wage_fallback_converged_ssq_tol defaults to 1e-8", {
+  expect_equal(CONFIG$wage_fallback_converged_ssq_tol, 1e-8)
+})
+
+# Drives apply_wage_fallback_layers with a stubbed slice objective: county
+# 17031 sits at machine-zero, county 6037 does not.
+local_ladder_fixture <- function(ssq_by_county, tol) {
+  par_names <- unlist(lapply(names(ssq_by_county), function(c)
+    paste0("factor(county)", c, ":avg_labor:E_raw_", 2:5)))
+  result <- list(par = setNames(rep(1, length(par_names)), par_names))
+  x <- data.frame(county = names(ssq_by_county), stringsAsFactors = FALSE)
+
+  # objective_gmm hands the county slice through; weighted_col_means turns it
+  # into the named moment vector the slice objective greps for.
+  assign("objective_gmm", function(theta, x, ...) x, envir = globalenv())
+  assign("weighted_col_means", function(m, weights = NULL) {
+    cnty <- as.character(m$county[1])
+    setNames(sqrt(ssq_by_county[[cnty]]), paste0("county", cnty, ":E_raw_2"))
+  }, envir = globalenv())
+
+  config <- list(
+    counties = names(ssq_by_county),
+    wage_fallback_converged_ssq_tol = tol,
+    wage_fallback_post_polish_enable = TRUE,
+    wage_fallback_hessian_enable = FALSE,
+    wage_fallback_multistart_enable = FALSE,
+    wage_fallback_repso_max_iter = 0L,
+    wage_fallback_verbose = FALSE,
+    wage_fallback_checkpoint_path = "none"
+  )
+  apply_wage_fallback_layers(result, x, beta = NULL, beta_2_subset = NULL,
+                             config = config, clust = NULL,
+                             solver_state = NULL, moment_weights = NULL)
+}
+
+test_that("layer 0 skips a county already below the tolerance and runs the ladder otherwise", {
+  orig <- mget(c("objective_gmm", "weighted_col_means"), envir = globalenv(),
+               ifnotfound = list(NULL, NULL))
+  on.exit({
+    for (nm in names(orig)) {
+      if (is.null(orig[[nm]])) rm(list = nm, envir = globalenv())
+      else assign(nm, orig[[nm]], envir = globalenv())
+    }
+  }, add = TRUE)
+
+  out <- local_ladder_fixture(list("17031" = 1e-20, "6037" = 4.0), tol = 1e-8)
+  rep1 <- out$fallback_layers[[1]]
+
+  # Converged county: short-circuited before layer 1.
+  expect_true(rep1[["17031"]]$layer0$skipped_ladder)
+  expect_equal(rep1[["17031"]]$layer0$ssq, 1e-20)
+  expect_null(rep1[["17031"]]$layer1)
+
+  # Non-converged county: layer 0 records it but lets the ladder proceed.
+  expect_false(rep1[["6037"]]$layer0$skipped_ladder)
+  expect_false(is.null(rep1[["6037"]]$layer1))
+})
+
+test_that("setting the tolerance to 0 restores the always-run-the-ladder behaviour", {
+  orig <- mget(c("objective_gmm", "weighted_col_means"), envir = globalenv(),
+               ifnotfound = list(NULL, NULL))
+  on.exit({
+    for (nm in names(orig)) {
+      if (is.null(orig[[nm]])) rm(list = nm, envir = globalenv())
+      else assign(nm, orig[[nm]], envir = globalenv())
+    }
+  }, add = TRUE)
+
+  out <- local_ladder_fixture(list("17031" = 1e-20), tol = 0)
+  rep1 <- out$fallback_layers[[1]]
+  expect_null(rep1[["17031"]]$layer0)
+  expect_false(is.null(rep1[["17031"]]$layer1))
+})
